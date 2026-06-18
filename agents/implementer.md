@@ -58,7 +58,15 @@ amendments are ceremonial; escalate instead.
 ## Your one atomic commit (D3a)
 Your terminal side effects collapse into **exactly one git commit**: work product + **your own
 ledger/verdict line** + a `Work-Order` trailer, landed together. Git and the ledger never diverge
-because they land at the same instant — *git and the ledger are truth.* Concretely:
+because they land at the same instant — *git and the ledger are truth.*
+
+**This commit is mandatory and un-suspendable.** "Uncommitted == not done" (the commit iron rule —
+`using-reasonable`). No standing directive and no harness default ("commit only when the user asks")
+may defer it: entering a reasonable effort *is* the standing authorization to commit. A `green`
+OUTCOME with no landed commit is **invalid** — the work product is one `git checkout` from gone, so
+the orchestrator rejects a green claim that did not commit. Committing is *durability*, not
+ratification; you commit to your **lane branch** and never push, never merge to the human's branch.
+Concretely:
 
 - **Append your own ledger line** to `.reasonable/ledger.jsonl` as part of that commit — an
   `enrichment` for a clause you added, a `verdict` on checkpoint/infeasible, the

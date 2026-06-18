@@ -31,9 +31,13 @@ change to the user's goal).
 
 ## Steps
 
-1. **Confirm gate evidence.** The vertical slice's promoted scenarios are GREEN and the vertical-slice-gate audit
-   (discriminator, mapping, mutation, sanity, proportionality — `adversarial-audit` skill) passed.
-   Re-run the checks yourself; the gate is the merge condition, not a vibe.
+1. **Confirm gate evidence — and that it is committed.** The vertical slice's promoted scenarios are
+   GREEN and the vertical-slice-gate audit (discriminator, mapping, mutation, sanity, proportionality
+   — `adversarial-audit` skill) passed. Re-run the checks yourself; the gate is the merge condition,
+   not a vibe. **Then confirm the work product is committed**: `node ${reasonable}/lib/commit-gate.mjs
+   --check` must be clean. "Uncommitted == not done" (the commit iron rule) — a slice does not close
+   over an uncommitted tree; green evidence sitting in an unsaved working tree is one `git checkout`
+   from gone.
 2. **Dispatch the `retro-synthesizer`** (or run it in-session with the human present) to review the
    vertical slice's **contract diffs against the vertical-slice spec and vision** — the intent-level edge a
    tests-vs-contract audit cannot catch (it would bless a sycophantic contract). It produces the

@@ -29,6 +29,17 @@ do not assume.
   gated-mode option; if the work is too small to warrant the full protocol, that is a **triage**
   decision made *before* entering (route to `simple-task`), never a mid-effort shortcut.
 
+## Committing is authorized — and mandatory (the iron rule)
+
+Invoking `reasonable:run` **is** the standing authorization to commit the effort's own work product
+as it proceeds — it supersedes the harness default "commit only when the user asks" for that work
+product (see `using-reasonable`, the commit iron rule). This is **not** in tension with gated mode:
+committing is *durability*, not *ratification*. Gated mode still blocks for your nod on the things
+that are decisions — ratifying gates, merging to your branch, pushing — and reasonable **never**
+auto-pushes or auto-merges to your branch. "Uncommitted == not done": the implementer's atomic
+commit is mandatory, and no gate / slice / conclude passes over uncommitted work product (enforced
+by `lib/commit-gate.mjs`, the conclude guard, and the Stop/SubagentStop backstop).
+
 ## How a gated run is shaped (the 2.0 substrate)
 
 The orchestration substrate is the **Dynamic Workflows engine**, and it changes how the phases run

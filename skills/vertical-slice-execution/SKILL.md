@@ -193,6 +193,9 @@ concept wants extraction. The runner cannot grow new control flow to chase it, s
 ## 7. Close the vertical slice → retro (the `green` arm)
 On a `green` `GATE_RESULT`, the runner has already verified the gate math internally — but you confirm
 it at the membrane before merging and closing:
+- **Confirm the work product is committed.** `node ${reasonable}/lib/commit-gate.mjs --check` is clean
+  in each lane before its merge — "uncommitted == not done" (the commit iron rule). A lane's
+  implementer commit is mandatory; a green result over an uncommitted lane tree is invalid.
 - **Verify the gate evidence yourself.** The slice's promoted scenarios are GREEN and the
   vertical-slice-gate audit (mutation + sanity + proportionality + mapping, `adversarial-audit` skill)
   passed. The gate is the merge condition, not a vibe — re-check, don't trust the summary.

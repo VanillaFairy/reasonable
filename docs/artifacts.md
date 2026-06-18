@@ -18,6 +18,16 @@ repository the methodology is being applied to — *not* the plugin directory).
 The presence of `.reasonable/` is what tells every hook "an effort is active";
 absent it, all hooks no-op (fail open).
 
+**Git policy (the commit iron rule).** `.reasonable/` is **tracked**, not
+gitignored — the D3a atomic commit lands the ledger line *in* the same commit as
+the work product, so git and the ledger stay one truth (§5.14B). Gitignoring the
+whole directory makes the authoritative log as losable as uncommitted code was.
+Gitignore only the **ephemera**: the lane worktrees (`.worktrees/`) and the
+concluded archives (`.reasonable.done-*/`). The derived index (`journal.json`,
+`inbox.json`) is rebuildable by reconcile and may be tracked or ignored at the
+project's discretion; the ledger and the human-authored standing artifacts
+(vision, intention, contracts, decisions, route, config) are tracked.
+
 ```
 .reasonable/
   config.json *            # stack bindings, test/build commands, test globs, run/brownfield mode

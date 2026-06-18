@@ -45,6 +45,11 @@ binding table), `component-contract`.
   additively, from vertical-slice gates — you add **no** behavioral musts beyond what the skeleton wires.
 
 ## Your output
-The skeleton code (committed), the parked scenario suite (compiling), the initial thin contracts, and
-a summary: which scenario is promoted-and-green (if any), how many are parked, where the loud stubs
-are. Show the command proving the suite is green with the parked count.
+The skeleton code **(committed — mandatory)**, the parked scenario suite (compiling), the initial
+thin contracts, and a summary: which scenario is promoted-and-green (if any), how many are parked,
+where the loud stubs are. Show the command proving the suite is green with the parked count.
+
+**Commit the skeleton before you hand off** — "uncommitted == not done" (the commit iron rule,
+`using-reasonable`). An uncommitted skeleton is one `git checkout` from gone; a skeleton that isn't
+committed isn't a skeleton, and scaffold sign-off will reject it. Commit to the effort branch; never
+push.

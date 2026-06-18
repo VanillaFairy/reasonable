@@ -103,6 +103,24 @@ deterministic pipeline with stochastic nodes** — not deterministic nodes.
 
 Anything that isn't one of these three, at some scale, is probably not a `reasonable` rule.
 
+## The commit iron rule ("done" entails committed)
+
+A corollary of Law 1 (Parity), strong enough to name: **uncommitted == not done.** A gate that
+passes, a vertical slice that closes, or an effort that concludes while its own work product sits
+uncommitted is making a false "done" — the claim contradicts reality, and the work is one stray
+`git checkout` from gone. So **everything reasonable does is committed** — capability-enforced, not
+left to a prompt (`lib/commit-gate.mjs`, the conclude guard, and the Stop/SubagentStop backstop;
+the implementer's atomic commit is mandatory and un-suspendable).
+
+The principle that makes this coherent in *both* run modes: **committing is durability, not
+ratification.** Saving work to git is not a decision that needs a human nod — it is what makes work
+survivable. So commit is *orthogonal* to the gated/autonomous split: reasonable commits its own work
+product in both modes, always. The gated control plane still owns the acts that *are* decisions —
+ratifying a gate, **merging to the human's branch, and pushing** (reasonable never auto-pushes and
+never auto-merges to your branch; commits land on lane/effort branches only). This **supersedes the
+harness default "commit only when the user asks" for an effort's own work product**: invoking a
+reasonable effort *is* the standing ask.
+
 ## Where things live
 
 > **`${reasonable}`** in any skill or constitution means **this plugin's root directory** (where it is

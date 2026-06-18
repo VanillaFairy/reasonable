@@ -54,6 +54,9 @@ directory — `$CLAUDE_PLUGIN_ROOT` in hooks; substitute the installed absolute 
    stories, and the stack binding. Its job: real wiring end-to-end with trivial behavior, the parked
    scenario suite (compiling), thin initial contracts, loud stubs everywhere off the skeleton path.
 2. **Verify the skeleton's invariants** (you, in the main session — do not take the agent's word):
+   - **The skeleton is committed.** `node ${reasonable}/lib/commit-gate.mjs --check` is clean —
+     "uncommitted == not done" (the commit iron rule). An uncommitted skeleton is one `git checkout`
+     from gone; sign-off does not pass over it.
    - **Suite is green at every commit.** Run the test command. The promoted scenario(s) the skeleton
      satisfies are green; the rest are **parked**, not failing. `node ${reasonable}/lib/burndown.mjs`
      reports the parked count and the loud-stub count.

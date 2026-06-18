@@ -27,6 +27,12 @@ use `reasonable:run` (gated). Mode is never guessed.
   and the `lib/*.mjs` scripts) runs and its evidence is recorded in the ledger. Autonomy removes the
   *human wait*, not the *work* and not the *verification*. This is what makes "autonomous"
   trustworthy rather than "unsupervised."
+- **Autonomy does NOT relax committing.** "Uncommitted == not done" holds in both modes — committing
+  is *durability*, not *ratification*, so it is never a gate to self-ratify or defer. The
+  implementer's atomic commit is mandatory; no gate / slice / conclude passes over uncommitted work
+  product (`lib/commit-gate.mjs`, the conclude guard, the Stop/SubagentStop backstop). Autonomy still
+  **never auto-pushes and never auto-merges to the human's branch** — commits land on lane/effort
+  branches; integration and push stay human acts. (See `using-reasonable`, the commit iron rule.)
 - **The four things autonomy must never self-approve — these ALWAYS queue to the human inbox, even
   in this mode** (autonomy decides the *how*; it never silently redefines the *what*, settles an
   unsettleable fork, ad-libs an unknown wall, or papers over a torn-truth halt):
