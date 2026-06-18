@@ -1,0 +1,4 @@
+#!/usr/bin/env bash
+# Bridge: SessionStart -> lib/session-start.mjs. stdin (hook JSON) flows through exec.
+DIR="$(cd "$(dirname "${BASH_SOURCE[0]:-$0}")" && pwd)"
+exec node "${DIR}/../lib/session-start.mjs" "$@"

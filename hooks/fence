@@ -1,0 +1,5 @@
+#!/usr/bin/env bash
+# Bridge: PreToolUse (edit tools) -> lib/fence.mjs. Fails open if node is absent.
+DIR="$(cd "$(dirname "${BASH_SOURCE[0]:-$0}")" && pwd)"
+command -v node >/dev/null 2>&1 || exit 0
+exec node "${DIR}/../lib/fence.mjs" "$@"

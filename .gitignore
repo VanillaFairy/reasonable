@@ -1,0 +1,14 @@
+# Dependencies
+node_modules/
+
+# OS / editor junk
+.DS_Store
+Thumbs.db
+*.log
+
+# Claude Code session ephemera (todos + state are per-session, not plugin source)
+.claude/todo/
+
+# Reasonable effort bookkeeping, if the plugin is ever dogfooded on itself
+/.reasonable/
+/.reasonable.done-*/

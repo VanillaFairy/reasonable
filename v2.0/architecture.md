@@ -1,0 +1,793 @@
+# reasonable 2.0 — architecture
+
+**Status:** foundational, revised. This is the implementation-ready architecture for re-seating the
+`reasonable` methodology onto the Claude Code **Dynamic Workflows** engine. It supersedes the earlier
+sketch (preserved as [architecture.sketch.md](architecture.sketch.md)) and is **derived freshly from the
+refined [principles.md](principles.md)** under the framework's own posture — *default-deny:* nothing in the
+old sketch was carried forward unless it positively survived an adversary, and several of its load-bearing
+claims did not.
+
+**How this was produced (and why that matters).** The revision applied reasonable's own machinery to
+itself: independent lenses re-derived the architecture *blind* to the old sketch (anti-anchoring), separate
+adversaries attacked each inherited claim (external verification), each open question was resolved
+propose-then-refute, and a completeness critic hunted for principles left without a mechanism. Every claim
+this document makes *about the existing code* was then verified by hand against `lib/`. Where the old sketch
+said "confirmed against lib," it was sometimes wrong; those places are now marked honestly as **build
+requirements**, not facts.
+
+**The headline correction.** The old sketch asserted unbuilt behavior as confirmed fact — most dangerously
+that "the fence fails closed" and "reconcile is a total halting function." Both are false against today's
+code. The architecture's safety arguments depend on those behaviors, so this document names them as
+**new code with concrete specs**, and keeps the honest status from principles.md: *verified by
+construction, not by use.* The construction is now sound; the foundation is still proven only by the first
+dogfood effort.
+
+---
+
+## 1. Grounding
+
+Read in this order; each is load-bearing and this document does not restate them:
+
+- **[principles.md](principles.md)** — the *why*. One posture (default-deny) → one invariant (deliver the
+  ask, no less/no more) → three means (external verification · capability over discipline · feedback over
+  prediction) → the human contract (a competent owner, served, never policed). This is the single source of
+  truth; every decision below cites it.
+- **The Dynamic Workflows engine** — the *substrate*. A single **pure** JavaScript script orchestrates many
+  stochastic subagents deterministically. The purity rules are absolute and they *force* most of this
+  architecture: no filesystem, no `Date.now`/`Math.random`/`new Date()` (they throw), fixed control flow
+  within a run. All side effects happen **inside agents**. Hooks: `agent()` (optionally schema-forced),
+  `parallel()` (barrier), `pipeline()` (no barrier), `log()`, `phase()`, `args`, `budget`, `workflow()`
+  (one-level nesting). `resumeFromRunId` is replay-based crash recovery but **same-session only**.
+  Concurrency caps at `min(16, cores-2)`; 1000 agents per run lifetime; 4096 items per fan-out call.
+- **[DESIGN.md](../DESIGN.md) + [docs/artifacts.md](../docs/artifacts.md)** — the *program*. The full v0.1
+  methodology (vertical slices, contracts, the §5.6 enrichment pipeline, retros, the ratchet) and its on-disk data
+  plane. This is what runs *on* the substrate.
+- **The live `lib/`** — what is *actually built* vs. what this architecture *requires built*. Verified files:
+  `fence.mjs`, `reconcile.mjs`, `footprint.mjs`, `effort.mjs`, `contract.mjs`.
+
+---
+
+## 2. The adoption decision — committed
+
+**Adopt Dynamic Workflows as *the* orchestration substrate. The v0.1 main-session phase-skill orchestrator
+is retired; there is one path.** (D1)
+
+This is a **deliberate human decision** that overrides the default the re-derivation recommended. Default-deny
+and feedback-over-prediction argued for keeping the v0.1 orchestrator as a live fallback until the first
+dogfood proved the engine. The principal chose full commitment instead — trading the safety of a fallback
+for a single clean path with no dual-maintenance burden, and forcing the dogfood to be the real test. That
+tradeoff is the principal's to make; it is recorded here as the conscious bet it is, not buried.
+
+What full commitment does **not** change: durability. Workflows is adopted as the *orchestration* substrate
+only. Durability was never the engine's to provide (see §11) — so "commit fully to the engine" and "the
+engine gives us almost no durability" sit on different planes and do not conflict.
+
+The first dogfood effort remains the proving ground (§24). The architecture commits to the single path; the
+*methodology* is still verified only by use.
+
+---
+
+## 3. The four planes
+
+The old "three layers" overloaded the word **control plane** onto the engine — but in DESIGN.md (§5.12) and
+the glossary, the control plane is canonically *the human*. The fix is to name four planes and never reuse
+"control plane" for the engine. (D2)
+
+| Plane | Who/what | Owns |
+|---|---|---|
+| **Human decision plane** *(the control plane)* | the principal, via main-session skills | vision, the intention + its ratification, route re-sort approval, amendment ratification, breaking-fork resolution, the supervision dial, run-mode selection |
+| **Orchestration substrate** | the Workflows engine + the pure vertical-slice script | how one vertical-slice-shaped run fans out, loops, branches, budgets, replays — **deterministic orchestration, zero capability containment** |
+| **Capability law** | reasonable hooks + per-agentType allowlists | the fence / locus / sanity / enforcement-immutability — binds *beside and under* the agents, entirely orthogonal to the engine |
+| **Program + state** | reasonable content + `.reasonable/` | the intention oracle, contracts, ratchet, vertical slices, route, retros, ledger, journal — the data plane the engine treats as opaque |
+
+The load-bearing fact under this split: **the engine's determinism fences nothing.** A subagent spawned by
+`agent()` can do anything its tools allow, exactly like an Agent-tool subagent. So the capability law cannot
+live in the script; it lives in hooks the harness fires regardless of who spawned the agent.
+
+---
+
+## 4. The control-plane split — what moves into the script, what cannot
+
+Script purity forces the boundary; it is not a matter of taste.
+
+**Moves into the pure vertical-slice script (orchestration):** the in-run control flow — dispatch waves, the §5.6
+enrichment pipeline as `pipeline()`, adversarial fan-out as `parallel()`, the trap `switch`, the
+budget-guarded retry/checkpoint loop, the disjointness set-algebra that groups work orders into parallel
+waves.
+
+**Cannot move in (stays in the human decision plane / the data plane / the agents):**
+- **Deciding what the next run is** — route re-sort, amendments, re-priced siblings. The script's control
+  flow is fixed per run; re-planning happens *between* runs (§10).
+- **Human-blocking gates** — a background workflow cannot block on a human, and silence must never ratify.
+  So gates live in the main session; the run *returns a typed result* instead of waiting (§8).
+- **All I/O** — every file edit, test run, contract/ledger write happens inside an agent. The script never
+  touches disk.
+- **Cross-session recovery** — the script is pure and same-session; durable recovery re-derives from disk
+  (§11).
+
+---
+
+## 5. Analysis and the coherence-grill — the intention as oracle (NEW)
+
+This is the single largest piece the old sketch was missing: the entire *intent* half of the framework had
+no mechanism. principles.md leans on an **intention** — a decision-policy, grilled into existence,
+adversarially coherence-checked, then used as the **oracle** that lets a machine resolve later forks the way
+the principal would. None of it existed in the prior architecture.
+
+**Mechanism (D15):** a main-session phase skill `reasonable:analysis` runs *before* any vertical slice and produces a
+fence-protected `.reasonable/intention.md`. It wraps a `coherence-grill.workflow.js` whose **stop condition
+is adversarial, not heuristic**: a `grill-adversary` agent loops hunting for a fork the draft intention
+resolves two defensible ways (or an internal contradiction). Each fork it finds returns to the main session
+and is put to the human — *this is the human's attention spent up front, the sanctioned place.* The loop
+terminates only when the adversary returns "no ambiguous fork found" (principles.md's stop condition —
+*not* "the next question seems low-value").
+
+The ratified `intention.md` becomes the cited **oracle** (§9). It must be added to the fence's
+`enforcementPaths` — it is **not** there today (verified: [effort.mjs:109-114](../lib/effort.mjs#L109-L114)
+lists ledger/journal/supervision/config/inbox, but not `intention.md`), so fence-protecting it is new code.
+
+**The falsifiable defeater (D18).** principles.md's success test has teeth: *a human correcting a
+non-breaking agent choice after the fact is a recorded failure of the intent-check.* Realized as a ledger
+entry `{type:'intent-check-failure', verticalSliceId, correctedChoice, shouldHavePinged}` written by the retro
+whenever the human corrects a choice the agent did not escalate. A rising count is the observable signal that
+the intention is too weak an oracle — routing back to enrich it. Without this, "never policing" is
+unfalsifiable, the exact shape the framework forbids.
+
+**In a brownfield effort** the same analysis phase also runs the topology census and partitions the existing
+suite into the regression floor, and the coherence-grill mines the characterization corpus for legacy
+incoherence (the *change* still has an intention even when the legacy system embodies none) — see §18.
+
+---
+
+## 6. Purity consequences — the script moves the program counter, it never writes it
+
+The script has no filesystem. So it can **move** the methodology's program counter (decide the next
+transition) but it can never **write** it. This forces a clean writer-role split by **data class** — and
+resolves a real contradiction in the old sketch, which had a separate scribe writing the ledger *after* the
+worker committed (two atomic effects = the torn window the sketch elsewhere claimed to have killed).
+
+- **Authoritative state → the worker's own atomic commit (D3a).** Each worker agent collapses its terminal
+  side effects into **one** git commit: work product + its own ledger/verdict entry + a `Work-Order`
+  trailer, together. Git and the ledger never diverge because they land together. *The ledger and git are
+  truth.*
+- **Derived state → one serialized scribe (D3b).** A lone `journal-writer` agent, dispatched only from a
+  non-parallel position, writes the *derived, rebuildable* index — `journal.json` (program-counter
+  transitions, write-ahead `status:'dispatched'` before a worker runs) and `inbox.json`. Because this layer
+  is derived from git+ledger, a torn or **null** scribe write is recoverable: reconcile rebuilds it. A null
+  scribe return is therefore a **HALT** (the script must not proceed believing a transition persisted), not
+  a swallow — but the halt loses no truth.
+
+**Footprint computation relocates; the algebra stays.** Reading contract files and running
+`lib/footprint.mjs` is I/O — it moves into the route-planner agent, which already must read the route. The
+pure **set-algebra** (are two footprints disjoint?) stays in the script. The route-planner returns, per work
+order, both the locus/citation footprint **and** the resource-claim set; the script's `groupDisjoint`
+serializes a wave on locus overlap **or** shared contract **or** shared resource — mirroring
+`independent()` in [footprint.mjs:67-72](../lib/footprint.mjs#L67-L72) exactly (verified: the lib already
+computes and serializes on resources). (D11)
+
+---
+
+## 7. The run unit — one run per vertical slice, terminating *at* the retro
+
+**One Workflow run = exactly one vertical slice, ending at the retro gate, never through it.** (D4)
+
+The run drives the vertical slice toward GREEN, has the worker persist gate evidence + a proposed route re-sort to
+disk atomically, and **returns a typed `GATE_RESULT`**. The human-blocking retro then runs in the main
+session; the next vertical slice is a fresh re-launch. The return is a tagged union so the main session routes the
+outcomes that are genuinely different decisions:
+
+```
+GATE_RESULT =
+  | { kind:'green',            evidence }              // ratify at the retro
+  | { kind:'budget-exhausted', progress, lastOutcome } // extend budget / re-plan
+  | { kind:'blocked',          outcome }               // a trap needs a human decision
+  | { kind:'halt',             reason }                 // durability/reconcile halt -> human
+```
+
+The `budget-exhausted` arm is first-class on purpose: the common hard-vertical-slice exit (the loop runs out before
+GREEN) must not masquerade as a gate. "Returned green" and "ran out of budget mid-vertical-slice" are different human
+decisions and carry different shapes.
+
+This is what makes "silence is frozen, never approved" enforceable: the engine can't block on a human, so it
+doesn't try — it returns, and the *main session* is where blocking (in gated mode) actually happens.
+
+---
+
+## 8. The trap protocol (open question Q1)
+
+**A mid-agent capability trap surfaces as a structured `agent()` return the script branches on — not a
+polled inbox.** (D5) The fence denies a tool call mid-agent; the agent converts the denial (or any wall)
+into its structured final message via `opts.schema`. Every lane-running agent is forced to emit an `OUTCOME`
+tagged union, and the script runs `switch(outcome.kind)`. The trap *steers an existing budget-guarded loop*;
+it does not grow control flow (which a fixed run forbids).
+
+```
+OUTCOME.kind =
+  green | scope-expansion | ripple | jurisdiction | spike-needed |
+  infeasible | checkpoint | intent-fork | other
+```
+
+| kind | the script's pre-written arm |
+|---|---|
+| `green` | record |
+| `scope-expansion` | grant+log (autonomous) or inbox (gated) |
+| `ripple` | sequence provider-first / consumer-first single-contract pipeline runs (§5.10) |
+| `jurisdiction` | dispatch the adjudicator (which cites the oracle) |
+| `spike-needed` | **return** to the main session to launch the spike workflow (nesting limit, §12) |
+| `infeasible` | dispatch the skeptic; two independent exhaustions auto-promote to the dead-end ceremony |
+| `checkpoint` | triage the budget: extend once / fresh-context retry / escalate |
+| `intent-fork` | **human inbox (BREAKING)** — an ambiguity neither code nor intention can settle (§9) |
+| `other` | **human inbox (BREAKING)** — an unknown wall the schema can't name; fail-safe |
+
+`intent-fork` and `other` are deliberately distinct (D12): one is "the oracle can't settle this scope
+question," the other is "I hit a wall this schema has no tag for." Both fail safe to the human, but they are
+different decisions.
+
+Two engine details the protocol must respect:
+- **`pipeline()` not `parallel()`** for the enrichment chain — no barrier, so a fast-trapping lane is triaged
+  the instant *its* chain returns, not after the slowest lane.
+- **null vs throw.** `agent()` returns `null` on user-skip or terminal API error → a verification gap → the
+  vertical slice does **not** close. But a *budget-ceiling* `throw` is different: every `agent()` is wrapped in a
+  `guard()` that catches the throw and re-tags it as `{kind:'checkpoint'}`, so a real budget ceiling is never
+  misread as a correctness gap (§12, D16b).
+
+The inbox is **demoted** to two narrow jobs: the human-gated freeze queue, and the cross-session
+reconciliation surface. Machine-to-machine traps cross via the return value; human/cross-session decisions
+cross via the on-disk inbox.
+
+---
+
+## 9. The intention as oracle, and the intent-fork arm
+
+Fork-resolving agents (the adjudicator, the route-planner, any agent facing a scope/priority choice) are
+**required to cite `.reasonable/intention.md`** when they resolve a fork. (D5b)
+
+- A fork the intention **does** settle → the agent resolves it in-band, cites the clause, records it to the
+  ledger, and **does not** ping the human.
+- A fork the intention **cannot** settle (no clause covers it, or two clauses conflict) → `intent-fork` →
+  the human inbox.
+
+This is the mechanism behind principles.md's "the intention is the oracle" and "an ambiguity neither code
+nor intention can settle is a fork → ping/halt, never a silent guess." It is also what keeps human attention
+*bounded*: most forks the oracle settles, so they never reach the human; only the genuinely unsettleable
+ones do, and each one's answer enriches the intention so the system gets quieter within a stable scope.
+
+---
+
+## 10. Dynamism (open question Q2)
+
+**Inter-vertical-slice dynamism comes from re-launching; intra-vertical-slice dynamism comes from looping.** (D6)
+
+- **Between vertical slices:** re-launch a *freshly parameterized* vertical-slice script — fixed, audited **source** plus
+  per-vertical-slice **args** (vertical-slice id, route snapshot, contract paths, per-vertical-slice budget, supervision profile, run
+  mode). All inter-vertical-slice dynamism (route re-sort, amendments, re-priced siblings, dial change) rides in the
+  args. "Freshly generated" means fresh *args*, **never** model-authored JS — a model writing the
+  orchestration script would be the governed editing the enforcement layer (§5.14D).
+- **Within a vertical slice:** `budget`-guarded loops plus `pipeline()`/`parallel()` — variable iteration *count*,
+  fixed *shape* (enrichment iterations, dispatch waves, ripple as a topologically ordered loop,
+  retry/checkpoint).
+
+A looping cross-vertical-slice script is banned because it would commit vertical slice N+1's control flow before vertical slice N's
+gate produced the feedback that reprices it — the prediction disease through the scheduler door. The split
+is mode-independent.
+
+---
+
+## 11. Replay vs. changing state (open question Q3) — and the WAL question
+
+**`resumeFromRunId` is demoted off the correctness path entirely.** (D9) It is a pure **speed**
+optimization: a same-session cache with zero authority. The sole correctness authority is the
+**unconditional reconcile prologue** that re-derives truth from git+ledger+contracts at the start of *every*
+run. The pure script carries no freshness logic (it can't — it has no filesystem).
+
+This dissolves Q3 rather than proving the old sketch's fragile guarantee. The sketch claimed a same-session
+prefix-staleness *guarantee*, which (a) contradicted its own "resume has zero authority" and (b) rested on a
+false premise: the engine caches on `agent()` **call identity** (prompt/args/order), not on a contract
+*file* changing under a textually-identical call. A read-only consumer whose prompt doesn't embed the
+contract text **would** be served stale. The resolution: since nothing downstream trusts the cache for
+correctness, a stale prefix is at worst **slower, never wrong** — reconcile re-derives truth regardless.
+
+### The WAL question, answered
+
+> *A past decision dropped the bespoke WAL trap-protocol in favor of Dynamic Workflows. Does it still stand?*
+
+**The decision stands; the reasoning that justified it does not** — and the distinction is load-bearing.
+
+- **The old justification is wrong (superseded by D8).** The sketch said durability is "inherited from
+  `resumeFromRunId`." But `resumeFromRunId` is same-session-only and the script is pure — it provides *no*
+  durability across the exact event durability exists for (a crash that ends the session). "The engine gives
+  us durability for free" is false.
+- **You still need no bespoke WAL — for the correct reason.** Git plus the append-only ledger **already are**
+  the write-ahead log. Git is itself an intent-then-commit log; the ledger is append-only. There is no
+  separate WAL protocol to invent.
+- **But "no protocol to build" was too glib.** Git+ledger only *function* as a WAL given two things the
+  sketch hand-waved: (1) the worker's terminal effects collapse into **one** atomic commit, so git is never
+  ahead of the ledger (D3a — the sketch's separate-scribe design re-created the torn window); and (2)
+  reconcile becomes a **total, halting** recovery function (D8b — see §11, new code). These are the residual
+  durability obligation: real, and **new code**, but reconcile + atomic-commit discipline, not a bespoke WAL.
+
+---
+
+## 12. Durability — three non-peer layers
+
+Each layer is checked against the one below it (the §5.6 derivation rule applied to the program counter
+itself).
+
+1. **git + ledger = truth.** A git commit is the unit of work; the worker's one atomic commit binds work
+   product + ledger line + trailer. No torn window.
+2. **`.reasonable/` index (journal/inbox) = derived, rebuildable, non-authoritative.** Written only by the
+   lone serialized scribe, write-ahead (`status:'dispatched'` before a worker runs). A null/torn write
+   HALTS (D3b) but loses no truth — reconcile rebuilds it from layer 1.
+3. **script memory + `resumeFromRunId` = volatile cache, zero authority** (§11). A cold restart discards it;
+   nothing trusts it for correctness.
+
+**Cross-session recovery is the only authoritative path and runs unconditionally as every run's prologue**
+(crash-only: recovery is the only path, so it is tested every session). This requires the **reconcile
+rewrite (D8b) — new code.** Verified: today [reconcile.mjs](../lib/reconcile.mjs) returns
+`{active:true, notes}` unconditionally and **never halts** (its notes are advisory strings like "harvest
+candidate (verify gate, then merge or sweep)"). The rewrite makes `reconcile()` a **total function**:
+partition every artifact configuration into
+
+- **RESOLVED** — downgrade dispatched-with-no-work to pending; re-claim an orphan-in-registered-lane whose
+  SHA reconciles and whose atomic commit included its ledger line; merge clean green.
+- **SAFE-DEFAULT** — a conservative downgrade that loses no truth.
+- **AMBIGUOUS** — an orphan commit whose trailer doesn't match the journal SHA, a ledger entry with no
+  commit, two lanes claiming one work order, an absent `config.runMode` → set `{halt:true, haltReason,
+  evidence}` and present it to the human as a **blocking** decision. **Never a recovery-time guess.**
+
+**Trailers are hints, not anchors.** DESIGN §5.14B calls Work-Order trailers "convenience, never truth"
+(agents can forge them). SHA accounting against the ledger is truth; the trailer is only a re-claim hint.
+The old sketch's elevation of the trailer to a recovery *anchor* is corrected: a trailer mismatch is
+AMBIGUOUS → halt.
+
+**The checkpoint-commit anchor fix (D8b).** Verified hole: harvest keys on `commitsAhead > 0`
+([reconcile.mjs:30-39](../lib/reconcile.mjs#L30-L39)), so a 0-commit checkpoint lane downgrades to pending
+and **loses the checkpoint**. Fix: a checkpoint-only lane must persist at least one trailered checkpoint
+commit so `commitsAhead > 0` holds; reconcile treats a registered lane with a checkpoint commit and a
+matching SHA as a live checkpoint, not pending.
+
+---
+
+## 13. Capability law and worktrees (open question Q4)
+
+**The fence does not bind inside an engine-spawned worktree — and today it does not bind inside *any*
+descriptor-less location, because it fails OPEN.** This is the headline correction.
+
+Verified: [fence.mjs:70-71](../lib/fence.mjs#L70-L71) is
+
+```js
+const lane = findLane(tgt) || findLane(input.cwd || process.cwd());
+if (!lane) process.exit(0); // not in a lane — main checkout / no effort — allow
+```
+
+— unconditional fail-**open**, with no branch distinguishing "effort reachable but no lane descriptor" from
+"no effort at all." The old sketch's "the fence fails closed, confirmed against fence.mjs" is **false**; the
+cited lines prove the opposite.
+
+**The fix (D7b — new code, small because the building block exists).** In `fence.mjs`, when `findLane` is
+null, call `findEffortRoot` (already exported, [effort.mjs:85](../lib/effort.mjs#L85)); if an effort root is
+reachable, **deny** ("presumed hostile: effort worktree with no lane descriptor"); only if no effort is
+reachable at all, `process.exit(0)`. The fence then fails **closed** inside an effort and open only in a
+plain repo / the main checkout.
+
+**reasonable owns lane lifecycle, not the engine (D7).** A privileged `lane-provisioner` agent runs
+`git worktree add`, writes `.reasonable-lane.json` (with the `effortRoot` back-pointer so hooks reach the
+shared `.reasonable/`), and records the lane in the journal **before** the fenced worker is dispatched — as
+a plain `agent()` cwd'd into that worktree, **without** `isolation:'worktree'`. This ordering closes the
+descriptor-less window: the worker's first edit always finds a descriptor, so the fail-closed rule blocks
+exactly the descriptor-less window and engine-spawned worktrees, never a legitimately provisioned worker.
+
+`agent({isolation:'worktree'})` is reserved **only** for ephemeral read-only throwaway work (e.g.
+discriminator tests at `HEAD~`) that produces no merged commits. Using it for a lane is forbidden: "auto-
+removed if unchanged" would sweep a checkpoint-only lane.
+
+**Locus authority is the immutable main-checkout work-order file**, fence-protected categorically — not the
+`.reasonable-lane.json` descriptor (which a desperate worker could otherwise forge). Verified retained
+facts: a lane cannot self-seed its descriptor (`.reasonable-lane.json` is in `ENFORCEMENT_BUILTINS`,
+[fence.mjs:27-28](../lib/fence.mjs#L27-L28); the self-write is actively denied at
+[fence.mjs:78-82](../lib/fence.mjs#L78-L82)); the spike quarantine fence
+([fence.mjs:85-93](../lib/fence.mjs#L85-L93)) and the per-role test-path rules
+([fence.mjs:111-132](../lib/fence.mjs#L111-L132)) bind as described.
+
+**The script holds zero enforcement authority** and is designed as hostile. The old sketch's "the script
+refuses to emit an `agent()` lacking an agentType" is downgraded to author discipline (the substrate gives
+the script no validation hook over its own calls); the real protection is that a bare `agent()` spawns the
+default subagent, which the per-agentType hooks never grant a lane allowlist — so its edits are denied by
+**absence of grant**, not by the script.
+
+---
+
+## 14. Run modes and the supervision dial
+
+**Run mode is set only by the entry skill** (`reasonable:run` → gated; `reasonable:run-autonomously` →
+autonomous), **never inferred from a standing directive** (the one-sentence difference between *autonomous*
+and *unsupervised*). (D10)
+
+- **Writer (new code).** The entry skill writes `{runMode:'gated'|'autonomous'}` into
+  `.reasonable/config.json`. `config.json` is already fence-protected
+  ([effort.mjs:112](../lib/effort.mjs#L112), verified), so an agent cannot self-promote mode.
+- **Reader (new code).** Verified: `reconcile.mjs` reads `journal.supervision` (the dial) but **no run-mode
+  field**, and the documented `config.json` schema has none. Add: reconcile reads `config.runMode`, includes
+  it in the briefing, and the main session re-asserts it into the next launch's args. **If `config.runMode`
+  is absent on a cold restart, reconcile HALTS** — defaulting to the "safer" mode is still an inference, and
+  the framework forbids inferring mode.
+
+At each gate the script branches on the carried mode: **gated** → persist an inbox item and **return**;
+**autonomous** → the worker appends a `ratification` ledger entry and the run **continues**. The one
+exception even in autonomous mode: a **vision/intention amendment** always terminates to the inbox and is
+surfaced — autonomy decides the *how*, never silently redefines the *what*.
+
+The **supervision dial** (strict / standard / trusting) is the finer control *inside* gated mode; the entry
+skill sets the initial profile (`run`→strict, `run-autonomously`→trusting), lower phases never override it,
+and the retro tunes it. No profile waives a mechanical check.
+
+---
+
+## 15. Budget, agent-count, and nesting ceilings
+
+- **Per-vertical-slice budget ≠ the engine's turn pool (D16a).** `budget.spent()` spans the whole turn (main loop +
+  all workflows); the per-vertical-slice budget is passed in args. The loop guards on
+  `min(per-vertical-slice-remaining, budget.remaining())`.
+- **Budget throw → checkpoint, not gap (D16b).** Because the engine *throws* when `spent ≥ total`, every
+  `agent()` inside a wave is `guard()`-wrapped so the throw becomes a `{kind:'checkpoint'}` OUTCOME — a
+  budget ceiling is never silently read as a verification gap (an implicit pass/fail).
+- **1000-agent lifetime cap (D16c).** The route-planner sizes waves so a vertical slice can't plausibly approach
+  1000; on approach the script emits a checkpoint-and-split `GATE_RESULT`.
+- **One-level `workflow()` nesting (D16d).** This is *why* spikes and the scaffold are launched by the **main
+  session**, never inline from the vertical-slice runner. `vertical-slice-runner` cannot call `workflow()` itself.
+
+---
+
+## 16. Trust invalidation — the event
+
+principles.md: trust is earned, persistent, **event-invalidated** — re-verify a trusted-green test only when
+its behavior is extended or its governing clause is amended; no re-checking churn. (D13)
+
+Mechanism: the append-only ledger **is** the event log; every enrichment/amendment entry names its component
+(verified: [fence.mjs:61-62](../lib/fence.mjs#L61-L62) and `contract.mjs` citation parsing). The
+route-planner/reconciler computes, from the ledger event stream, the set of trusted-green tests whose
+governing clause was amended/extended since their last verification, and marks **exactly those** for
+re-verification in the next vertical slice's work orders. The assertion↔clause mapping is the contract's citation,
+mechanical, not eyeballed — so this is no blanket re-check, just the specific affected tests.
+
+---
+
+## 17. The low floor and inbox attention
+
+**The low floor is a parameterization, not a second philosophy (D14).** A typo gets the *same*
+`vertical-slice-runner` workflow with a minimal route in args: one work order, one wave, the fence active (capability
+is scale-free, always on), one discriminator check in the audit stage, no scaffold, no multi-vertical-slice loop.
+`reasonable:analysis` triages applicability (DESIGN §7) and emits the floor-case route. "Only machinery
+scales" = same workflow, same fence, fewer stages — and the task is still escalatable mid-flight via the
+trap if it reveals a seam.
+
+**Inbox attention is bounded and prioritized (D17).** A noisy inbox is a silent failure of the success test
+(attention goes *only* to ask + breaking forks). So: every inbox item carries a class — **BREAKING**
+(decide before progress: intent-fork, vision amendment, second budget extension, reconcile HALT) vs
+**ADVISORY** (logged ratifications in autonomous mode, drift notes). The briefing presents BREAKING first
+and merely counts ADVISORY. An **inbox-load tripwire**: if BREAKING items for one vertical slice exceed a threshold,
+*that* is surfaced as a meta-signal that the intention is under-specified — routing back to enrich it (the
+principled fix for inbox noise, not suppression). `kind:'other'` and per-gate gated-mode terminations are
+ADVISORY-batched at the retro, not streamed one-per-event.
+
+For a small **brownfield** change (e.g. adding a confirmation dialog to an existing delete) the same low
+floor applies, with one addition: the touched seam is characterized just-in-time before the single
+discriminating test, and a legitimately-moved pin is classified as a planned supersession rather than a false
+regression. §18 walks the example end to end.
+
+---
+
+## 18. Brownfield — contracts born from existing code
+
+Brownfield is **not a second methodology.** It is one new contract *provenance*, two new roles, and a few
+parameters on the same machinery. When an effort has no legacy (`config.brownfield` unset, `baseline.json`
+empty), every mechanism below is a no-op, so the greenfield path of §1–17 is untouched — "one foundation,
+both ends."
+
+**The reframe (Feathers).** Greenfield clauses are *born RED at a gate* — assert what the code should do,
+watch it fail, make it pass. Brownfield clauses are *born GREEN by characterization* — pin what the code
+already does. Same ratchet, run from the opposite end. A characterization test is how a contract is born in
+legacy code; a Feathers *seam* is a fence locus. (DESIGN §3 ancestry gains Feathers as the brownfield analog
+to GOOS.)
+
+### Contract genesis — born GREEN, just-in-time, after intent (BF1, BF4, BF9)
+
+A clause now carries a **provenance**: `grown` (greenfield default, born RED at a gate) or `characterized`
+(brownfield, born GREEN by observation, **untrusted**). A characterized clause carries
+`- Provenance: characterized (test: <name>, seam: <locus>)`, parsed by a one-regex twin to the existing
+`- Gate:` extractor ([contract.mjs:39](../lib/contract.mjs#L39)); when the touching change intends to move
+it, also a `- Supersession: pending` line. (Verified: the ledger grammar today carries no clause provenance,
+so this is the missing carrier — without it a characterized *bug*-clause would inherit trusted-green status.)
+
+Genesis runs in two layers with different cadences (the §5.4 cost-asymmetry split, extended):
+
+- **Topology census, up front (cheap, observed).** A read-only `census` pass reads the import graph and
+  emits one skeleton contract per component: `## Topology` filled with `- Depends on:` *prose*, `## Clauses`
+  **empty**, **zero `## Citations` bullets**. Only Citations bullets feed the footprint closure, so prose
+  deps keep an untouched neighbour's footprint weight at **zero** — the citation closure cannot explode into
+  whole-codebase governance.
+- **Characterized behavioural clause, just-in-time at first touch — and *after* the change declares its
+  `behaviorDelta`.** When a vertical slice first touches a component, the implementer first records a
+  `behaviorDelta` (the observable behaviours this change intends to move). Only then does the `characterizer`
+  pin current behaviour, stamping `supersession: pending` on any clause the `behaviorDelta` names. Ordering
+  matters: pinning *before* the change is designed would freeze exactly the behaviour the change is about to
+  alter — the prediction disease in miniature. The closure grows by demand-driven characterization at the
+  seam (O(seams crossed), never O(call graph)): a characterized clause adds a Citations bullet only for the
+  specific neighbour the change actually consumes, and that neighbour then gets its own one-clause pin.
+
+### Real teeth for a characterization test (BF2)
+
+A characterization clause is admissible only if its test (a) **passes on unmutated HEAD** and (b) goes
+**RED, when run alone**, under at least one locus-scoped source mutant. This **reverse discriminator** is the
+exact dual of greenfield's "RED at HEAD~." It is **new code in `discriminator.mjs`**, reusing that file's
+existing single-test overlay (`testOneCommand.replace('{test}', testName)`, verified
+[discriminator.mjs:119-120](../lib/discriminator.mjs#L119-L120)). It explicitly does **not** delegate to
+`mutation-sample.mjs`, which (verified [mutation-sample.mjs:104](../lib/mutation-sample.mjs#L104)) runs the
+*whole suite* and reports only suite-wide survivors — on a covered legacy repo that would pass vacuously for
+every characterization test, proving the *suite* has teeth, not the new test. The relocation keeps Feathers'
+"pin what is, not what should be" mechanical **and per-test**.
+
+### The trust model — three statuses (BF3, BF8)
+
+principles.md: legacy/un-governed green is untrusted by default; the invariant's *no-more* includes
+*no-regression*. The apparent paradox ("untrusted, yet its green gates me") resolves by splitting **trust**
+from **gating**:
+
+- **TRUSTED** — adversarially-checked (discriminator + mapping + mutation). Earned, persistent,
+  event-invalidated. (unchanged)
+- **FLOOR** — the existing suite. Earns **zero** correctness credit, but breaking it is a forbidden
+  regression, so it is held green as a **containment fence**. Each floor test carries a captured locus.
+- **UNKNOWN** — existing behaviour no test pins at all (the dark matter). Characterized on demand; explicitly
+  **outside** the pre-merge floor guarantee.
+
+**Green at a brownfield gate is a conjunction:** `computeGreen = floorGreen && trustedGreen`. This rejects
+DESIGN §10's old "declare existing suites as promoted gates" — that is trust-by-assertion (a wholesale-
+promoted legacy test maps to no clause, so the bidirectional-mapping audit cannot pass). A FLOOR test is
+**promoted to TRUSTED one at a time**, by citing a characterized/enriched clause and surviving the pipeline
+(including the BF2 reverse discriminator), logged as a `characterization-promotion` event.
+
+**Floor containment is a real prevent-before fence, not detect-after.** `.reasonable/baseline.json` (new,
+machine-parsed, added to `enforcementPaths`) stores per floor test `{id, locus (file-glob over-
+approximation), fileHash}`. The fence treats the union of floor loci like a declared locus: an undeclared
+src edit intersecting it is denied unless the lane declares `floorImpact`. Floor **integrity** in reconcile
+uses a *stable* invariant (per-test fileHash + locus vs. the last accounted `characterization-promotion` /
+`change-characterized` / declared-`floorImpact` event) — an unaccounted floor change is AMBIGUOUS → HALT.
+This is a **new reconcile pass**, not a fold into the commit-only D8b partition (floor integrity is a
+test-set property, not a commit property).
+
+### The two-oracle collision — the confirmation-dialog case (BF6, BF9)
+
+The hard case brownfield must handle: a change that **legitimately moves pinned behaviour** (deletion used to
+return `Ok` immediately; now it returns `Pending` until confirmed). The new grown test contradicts the
+characterized floor pin. Resolved **mechanically**, not by eyeball: `toGateResult` consults the slice's
+`behaviorDelta` and the loci of its new grown RED-at-HEAD tests. A floor break where (a) the change declared
+a matching `behaviorDelta` **and** (b) a new grown test now governs that locus is a **planned supersession**
+→ the advisory `change-characterized-planned` ceremony, **not** a regression. A floor break with neither is
+an **unforeseen regression** → BREAKING. So enrichment from a characterized baseline has three moves:
+
+- **PROMOTE-TO-GROWN** — a gate now demands the behaviour; the clause sheds `characterized`, gains a Gate
+  line, runs the normal pipeline (trust-conferring).
+- **AMEND-CHARACTERIZED** — the change deliberately alters legacy behaviour *undeclared* — human-gated, like
+  a ratchet weakening.
+- **SUPERSEDE-PLANNED** — an amend the implementer **declared** up front via `behaviorDelta` —
+  advisory-batched, not per-edit BREAKING.
+
+Adding new behaviour *beside* characterized behaviour (Feathers' sprout/wrap) is free enrichment. This split
+is what stops routine behaviour-changing edits from flooding the human inbox (the attention-bounded success
+test).
+
+### The entry flow (BF7)
+
+Triage gains a **fourth engagement trigger**: *ungoverned existing code touched/risked by a change.* When it
+fires, `config.brownfield: true`. The phase flow is **one slot swap, not a new tree**:
+
+- **analysis** — triage → brownfield verdict; the `census` emits the topology census and partitions the
+  existing suite into `baseline.json` (FLOOR, untrusted, per-test locus + fileHash). The coherence-grill
+  **still runs** — its oracle is the *change*-intention, and the characterization corpus becomes an extra
+  fork source the grill-adversary mines (legacy incoherence — module A rounds half-up, B half-even —
+  surfaces as an `intent-fork`). This answers "there's no vision to grill": the *change* has an intention
+  even when the legacy system embodies none.
+- **scaffolding (brownfield mode)** — there is no walking skeleton to build (the system already walks), so
+  the slot's job becomes "characterize the observable top-level scenarios as a parked baseline," via a
+  main-session `characterization.workflow.js` (mirrors `scaffold.workflow.js`; here invariant-verify means
+  **GREEN on HEAD**, the inverse of the discriminator's RED-on-HEAD~).
+- **vertical slices** — the **identical** runner/pipeline/trap/retro loop, plus a conditional first stage: a
+  `characterization-needed` OUTCOME arm that, on first touch of ungoverned code, records the `behaviorDelta`
+  and dispatches the characterizer provider-first. **This genesis runs as an in-run agent sequence inside the
+  running vertical-slice-runner — not a nested `workflow()`** (the one-level nesting limit forbids it; this
+  parallels DESIGN §5.10's "extraction is a ripple with a birth in it"). `characterization.workflow.js` is
+  used only for the analysis-time corpus pass, launched from the main session.
+
+### The low floor, brownfield (the worked example, now resolved)
+
+"Change user deletion so it requires confirmation" runs as **one work order**: triage → brownfield + the §17
+low floor (no multi-vertical-slice loop, no full coherence-grill); the implementer declares
+`behaviorDelta: [delete now defers until confirmed]`; a read-only seam pass sets the locus; the characterizer
+pins current deletion behaviour (the return-path pin born `supersession: pending`, the untouched audit-log
+pin born plain), each admitted by the BF2 reverse discriminator; one blind-written grown test for the new
+behaviour (RED on HEAD~, full teeth); the two-oracle collision is classified as a *planned supersession*, not
+a regression; the gate = the new test GREEN **and** every floor test except the superseded one GREEN. The
+oracle is a **micro-intention** (`scope: micro` — the change sentence + behaviorDelta + the touched seam's
+born contracts), ratified in one nod at the single retro. No full grill for a one-line ask. This is the
+scale-free promise of §17 finally delivered for brownfield.
+
+### Two new roles (BF5)
+
+- **`census`** (read-only) — runs once at analysis: scans the dep graph → skeleton topology contracts (zero
+  clauses, zero citations); partitions the existing suite → `baseline.json`. The initial trusted set is
+  empty.
+- **`characterizer`** (fenced mutator) — read-only on production code (it **must** read code, so it is the
+  structural *inverse* of the blind-test-writer and cannot be blinded); writes only born `characterized`
+  contracts (gated on `lane.contractBirth`) and parked characterization tests, in the fixed atomic order
+  *contract → ledger event → test* (the write-ordering that avoids a fence deadlock). Its unavoidable
+  anchoring leak is contained by a one-way membrane: downstream re-entry into the trusted set is
+  rewrite-from-contract, never read-the-legacy-code (the spike's rewrite-from-knowledge rule).
+
+### Honest scope (stated, not buried)
+
+The floor protects only **pre-tested** legacy behaviour. UNKNOWN (untested) behaviour — the bulk of a typical
+legacy repo — gets **no pre-merge regression protection**; a regression there is caught only post-merge via
+the DESIGN §5.14A backward path. principles.md's no-regression is unqualified, so this narrowing is named
+here and in DESIGN §10, not hidden. Two residuals remain, both brownfield twins of principles.md's
+irreducible residual: a characterization test can faithfully **pin a bug** (no internal tell — caught only by
+the human three-way classification at the birth-ratification gate, or a downstream discovery), and there is
+**no mechanical completeness check** for characterization (you cannot discriminate against behaviour you
+never pinned).
+
+---
+
+## 19. The script topology
+
+Twelve greenfield components, plus three brownfield ones (gated on `config.brownfield`, §18). Workflows are
+`*.workflow.js`; the rest are agents, the pure script's own structures, or main-session skills.
+
+| Component | Kind | Responsibility |
+|---|---|---|
+| **`reasonable:analysis`** | main-session skill | grill the vision → intention; launch the coherence-grill; ratify `intention.md`; triage applicability; emit the initial route |
+| **`coherence-grill.workflow.js`** | workflow (adversarial loop) | `while(true){ fork = agent(grill-adversary, FORK_OR_NONE); if(no-fork) break; return fork-to-human }` then an `intention-writer` worker persists `intention.md` atomically |
+| **`scaffold.workflow.js`** | workflow (short pipeline) | walking skeleton + parked scenario suite, real wiring, thin behavior → invariant-verify (read-only) → scribe; ends at scaffold sign-off (main session takes it) |
+| **`vertical-slice-runner.workflow.js`** | workflow (one run per vertical slice) | the pure in-run plane: reconcile prologue → route-planner (footprints + resources + staleness) → `groupDisjoint` → per wave the enrichment `pipeline()` → trap `switch` → scribe the derived index → return a typed `GATE_RESULT` |
+| **enrichment pipeline** | `pipeline()` inside vertical-slice-runner | `pipeline(workOrders, provisionThenImplement, blindTest, adjudicate, audit)` — no barrier; the implementer worker writes its own ledger line in its atomic commit; the adjudicator cites the oracle; each call `guard()`-wrapped |
+| **adversarial fan-out** | `parallel()` leaf (barrier) | the auditor's escalating checks run together (gate = AND over all): discriminator + bidirectional-mapping per enrichment, mutation sampling at the vertical-slice gate; read-only, no worktree isolation; collapses to one discriminator at the floor |
+| **trap router** | pure JS `switch` (not an agent) | maps each OUTCOME kind to its pre-written membrane crossing (§8); never throws on a trap |
+| **`lane-provisioner`** | privileged narrow agent | `git worktree add` + write `.reasonable-lane.json` + record the lane — before the worker; idempotent; ensures a checkpoint-only lane has a trailered commit |
+| **`journal-writer` (scribe)** | the script's single derived-index hand | writes only `journal.json` + `inbox.json`; serial, awaited; null return → HALT (§6) |
+| **reconcile** | agent wrapping rewritten `lib/reconcile.mjs` + SessionStart hook | the unconditional, total, halting recovery prologue (§12); reads `config.runMode`; computes the trust-staleness set |
+| **main-session orchestrator** | entry/phase skills (the human decision plane) | `reasonable:run` / `:run-autonomously` / `:retro`: write `config.runMode`, run reconcile, present the briefing (BREAKING first), block for the human in gated mode, apply route re-sort + amendment batch + intent-check records at the retro, then re-launch the next vertical slice; launch spike/scaffold (never inline) |
+| **`spike.workflow.js`** | workflow (single timeboxed agent) | quarantined falsifiable spike → knowledge artifact; spike-runner path-fenced to quarantine ([fence.mjs:85-93](../lib/fence.mjs#L85-L93)); launched by the main session (nesting limit) |
+| **`census`** *(brownfield, §18)* | read-only agent | once at analysis: dep-graph → skeleton topology contracts (zero clauses/citations); partition the existing suite → `baseline.json` (FLOOR, untrusted) |
+| **`characterizer`** *(brownfield, §18)* | fenced mutator agent | read-only on src; pins current behaviour as `characterized` clauses + parked characterization tests, just-in-time at first touch, after the implementer's `behaviorDelta` |
+| **`characterization.workflow.js`** *(brownfield, §18)* | workflow (short pipeline) | analysis-time corpus pass (mirrors `scaffold.workflow.js`); invariant-verify = GREEN on HEAD. First-touch genesis is NOT this — it is an in-run agent sequence inside the vertical-slice-runner (one-level nesting) |
+
+`vertical-slice-runner` sketch (shape, not final code):
+
+```js
+export const meta = { /* pure literal */ }
+const state = await agent(reconcilePrompt(args), { agentType:'reasonable:reconciler', schema:BRIEFING })
+if (state.halt) return { kind:'halt', reason: state.haltReason }
+const plan = await agent(routePrompt(state, args), { agentType:'reasonable:route-planner', schema:ROUTE_PLAN }) // footprints + resources + staleness
+const waves = groupDisjoint(plan)              // pure set-algebra: locus | contract | resource
+let verticalSliceGreen = false
+while (!verticalSliceGreen && withinBudget(args, budget) && withinAgentCap()) {
+  for (const wave of waves) {
+    const outcomes = await pipeline(wave.workOrders, implementStage, blindTestStage, adjudicateStage, auditStage)
+    for (const o of outcomes.filter(Boolean)) state = route(o, state, args.mode)   // the trap switch
+    const ack = await journalWrite(state)      // serial; the script's only derived-index write
+    if (ack === null) return { kind:'halt', reason:'scribe-null: index not persisted' }
+  }
+  verticalSliceGreen = computeGreen(state)
+}
+return toGateResult(verticalSliceGreen, state, budget)  // green | budget-exhausted | blocked
+```
+
+---
+
+## 20. Roles and allowlists (the agentType lattice)
+
+All bind identically whether spawned by the Agent tool or `agent()` (same registry); the capability comes
+from the per-agentType allowlist + the PreToolUse hooks, never the script.
+
+- **Read-only verifiers:** `reconciler`, `route-planner`, `adjudicator`, `auditor`, `skeptic`,
+  `retro-synthesizer`, `grill-adversary`, `census` (brownfield).
+- **Fenced mutator workers** (reasonable-owned worktree, own-ledger-line atomic commit): `implementer`,
+  `blind-test-writer` (tests only), `scaffolder`, `intention-writer`, `characterizer` (brownfield —
+  read-only on src; born-contract + characterization-test writes only), `spike-runner` (quarantine only).
+- **Privileged narrow:** `lane-provisioner` (git worktree + descriptor write only), `journal-writer`
+  (derived index only).
+
+Most already exist as v0.1 agent definitions; **new** are `grill-adversary`, `intention-writer`,
+`lane-provisioner`, `journal-writer`, `reconciler` (as a dispatched agent wrapping the rewritten lib), and —
+for brownfield — `census` and `characterizer`.
+
+---
+
+## 21. The build punch-list (what is new code)
+
+This is what "ready to be implemented" means — the concrete delta from today's `lib/`. Each item was
+verified to be unbuilt or wrongly-built against the live code.
+
+| # | Build requirement | Today | Decision |
+|---|---|---|---|
+| 1 | **Fence fails closed inside an effort** — `findLane` null → `findEffortRoot`; deny if reachable | fail-open ([fence.mjs:70-71](../lib/fence.mjs#L70-L71)) | D7b |
+| 2 | **reconcile = total halting function** (RESOLVED / SAFE-DEFAULT / AMBIGUOUS→halt) | never halts ([reconcile.mjs](../lib/reconcile.mjs)) | D8b |
+| 3 | **Checkpoint-only lane persists a trailered commit**; reconcile anchors on it | harvest keys on `ahead>0`, loses 0-commit checkpoints | D8b |
+| 4 | **Worker writes its own ledger line in its atomic commit**; scribe writes only the derived index | orchestrator writes both via lib | D3 |
+| 5 | **`config.runMode` field** + reconcile reads it + absent→halt | no run-mode field anywhere | D10 |
+| 6 | **`intention.md`** + the coherence-grill workflow + add to `enforcementPaths` | does not exist | D15 |
+| 7 | **Fork-resolving agents cite the intention oracle**; `intent-fork` OUTCOME arm | no oracle, no arm | D5b |
+| 8 | **Intent-check-failure ledger entry** recorded at the retro | does not exist | D18 |
+| 9 | **The `vertical-slice-runner` / `coherence-grill` / `scaffold` / `spike` workflow scripts** + the OUTCOME/GATE_RESULT schemas + `guard()` wrapper | orchestration is v0.1 prose | D4, D5, D16b |
+| 10 | **New agentTypes:** `grill-adversary`, `intention-writer`, `lane-provisioner`, `journal-writer`, `reconciler` | partial | §20 |
+| 11 | **Trust-staleness set** computed from ledger events by the route-planner | not computed | D13 |
+| 12 | **Inbox BREAKING/ADVISORY classes** + load tripwire | flat inbox | D17 |
+| 13 | **Clause `provenance`** (`grown`\|`characterized`) + `Provenance`/`Seam`/`Supersession` parser twins; `characterized` excluded from the trusted set | no clause provenance | BF1 |
+| 14 | **Reverse discriminator** mode in `discriminator.mjs` (single-test: mutate the clause locus at HEAD, run only that test, require RED) | only HEAD~ absence-mode | BF2 |
+| 15 | **`baseline.json`** + the `census` role (topology census + floor partition with per-test `{id, locus, fileHash}`) | does not exist | BF3/BF4 |
+| 16 | **Floor-containment fence rule** (union of floor loci treated as a declared locus; `floorImpact` opt-out) + `baseline.json` in `enforcementPaths` | fence is path-glob only | BF8 |
+| 17 | **Floor-integrity reconcile pass** (per-test fileHash+locus vs. accounted events → AMBIGUOUS→HALT) | reconcile is commit-only | BF8 |
+| 18 | **`behaviorDelta`** field + two-oracle collision classifier in `toGateResult` + ledger events `characterization` / `characterization-promotion` / `change-characterized[-planned]` | none | BF6/BF9 |
+| 19 | **`characterizer` role** + `characterization.workflow.js` + the in-run `characterization-needed` genesis prologue | does not exist | BF5/BF7 |
+| 20 | **Triage fourth trigger** (ungoverned code touched) + `config.brownfield` + `scope:micro` intention | greenfield-only triage | BF7 |
+
+Items 13–20 are brownfield and are no-ops when `config.brownfield` is unset (§18).
+
+Reusable as-is (verified): `footprint.mjs` (resources + `independent()`), `contract.mjs` (citation graph),
+the enforcement/quarantine/test-path fence rules, `effort.mjs` helpers (`findEffortRoot`, config load,
+`enforcementPaths` incl. `config.json`).
+
+**Release step (last).** When this punch-list is built and the dogfoods pass, bump the version in
+`.claude-plugin/plugin.json` and the `vanillafairy` marketplace entry from `0.1.0` to **`2.0.0`** — the
+version tracks the methodology generation (reasonable 2.0), not the build count. Do this only on
+implementation, not before; today's plugin on disk is still 0.1.0.
+
+---
+
+## 22. What changed — from v0.1 and from the prior 2.0 draft
+
+- **From v0.1:** the orchestrator stops being prose a stochastic main-session model interprets, and fractures
+  into a *pure script* (orchestration) + *worker-owned ledger* (authoritative durability) + *serialized
+  scribe* (derived index) + *reconcile gate* (recovery). The weakest-built v0.1 layer is replaced by a
+  deterministic engine.
+- **From the prior 2.0 sketch:** "control plane = the engine" → **four planes** with the human keeping the
+  name. "Durability inherited from `resumeFromRunId`" → **resume demoted to pure speed**; durability is
+  reasonable's via git+ledger+reconcile. "The fence fails closed (confirmed)" and "reconcile is a total
+  halting function" → **named as new code**, because they are. The separate-scribe-writes-ledger design →
+  **worker-owned atomic ledger line** (the torn window removed). The entire **intent half** (coherence-grill,
+  the intention oracle, the intent-check defeater) → **given a mechanism** for the first time.
+
+---
+
+## 23. Residual forks for the principal
+
+| Fork | Resolution |
+|---|---|
+| **Adoption commitment** | **DECIDED: commit fully** (§2). The v0.1 orchestrator path is retired; one path. A deliberate override of the default-deny default; the dogfood is the proving ground. |
+| **Cross-vertical-slice parallelism** | **v1 default: one vertical slice in flight** (parallelism spends feedback). Growth path: a thin top-level parent run fanning out concurrent vertical-slice-runs and re-converging at a joint retro — must be launched by the main session (one-level nesting), route-planner-judged. |
+| **Out-of-band contract mutation** | **v1 default: rely on reconcile re-deriving** every run (resume is non-authoritative, so a stale cache is slower-never-wrong). Revisit only if dogfood shows out-of-band edits are frequent enough that wasted re-derivation hurts. |
+| **Reconcile halt threshold** | **v1 default: conservative** — anything not provably RESOLVED/SAFE-DEFAULT halts to the human (a halt is cheap; a wrong auto-resolve is silent rot). Tighten toward permissive only as dogfood proves specific configurations unambiguous. Deliberately *not* coupled to run-mode (recovery correctness must not depend on supervision appetite). |
+| **Brownfield: risk-set scope** (§18) | **v1: characterize the seam's observable boundary only.** Deeper regressions route through the §5.14A backward path; a non-gating "characterization coverage" advisory at the retro flags thin spots. No mechanical completeness check exists — the brownfield twin of the irreducible residual. |
+| **Brownfield: floor-locus granularity** (§18) | **v1: per-file over-approximation** (matches the glob-based fence + footprint algebra; forfeits convenience, never correctness). Growth path: lazily-computed real coverage for the floor tests a slice's locus intersects. |
+| **Brownfield: ratification threshold** (§18) | **v1: born clauses advisory-batched**; only auditor/characterizer-flagged suspicious pins go BREAKING. `behaviorDelta`-first ordering already removes the largest inbox-flood source; the exact threshold is calibrated by the brownfield dogfood. |
+| **Brownfield: census role count** (§18) | **v1: one folded `census` role** (topology-read + floor-partition); the `characterizer` stays separate (a fenced mutator with an anti-anchoring constitution). Split into `topology-reader` + `baseline-classifier` if separation-of-concerns outweighs role count. |
+| **Brownfield: reverse-discriminator sampling** (§18) | **v1: RED under one sampled locus mutant suffices** (the dual of greenfield's single RED-at-HEAD~). Promote to a k-sample threshold only if the dogfood shows weak pins slipping through. |
+
+---
+
+## 24. The mandate
+
+This document is still the product of *prediction* — grilling, adversarial re-derivation, verification
+against code. By the framework's own first principle, that settles whether the construction is *sound*
+(it now is — asserted-but-unbuilt claims have been replaced by named, buildable requirements), but **not**
+whether the foundation *works*. The next real information comes only from **building the punch-list (§21)
+and running the dogfood efforts** — the greenfield exercise that drives the whole loop: intention →
+coherence-grill → scaffold → vertical slices → adversarial verification → breaking discovery → enrich.
+
+**Brownfield adds its own mandate.** The §18 mechanisms — the per-test reverse discriminator, floor
+containment, `behaviorDelta`-ordered pinning, the floor-integrity reconcile pass — are exercised by *none* of
+the greenfield Fireside plan (DESIGN §12). Brownfield is therefore verified by construction only; it needs a
+**real legacy-codebase dogfood** to settle its dogfood-only residuals (risk-set scope, floor granularity,
+ratification threshold, `behaviorDelta` accuracy, floor-integrity accounting). That second dogfood is part of
+the mandate, not optional.
+
+Until then, this architecture is *verified by construction, not by use.* That is the honest status, and the
+mandate.
