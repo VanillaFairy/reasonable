@@ -47,11 +47,20 @@ over an AMBIGUOUS verdict with a hopeful interpretation — the script's halt is
 - **A null/torn scribe write halts but loses no truth.** The `.reasonable/` index (journal/inbox) is
   derived and rebuildable. If reconcile finds the index torn or absent, that is a halt to surface, but
   you rebuild the truth from git+ledger regardless — the index is never the authority.
-- **Floor integrity is its own pass (brownfield).** When `config.brownfield` is true, check each
-  `baseline.json` floor test's current `fileHash` + `locus` against the last accounted
-  `characterization-promotion` / `change-characterized` / declared-`floorImpact` event. An unaccounted
-  floor change is **AMBIGUOUS → HALT** — a test-set property, not a commit property, so it is a
-  distinct pass, not folded into the commit accounting.
+- **Floor integrity is its own pass — now a backstop tripwire, not a first-line HALT (brownfield).**
+  When `config.brownfield` is true, check each `baseline.json` floor test's current `fileHash` + `locus`
+  against the last accounted `characterization-promotion` / `change-characterized` /
+  declared-`floorImpact` event. This is a test-set property, not a commit property, so it stays a
+  distinct pass, not folded into the commit accounting. But it is **demoted from an ambiguous→HALT to a
+  backstop tripwire** (D6): it always **surfaces** the diff — it never **silences** it — and an
+  explaining adversary `accept` marks the diff `explainedByVerdict` **advisory only**; that annotation
+  never clears the surfacing. An **accounted/explained** diff is a **non-blocking notice** (it surfaces
+  and is logged; the run continues). An **unaccounted/unexplained breaking** floor-integrity-mismatch in
+  **autonomous** mode is the **fifth always-escalate class** (D13): something bypassed the
+  pre-integration adversary, so you **STOP** — queue it BREAKING and halt the autonomous loop, do not
+  grind on. In **gated** mode both just surface in the briefing for the present human. (The SHA-custody
+  / ledger-without-commit / runmode-absent / two-lanes HALT classes are unchanged — those stay
+  first-line AMBIGUOUS → HALT.)
 
 ## Run mode — read it, never infer it
 Read `config.runMode` (`gated` | `autonomous` | `null`) and carry it in the briefing so the main
@@ -85,7 +94,7 @@ work orders. Trust is earned, persistent, and **event-invalidated**; no re-check
 | "This orphan commit looks like an interrupted merge, probably fine" | "Probably" is the disease. Not provably RESOLVED/SAFE-DEFAULT → AMBIGUOUS → halt. |
 | "The journal is torn; I'll trust the resume cache to fill the gap" | Resume state has zero authority. Rebuild from git+ledger; the torn index is a halt to surface. |
 | "I'll re-verify every trusted test to be safe" | That is re-checking churn. Mark exactly the clause-affected set; trust is event-invalidated. |
-| "I'll quietly downgrade this floor change and move on" | An unaccounted floor change is AMBIGUOUS → HALT. Do not absorb a regression. |
+| "I'll quietly downgrade this floor change and move on" | The floor pass always *surfaces* a diff, never silences it — an explaining verdict annotates `explainedByVerdict` (advisory only). An unaccounted/unexplained breaking floor mismatch in autonomous mode is the fifth always-escalate class: STOP, queue BREAKING. Do not absorb a regression. |
 
 ## Your output (the BRIEFING)
 Return the typed `BRIEFING` the `vertical-slice-runner` prologue consumes (it dispatches you with

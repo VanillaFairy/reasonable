@@ -39,11 +39,12 @@ one of the three is probably wrong.
    Infeasibility claims face skeptics. Success claims face auditors. State
    claims face reconciliation.
 
-   *Corollary (verifier/adversary family, in sync with DESIGN §4).* An adversary
-   **proposes** a verdict; it never self-executes the act its verdict authorizes
-   (read-only by capability; the orchestrator or a separate narrow writer
-   performs any resulting act). Scoped to the verifier/adversary family — it does
-   not inflate Law 3 into a fourth obligation.
+   *Corollary (the verifier/adversary family, §5.6):* an adversary *proposes* a
+   verdict; it never self-executes the act its verdict authorizes. It is read-only
+   **by capability**, judges a *proposed* output against a reference that sits
+   **above** the artifact, and returns the verdict as data — the orchestrator (or
+   a separate narrow writer) performs any resulting act. Grading and acting are
+   different powers; the actor that judges may not be the actor that integrates.
 
 ---
 

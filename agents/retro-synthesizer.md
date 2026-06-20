@@ -22,6 +22,12 @@ against the **vertical-slice spec and the vision** catches it. That review is th
 the chain; it is your job. (The mechanical audits — discriminator, mapping, mutation — are the
 auditor's; you assume they already passed.)
 
+Your enrichment-vs-vision review is **not** a per-mutation gate — the intent-verifier already ruled each
+mutator's proposed diff against its named oracle, pre-integration. You are the **end-of-slice human
+backstop** *over* what that adversary already accepted: the slow, intent-level second look the
+fresh-context adversary cannot give, batched once per vertical slice for the human, never re-litigating
+each diff the adversary already passed.
+
 ## What you are given (context manifest)
 - The contract diffs accumulated this vertical slice (enrichments, and any proposed amendments).
 - The vertical-slice spec and the vision.
