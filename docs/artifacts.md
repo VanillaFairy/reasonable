@@ -18,15 +18,20 @@ repository the methodology is being applied to — *not* the plugin directory).
 The presence of `.reasonable/` is what tells every hook "an effort is active";
 absent it, all hooks no-op (fail open).
 
-**Git policy (the commit iron rule).** `.reasonable/` is **tracked**, not
-gitignored — the D3a atomic commit lands the ledger line *in* the same commit as
-the work product, so git and the ledger stay one truth (§5.14B). Gitignoring the
-whole directory makes the authoritative log as losable as uncommitted code was.
-Gitignore only the **ephemera**: the lane worktrees (`.worktrees/`) and the
-concluded archives (`.reasonable.done-*/`). The derived index (`journal.json`,
-`inbox.json`) is rebuildable by reconcile and may be tracked or ignored at the
-project's discretion; the ledger and the human-authored standing artifacts
-(vision, intention, contracts, decisions, route, config) are tracked.
+**Git policy — gitignored by design.** `.reasonable/` is **gitignored, not
+tracked**. The analysis phase plants `/.reasonable/` and `/.reasonable.done-*/`
+into the target repo's `.gitignore`. The methodology **never relies on
+`.reasonable/` being in git**: orchestration state — ledger, journal, contracts,
+baseline, verdicts, lane descriptors — is durable because it is **append-only on
+disk**, and reconcile reads it straight from disk (`readJsonl` → `readFileSync`),
+never from the git tree. The commit iron rule (§5.1) scopes to **CODEBASE work
+product**: the D3a atomic commit is the code change plus the `Work-Order:`
+trailer in the commit message, and the correlated ledger entry is an on-disk
+append that **content-references** that commit (pinning its hash, just as
+`baseline.json` pins file hashes) — it is *not* part of the git tree. Tracking
+`.reasonable/` would entangle volatile orchestration churn with the codebase
+history it governs, which is why keeping it out of git is the design, not an
+omission.
 
 ```
 .reasonable/
@@ -90,7 +95,8 @@ orchestrator's Bash:
 | intention.md | **intention-writer** (after the coherence-grill ratifies) | its own atomic commit |
 | baseline.json + skeleton contracts | **census** (brownfield, at analysis) | Bash + `lib/baseline.mjs` (no-lane path) |
 | contracts/`<component>`.md | **implementer** (enrich grown) · **characterizer** (birth characterized) | in-lane; only the lane's own contracts (§5.10) |
-| ledger.jsonl | initialized empty at analysis; thereafter **each worker** appends its own line | inside that worker's D3a atomic commit |
+| ledger.jsonl | initialized empty at analysis; thereafter **each worker** appends its own line | atomic **on-disk** append, **content-referencing** that worker's D3a code commit — *not* part of the git tree (D4/D5) |
+| ledger.jsonl `verifier-verdict` line | **adversary** proposes (read-only, returns it as data); the **orchestrator** or a narrow writer appends it | atomic **on-disk** append, content-referencing the judged commit — **not** a git commit of state (D4/D5) |
 | journal.json · inbox.json | **journal-writer** (the single serialized scribe, D3b) | the derived index (rebuildable by reconcile) |
 | .reasonable-lane.json | **lane-provisioner** (before any fenced worker is dispatched) | `git worktree add` + the one descriptor write |
 | knowledge/`<id>`.md | **spike-runner** (or a dead-end ceremony) | from the quarantine |
@@ -196,7 +202,15 @@ undeclared src edit intersecting it is denied unless the lane declares
 `floorImpact`. A reconcile pass checks floor **integrity** by comparing each
 test's current `fileHash` + `locus` against the last accounted
 `characterization-promotion` / `change-characterized` / declared-`floorImpact`
-event; an unaccounted floor change is AMBIGUOUS → HALT.
+event; an unaccounted floor change SURFACES as a **backstop tripwire** (D6) — it
+is reported every session and, in autonomous mode, queued to the human inbox. The
+byte-level hash cannot distinguish a harmless additive pin (e.g. an appended
+parked characterization test) from a real regression, so it is no longer a
+first-line `AMBIGUOUS → HALT`; it is a last-line backstop. An `accept`
+`verifier-verdict` naming the change may annotate it **explained-by-verdict**, but
+that is **advisory only** — it never clears the surfacing or the queue
+(annotate-not-disarm). See `lib/baseline.mjs` (`floorIntegrity.explainedByVerdict`)
+and `lib/reconcile.mjs` (the floor-integrity backstop pass).
 
 `trusted` starts empty. A FLOOR test is **promoted to TRUSTED one at a time**, by
 citing a characterized/enriched clause and surviving the full pipeline (including
@@ -296,12 +310,14 @@ it. `seq` is monotonic; `ts` is an ISO-8601 timestamp.
 {"seq":10,"ts":"...","type":"change-characterized-planned","component":"store","clause":"§3","behaviorDelta":"delete now defers until confirmed","grownTest":"store::delete_defers","workOrder":"WO-21","approvedBy":"orchestrator"}
 {"seq":11,"ts":"...","type":"ratification","gate":"analysis","runMode":"autonomous","approvedBy":"autonomous"}
 {"seq":12,"ts":"...","type":"intent-check-failure","verticalSlice":"confirm-delete","correctedChoice":"used spinner instead of stale-badge","shouldHavePinged":true,"retro":"R4"}
+{"seq":13,"ts":"...","type":"verifier-verdict","component":"store","diffRef":"src/store/delete.rs","verdict":"accept","oracle":"baseline-intent","by":"intent-verifier","proposed":true,"commit":"sha256:…"}
 ```
 
 Event `type` values: `enrichment`, `amendment`, `verdict`, `scope-expansion`,
 `budget-extension`, `dead-end`, and the brownfield / run-mode additions
 `characterization`, `characterization-promotion`, `change-characterized`,
-`change-characterized-planned`, `ratification`, `intent-check-failure`. The
+`change-characterized-planned`, `ratification`, `intent-check-failure`,
+`verifier-verdict`. The
 ratchet's invariant: an `amendment` with `direction:"weaken"` requires
 `approvedBy:"human"` (or `"retro"`) — the engine flags any weakening lacking it.
 
@@ -322,6 +338,32 @@ The additions:
 - `intent-check-failure` — the falsifiable defeater: the retro logs that the
   human corrected a non-breaking choice the agent did **not** escalate. A rising
   count is the signal the intention is too weak an oracle.
+- `verifier-verdict` — a read-only **adversary** (the worker-adversary-orchestrator
+  trio's middle role) PROPOSES a verdict on a worker's output, judged against a
+  named `oracle` that sits **above** the artifact, *before* the work is
+  integrated. The adversary never self-executes the act its verdict authorizes
+  (read-only by capability); it returns the verdict as data, and a narrow writer
+  (or the orchestrator) performs the **atomic on-disk append** that records it —
+  this is **not** a git commit of orchestration state (D4/D5). The event
+  content-references the `commit`/hash it judged, exactly as `baseline.json` pins
+  file hashes, so the verdict survives a torn window: it is durable on disk, not
+  in the git tree. Fields: `component`, `diffRef` (the diff/seam judged), `verdict`
+  ∈ `accept | reject | escalate`, `oracle` (the named reference above the
+  artifact — e.g. `baseline-intent` for the pin/characterization adversary),
+  `by` (the adversary role, e.g. `intent-verifier`), `proposed:true` (the verdict
+  is a proposal, not a self-executed act), and the `commit` it judged.
+
+  An `accept` verdict marks any floor diff it names **explained-by-verdict** — an
+  **advisory accounting marker only** (D6, annotate-not-disarm). It is read by the
+  floor-integrity reconcile pass (`lib/baseline.mjs` → `explainedByVerdict`), which
+  STILL reports the diff as changed/surfaced; the verdict annotates it, it does
+  **not** flip it to silently-accounted-and-hidden. In autonomous mode the
+  surfaced floor change STILL queues to the human inbox (the floor-integrity-
+  mismatch always-escalate class stays intact). A `reject`/`escalate` verdict
+  annotates nothing; an `escalate` in autonomous mode JOINS the always-escalate
+  classes (a fifth disposition queued BREAKING). A missing or half-written verdict
+  can therefore only cause **more** human surfacing, never less — the failure
+  direction is toward scrutiny.
 
 ---
 
@@ -423,6 +465,7 @@ hooks can read shared artifacts (ledger, config) from inside the worktree.
   "behaviorDelta": ["delete now defers until confirmed"],
   "floorImpact": ["store::delete_returns_ok"],
   "contractBirth": false,
+  "proposedPendingVerification": true,
   "budget": { "toolCalls": 150 },
   "counter": { "toolCalls": 0, "checkpointed": false }
 }
@@ -433,6 +476,17 @@ the work-order fields the fence enforces directly: `floorImpact` is the floor-
 locus opt-out the floor-containment rule checks; `contractBirth` gates born-
 contract writes (only a `characterizer` lane carries `true`). All three are
 omitted / empty in a greenfield lane.
+
+`proposedPendingVerification` ∈ `true | false` (omitted / `false` by default)
+marks a lane (the **worker** of a worker-adversary-orchestrator trio) whose
+output is a **proposal** that must be judged by a read-only adversary against a
+named oracle *before* it is integrated — the load-bearing safety property is that
+the worker proposes and the adversary judges, but neither self-executes the
+integration the verdict authorizes (D5/D10). The orchestrator sets it on lanes
+whose write touches the **floor** or a **shared contract** (protected state),
+where the adversary ALWAYS runs (D7); it may omit it for a boxed-in brand-new
+file nothing depends on yet. The adversary's resulting `verifier-verdict` is the
+on-disk ledger append described above — not a git commit of lane state.
 
 Per-role narrowing the orchestrator applies:
 

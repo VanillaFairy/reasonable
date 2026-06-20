@@ -71,6 +71,19 @@ The vision you are extracting has three parts:
    **preserve the supervision `profile` the entry skill (`run`/`run-autonomously`) already set; only
    write a profile if none is set, falling back to `standard`.** Default budgets — start **tight**,
    retros loosen with data.
+   - **Plant the gitignore entries (idempotent).** Ensure the target repo's `.gitignore` contains
+     both `/.reasonable/` and `/.reasonable.done-*/`. Read the existing `.gitignore` (create it if
+     missing); append each line only if an equivalent entry is **absent** (don't duplicate), preserving
+     everything already there. **Why orchestration state is gitignored, not tracked:** the methodology
+     **never relies on `.reasonable/` being in git.** Orchestration state — ledger, journal, contracts,
+     baseline, verdicts, lane descriptors — is durable because it is **append-only on disk**, and
+     reconcile reads it straight from disk (`readJsonl` → `readFileSync`), not from the git tree. The
+     commit iron rule ("uncommitted == not done") scopes to **CODEBASE work product**: the
+     implementer's atomic commit is the code change plus the Work-Order trailer in the commit message,
+     and the correlated ledger entry is an on-disk append that **content-references** that commit — it
+     is not part of the git tree. Tracking `.reasonable/` would entangle volatile orchestration churn
+     with the codebase history it is meant to govern; keeping it out of git is the design, not an
+     omission.
 8. **Initialize the journal and ledger.** Empty `.reasonable/journal.json` (phase `analysis`) and an
    empty `.reasonable/ledger.jsonl`, empty `.reasonable/inbox.json`.
 9. **Human ratification (blocking).** Present vision, topology, initial route, and the standing
