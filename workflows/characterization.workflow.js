@@ -102,6 +102,10 @@ const BRIEFING = {
       description: 'Which class triggered the halt. floor-integrity DEMOTES to a BACKSTOP tripwire here (D6, annotate-not-disarm): it surfaces but does not first-line HALT the corpus pass. The other four classes stay first-line HALTs.',
     },
     evidence: { type: ['string', 'null'], description: 'Conflicting SHAs / ledger-line-without-commit / unaccounted floor test.' },
+    floorUnexplained: {
+      type: ['integer', 'null'],
+      description: 'D13: of the surfaced floor-integrity diffs, how many are UNEXPLAINED (no `accept` verifier-verdict explains them) — reconcile.mjs `floorIntegrity.unexplained`. In AUTONOMOUS mode >0 is the FIFTH always-escalate class: the corpus pass STOPS (escalate, do not ratify). An EXPLAINED diff (unexplained:0 but surfaced>0) is a non-blocking NOTICE. Null/0 when no floor diff surfaced.',
+    },
     runMode: { type: ['string', 'null'], enum: ['gated', 'autonomous', null], description: 'Read from config.json, never inferred. Absent -> halt.' },
     brownfield: { type: 'boolean', description: 'Must be true for this pass to do work; false -> no-op.' },
     currentVerticalSlice: { type: ['string', 'null'] },
@@ -251,7 +255,7 @@ const SCRIBE_ACK = {
 // it as a structured checkpoint so the script branches deterministically.
 // ─────────────────────────────────────────────────────────────────────────────
 
-async function guard(thunk, onCheckpoint) {
+async function guard(thunk) {
   try {
     return await thunk();
   } catch (e) {
@@ -341,6 +345,10 @@ function reconcilePrompt(a) {
     'in evidence + note) but it does NOT first-line HALT the corpus pass — the byte-level floor hash cannot',
     'tell a harmless additive characterization pin from a real regression, so an explaining verifier-verdict',
     'may annotate it downstream (annotate-not-disarm, D6). NEVER let an accept silence the hash.',
+    'Report floorUnexplained = reconcile.mjs `floorIntegrity.unexplained` (surfaced floor diffs with NO accept',
+    'verdict). D13: in AUTONOMOUS mode floorUnexplained>0 is the FIFTH always-escalate class — something bypassed',
+    'the pre-integration adversary, so the corpus pass STOPS (escalate, never ratify). An EXPLAINED diff',
+    '(surfaced but floorUnexplained:0) is a non-blocking NOTICE the run logs and continues past.',
     'Read config.runMode (gated|autonomous); if absent/null on a cold restart, HALT (inferring mode is forbidden).',
     'Confirm config.brownfield: this pass only does work when it is true. If false, set brownfield:false (no-op).',
     'When brownfield is true, run the floor-integrity pass over baseline.json and report the FLOOR test ids.',
@@ -533,7 +541,6 @@ phase('Reconcile');
 log('Reconcile: re-deriving truth from git + ledger + contracts (resume cache has zero authority).');
 const state = await guard(
   () => agent(reconcilePrompt(args), { agentType: 'reasonable:reconciler', label: 'reconcile', schema: BRIEFING }),
-  null,
 );
 if (isCheckpoint(state)) {
   return { kind: 'checkpoint', reason: 'reconcile: ' + state.reason };
@@ -552,11 +559,36 @@ if (state.halt && state.haltClass !== 'floor-integrity') {
 // regression, so it must not block this corpus pass at the door. It still SURFACES (carried
 // to the human inbox in the result below), and the intent-verifier's verifier-verdict can
 // later ANNOTATE the diff as explained-by-verdict — advisory only; it NEVER silences the hash.
-const floorBackstop = (state.halt && state.haltClass === 'floor-integrity')
-  ? { class: 'floor-integrity', reason: state.haltReason || 'floor-integrity mismatch (backstop tripwire)', evidence: state.evidence || null }
+//
+// D13 completes D6. The backstop is now split by whether a pre-integration verdict explains it:
+//   - UNEXPLAINED (floorUnexplained>0) in AUTONOMOUS mode is the FIFTH always-escalate class:
+//     something bypassed the pre-integration adversary, so we STOP — escalate, never ratify.
+//   - EXPLAINED (surfaced but floorUnexplained:0) is a non-blocking NOTICE: it is logged and
+//     surfaced, but it does NOT block ratification (the adversary already judged it).
+//   - In GATED mode the present human is the net: both just surface in the briefing; neither
+//     synthesizes a blocking escalation here.
+const floorUnexplained = (state.halt && state.haltClass === 'floor-integrity')
+  ? (typeof state.floorUnexplained === 'number' ? state.floorUnexplained : 1) // a surfaced floor halt with no count defaults to UNEXPLAINED (more surfacing, never less — D6)
+  : (typeof state.floorUnexplained === 'number' ? state.floorUnexplained : 0);
+const floorSurfaced = (state.halt && state.haltClass === 'floor-integrity') || floorUnexplained > 0;
+// An UNEXPLAINED breach in AUTONOMOUS mode escalates-and-stops; everything else (explained,
+// or gated) is a logged notice that does not block ratification.
+const floorBreachStops = state.runMode === 'autonomous' && floorUnexplained > 0;
+const floorBackstop = floorSurfaced
+  ? {
+      class: 'floor-integrity',
+      unexplained: floorUnexplained,
+      stops: floorBreachStops,
+      reason: floorBreachStops
+        ? (state.haltReason || `${floorUnexplained} UNEXPLAINED floor-integrity breach(es) with no accept verdict — STOP (fifth always-escalate class, D13)`)
+        : (state.haltReason || 'floor-integrity diff surfaced (explained-by-verdict NOTICE — advisory, does not block ratification)'),
+      evidence: state.evidence || null,
+    }
   : null;
 if (floorBackstop) {
-  log('Reconcile: floor-integrity mismatch DEMOTED to a backstop tripwire (D6) — surfaced, not first-line HALT; an explaining verifier-verdict may annotate it (never silence it).');
+  log(floorBreachStops
+    ? 'Reconcile: UNEXPLAINED floor-integrity breach in AUTONOMOUS mode (' + floorUnexplained + ') — fifth always-escalate class (D13): the corpus pass STOPS (escalate, never ratify).'
+    : 'Reconcile: floor-integrity diff surfaced as a backstop NOTICE (D6/D13) — explained-by-verdict or gated; logged, does not block ratification.');
 }
 if (state.brownfield !== true) {
   // Brownfield is one provenance, not a second methodology; absent it, this pass is a no-op.
@@ -572,7 +604,6 @@ phase('Provision');
 log('Provision: birthing the corpus-pass lane (worktree + descriptor + journal) so the fence is armed and a pre-integration diff exists.');
 const lane = await guard(
   () => agent(lanePrompt(args), { agentType: 'reasonable:lane-provisioner', label: 'provision', schema: PROVISION_ACK }),
-  null,
 );
 if (isCheckpoint(lane)) {
   return { kind: 'checkpoint', reason: 'provision: ' + lane.reason };
@@ -602,7 +633,6 @@ phase('Probe');
 log('Probe: enumerating the existing observable top-level scenarios (read-only).');
 const catalogue = await guard(
   () => agent(probePrompt(args, state), { agentType: 'reasonable:census', label: 'probe', schema: SCENARIO_CATALOGUE }),
-  null,
 );
 if (isCheckpoint(catalogue)) {
   return { kind: 'checkpoint', reason: 'probe: ' + catalogue.reason };
@@ -613,18 +643,23 @@ if (catalogue === null) {
 const scenarios = dedupByKey(catalogue.scenarios || []);
 if (scenarios.length === 0) {
   // Nothing observable to pin: an honest empty corpus (the floor still contains regressions).
+  // Only an UNEXPLAINED autonomous floor breach STOPS here (escalate, never ratify); an
+  // explained/gated floor diff is a logged NOTICE that does not block the empty-corpus ratify (D13).
+  const floorStops = !!(floorBackstop && floorBackstop.stops);
   return {
-    kind: floorBackstop ? 'escalate' : 'ratify',
+    kind: floorStops ? 'escalate' : 'ratify',
     runMode: state.runMode,
     pinned: [],
     inadmissible: [],
     suspectedBugs: [],
     invariant: null,
     verdicts: [],
-    escalations: floorBackstop ? [{ key: '(floor-integrity)', verdict: 'escalate', oracle: 'floor backstop', reason: floorBackstop.reason }] : [],
+    escalations: floorStops ? [{ key: '(floor-integrity)', verdict: 'escalate', oracle: 'floor backstop', reason: floorBackstop.reason }] : [],
     floorBackstop,
     note: 'No observable top-level scenarios found to characterize. The FLOOR (baseline.json) still stands as the regression containment fence; the corpus is empty.' +
-      (floorBackstop ? ' A floor-integrity mismatch was surfaced as a backstop tripwire (D6) — route to the human; do not ratify until resolved.' : ''),
+      (floorStops
+        ? ' An UNEXPLAINED floor-integrity breach was surfaced (D13) — something bypassed the pre-integration adversary; route to the human and do not ratify until resolved.'
+        : (floorBackstop ? ' A floor-integrity diff was surfaced as a backstop NOTICE (D6/D13, explained-by-verdict or gated) — logged for the human; it does not block this empty-corpus ratification.' : '')),
   };
 }
 log('Probe found ' + scenarios.length + ' observable top-level scenario(s) to characterize.');
@@ -643,10 +678,10 @@ if (!withinBudget(args, budget)) {
 } else {
   const raw = await pipeline(
     scenarios,
-    (s) => guard(() => agent(censusCheckPrompt(laneArgs, s), { agentType: 'reasonable:census', label: 'census:' + s.key, phase: 'Characterize' }), null),
+    (s) => guard(() => agent(censusCheckPrompt(laneArgs, s), { agentType: 'reasonable:census', label: 'census:' + s.key, phase: 'Characterize' })),
     (skeleton, s) => {
       if (isCheckpoint(skeleton)) return { key: s.key, component: s.component, status: 'error', atomicOrderHeld: false, note: 'census checkpoint: ' + skeleton.reason };
-      return guard(() => agent(characterizePrompt(laneArgs, s), { agentType: 'reasonable:characterizer', label: 'pin:' + s.key, phase: 'Characterize', schema: PIN_RESULT }), null);
+      return guard(() => agent(characterizePrompt(laneArgs, s), { agentType: 'reasonable:characterizer', label: 'pin:' + s.key, phase: 'Characterize', schema: PIN_RESULT }));
     },
   );
   // pipeline() drops a thrown item to null; a guard()-wrapped throw surfaces as a
@@ -704,7 +739,6 @@ for (let i = 0; i < pinned.length; i++) {
   }
   let verdict = await guard(
     () => agent(intentVerifierPrompt(laneArgs, pin, scenario), { agentType: 'reasonable:intent-verifier', label: 'intent-verify:' + pin.key, phase: 'Intent-verify', schema: VERIFIER_VERDICT }),
-    null,
   );
   if (isCheckpoint(verdict)) {
     return { kind: 'checkpoint', reason: 'intent-verify: ' + verdict.reason, pinned, inadmissible, suspectedBugs };
@@ -721,13 +755,11 @@ for (let i = 0; i < pinned.length; i++) {
     log('Intent-verify: pin ' + pin.key + ' REJECTED by the adversary (' + (verdict.reason || 'no reason') + ') — routing back to the characterizer for one re-pin.');
     const repin = await guard(
       () => agent(characterizePrompt(laneArgs, scenario || { key: pin.key, component: pin.component, seam: pin.seam, observable: '(re-pin against the adversary verdict)' }), { agentType: 'reasonable:characterizer', label: 'repin:' + pin.key, phase: 'Intent-verify', schema: PIN_RESULT }),
-      null,
     );
     if (!isCheckpoint(repin) && repin && repin.status === 'pinned') {
       pinned[i] = repin;
       verdict = await guard(
         () => agent(intentVerifierPrompt(laneArgs, repin, scenario), { agentType: 'reasonable:intent-verifier', label: 'intent-verify:' + pin.key + ':retry', phase: 'Intent-verify', schema: VERIFIER_VERDICT }),
-        null,
       );
     }
     if (isCheckpoint(verdict) || verdict === null || verdict.verdict !== 'accept') {
@@ -744,7 +776,6 @@ for (let i = 0; i < pinned.length; i++) {
   //  explained-by-verdict — advisory only; it does NOT silence the floor-integrity backstop (D6).
   const verdictAck = await guard(
     () => agent(verdictWriterPrompt(laneArgs, verdict, pin), { agentType: 'reasonable:journal-writer', label: 'verdict-write:' + pin.key, phase: 'Intent-verify', schema: SCRIBE_ACK }),
-    null,
   );
   if (verdictAck === null || isCheckpoint(verdictAck) || verdictAck.persisted !== true) {
     // A half-written verdict surfaces MORE, never less (D6): treat a failed append as an
@@ -762,7 +793,6 @@ phase('Invariant-verify');
 log('Invariant-verify: confirming every parked characterization test is GREEN on HEAD (the inverse of RED-on-HEAD~), parked tests compile, the floor is green.');
 const invariant = await guard(
   () => agent(invariantPrompt(args, pinned), { agentType: 'reasonable:auditor', label: 'invariant-verify', schema: INVARIANT_REPORT }),
-  null,
 );
 if (isCheckpoint(invariant)) {
   return { kind: 'checkpoint', reason: 'invariant-verify: ' + invariant.reason, pinned, inadmissible, suspectedBugs };
@@ -778,7 +808,6 @@ phase('Scribe');
 log('Scribe: persisting the corpus births to the derived index (journal.json + inbox.json).');
 const ack = await guard(
   () => agent(scribePrompt(args, pinned, invariant), { agentType: 'reasonable:journal-writer', label: 'scribe', schema: SCRIBE_ACK }),
-  null,
 );
 if (ack === null || isCheckpoint(ack) || ack.persisted !== true) {
   return {
@@ -790,15 +819,29 @@ if (ack === null || isCheckpoint(ack) || ack.persisted !== true) {
 // 8. Return the typed CHARACTERIZATION_RESULT to the human birth-ratification gate.
 //    The engine cannot block on a human; the main session is where blocking (gated
 //    mode) happens. Silence never ratifies a corpus. An invariant failure, any
-//    inadmissible / suspected-bug pin, an adversary ESCALATE, or the demoted floor-
-//    integrity backstop is surfaced for the human (autonomous: ESCALATE joins the
-//    always-escalate classes, a fifth disposition queued BREAKING — D8).
+//    inadmissible / suspected-bug pin, or an adversary ESCALATE is surfaced for the
+//    human (autonomous: ESCALATE joins the always-escalate classes, a fifth
+//    disposition queued BREAKING — D8).
+//
+//    The floor backstop is routed by D13: an UNEXPLAINED autonomous breach
+//    (floorBackstop.stops) ESCALATES-and-stops — it joins allEscalations and blocks
+//    ratification exactly like an adversary ESCALATE. An EXPLAINED diff (the
+//    pre-integration adversary accepted it) or a GATED floor diff is a non-blocking
+//    NOTICE: it is still surfaced (logged + carried on floorBackstop for the human's
+//    eyes — annotate-not-disarm), but it does NOT block ratification.
 const invariantPassed = invariant.passed === true;
 const allEscalations = verifierEscalations.slice();
-if (floorBackstop) allEscalations.push({ key: '(floor-integrity)', verdict: 'escalate', oracle: 'floor backstop', reason: floorBackstop.reason });
+const floorStops = !!(floorBackstop && floorBackstop.stops);
+if (floorStops) {
+  allEscalations.push({ key: '(floor-integrity)', verdict: 'escalate', oracle: 'floor backstop', reason: floorBackstop.reason });
+}
+if (floorBackstop && !floorStops) {
+  log('Result: floor-integrity diff surfaced as a NON-BLOCKING NOTICE (D13: explained-by-verdict or gated) — logged on floorBackstop for the human; it does not block ratification.');
+}
 // The corpus ratifies only when the invariant passes AND nothing escalated. An adversary
-// ESCALATE (or a surfaced floor backstop) routes to the human just like an invariant failure;
-// it never silently ratifies (the failure direction is always toward MORE scrutiny — D6).
+// ESCALATE (or an UNEXPLAINED autonomous floor breach) routes to the human just like an
+// invariant failure; it never silently ratifies (the failure direction is always toward
+// MORE scrutiny — D6). An EXPLAINED/gated floor NOTICE does not count as an escalation.
 const clean = invariantPassed && allEscalations.length === 0;
 return {
   kind: clean ? 'ratify' : (invariantPassed ? 'escalate' : 'invariant-failed'),
@@ -815,8 +858,9 @@ return {
       (verdicts.length ? verdicts.length + ' verifier-verdict(s) recorded (annotate-not-disarm — advisory). ' : '') +
       (inadmissible.length ? inadmissible.length + ' inadmissible pin(s) reported (not blessed into the suite). ' : '') +
       (suspectedBugs.length ? suspectedBugs.length + ' pin(s) flagged as possibly encoding a bug — for the human three-way classification. ' : '') +
+      (floorBackstop ? 'A floor-integrity diff was surfaced as an explained-by-verdict/gated NOTICE (D13, advisory — does not block). ' : '') +
       'Present to the human birth-ratification gate; silence never ratifies.'
     : invariantPassed
-      ? 'Characterization corpus is GREEN-on-HEAD, but ' + allEscalations.length + ' item(s) ESCALATED to the human (adversary verdict and/or the demoted floor-integrity backstop): ' + allEscalations.map((e) => e.key).join(', ') + '. Do not ratify until the human resolves them — annotate-not-disarm means more eyes, never fewer.'
+      ? 'Characterization corpus is GREEN-on-HEAD, but ' + allEscalations.length + ' item(s) ESCALATED to the human (adversary verdict and/or an UNEXPLAINED autonomous floor-integrity breach, D13): ' + allEscalations.map((e) => e.key).join(', ') + '. Do not ratify until the human resolves them — annotate-not-disarm means more eyes, never fewer.'
       : 'Characterization corpus FAILED its GREEN-on-HEAD invariant: ' + (invariant.failures || []).join('; ') + '. Do not ratify; route to the human.',
 };

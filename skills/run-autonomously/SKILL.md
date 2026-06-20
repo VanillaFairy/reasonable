@@ -33,20 +33,42 @@ use `reasonable:run` (gated). Mode is never guessed.
   product (`lib/commit-gate.mjs`, the conclude guard, the Stop/SubagentStop backstop). Autonomy still
   **never auto-pushes and never auto-merges to the human's branch** — commits land on lane/effort
   branches; integration and push stay human acts. (See `using-reasonable`, the commit iron rule.)
-- **The four things autonomy must never self-approve — these ALWAYS queue to the human inbox, even
+- **The five things autonomy must never self-approve — these ALWAYS queue to the human inbox, even
   in this mode** (autonomy decides the *how*; it never silently redefines the *what*, settles an
-  unsettleable fork, ad-libs an unknown wall, or papers over a torn-truth halt):
+  unsettleable fork, ad-libs an unknown wall, papers over a torn-truth halt, or grinds past a
+  surprise regression):
   1. A **vision/intention amendment** — a change to the user's stated goal/scope. Queue it as a
      BREAKING inbox item AND surface it prominently in the final summary so the human can veto.
   2. An **intent-fork** (`OUTCOME.kind === "intent-fork"`) — an ambiguity neither the code nor the
      intention oracle can settle. Queue it BREAKING; do not guess the resolution.
   3. An **"other" wall** (`OUTCOME.kind === "other"`) — an unknown wall the schema has no tag for.
      Queue it BREAKING; fail safe rather than improvise an arm.
-  4. A **reconcile HALT** — reconcile returned `{halt:true}` (e.g. absent `config.runMode` on a cold
-     restart, a torn write it can't re-derive, a floor-integrity mismatch). Queue it BREAKING and
-     stop; never default to the "safer" mode or assume truth.
-  Everything else self-ratifies and LOGs (above). These four — and only these four — block on the
+  4. A **reconcile HALT** — reconcile returned `{halt:true}` from one of the first-line AMBIGUOUS
+     classes (absent `config.runMode` on a cold restart, a ledger-line-without-commit torn window,
+     an SHA-custody / mismatched-trailer conflict, two lanes claiming one work order). Queue it
+     BREAKING and stop; never default to the "safer" mode or assume truth.
+  5. An **UNEXPLAINED floor-integrity-mismatch** (D13) — a surfaced floor diff that NO `accept`
+     verifier-verdict explains, i.e. a regression that **bypassed the pre-integration adversary**
+     (`reconcile.floorIntegrity.unexplained > 0`). In autonomous mode this STOPS the loop: queue it
+     BREAKING and halt; do not grind on. An **EXPLAINED** floor diff (the adversary accepted it
+     pre-integration) is the exception — it is a **non-blocking NOTICE**: it still surfaces and is
+     logged for the human, but the run continues past it. This is how D13 completes D6's
+     annotate-not-disarm: the human always sees the diff (explained or not), and an unexplained
+     surprise regression always STOPS an unattended run rather than the demotion silently removing a
+     gate.
+  Everything else self-ratifies and LOGs (above). These five — and only these five — block on the
   human even while autonomous.
+
+- **The verification trio runs in BOTH modes; only its DEPTH is dial-gated.** The intent-verifier
+  (a *judgment* adversary) judges every floor-/shared-contract-touching write against its named
+  oracle in gated AND autonomous runs alike — autonomy never disables it. The supervision dial may
+  only let a **present** human trade a check for speed (e.g. skip the adversary on a pin boxed into a
+  brand-new file nothing depends on yet); autonomous mode keeps it maximally paranoid. What is
+  **NEVER waivable in either mode**, off the dial entirely, is the **floor-touch trip-wire** (a write
+  that lands on floor-tracked state always runs the adversary) and the **annotate-not-disarm
+  backstop** (a verdict only *annotates* a floor diff; it never silences the surfacing, and an
+  unexplained breach STOPS per #5 above). The dial trades a check for speed; it can never disable a
+  guard.
 
 ## Steps
 
@@ -63,8 +85,9 @@ use `reasonable:run` (gated). Mode is never guessed.
    analysis → scaffolding → vertical-slice-execution → retro, carrying `runMode: autonomous` through
    every phase. At each ratification gate: decide, **self-ratify, and LOG**
    (`type:"ratification"`, `approvedBy:"autonomous"`, with rationale) — never block. Run every
-   mechanical gate check regardless of mode; record its evidence in the ledger. **The four
-   exceptions** (vision/intention amendment, `intent-fork`, `other`, reconcile HALT) always queue
-   BREAKING to the inbox instead of self-ratifying — surface them and stop on each. Present the full
-   decision list, the BREAKING inbox queue, and any logged vision/intention amendments at the end for
-   human review.
+   mechanical gate check regardless of mode; record its evidence in the ledger. **The five
+   exceptions** (vision/intention amendment, `intent-fork`, `other`, reconcile HALT, and an
+   UNEXPLAINED floor-integrity-mismatch — D13) always queue BREAKING to the inbox instead of
+   self-ratifying — surface them and stop on each. An EXPLAINED floor diff is a non-blocking NOTICE
+   (logged, surfaced, run continues). Present the full decision list, the BREAKING inbox queue, and
+   any logged vision/intention amendments at the end for human review.

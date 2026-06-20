@@ -160,11 +160,14 @@ function newGitEffort({ runMode = 'autonomous', extraLedger = [], journalLanes =
   return root;
 }
 
-check('reconcile: unaccounted floor change SURFACES but does NOT halt (demoted)', () => {
-  const root = newGitEffort({ runMode: 'autonomous' });
+check('reconcile gated: unaccounted floor change SURFACES but does NOT first-line halt (D6 demotion)', () => {
+  // The D6 demotion: a floor change alone is no longer a first-line AMBIGUOUS→HALT.
+  // GATED mode shows the pure demotion (the present human is the net), distinct from
+  // the autonomous D13 stop tested below.
+  const root = newGitEffort({ runMode: 'gated' });
   const r = reconcile(root);
   assert.equal(r.active, true);
-  assert.equal(r.halt, false, 'a floor change alone must NOT halt (D6 demotion)');
+  assert.equal(r.halt, false, 'a floor change alone must NOT first-line halt (D6 demotion)');
   assert.equal(r.floorIntegrity.surfaced, 1, 'the change is surfaced by the backstop');
   assert.ok(r.notes.some((n) => /BACKSTOP SURFACED/.test(n)), 'backstop note present');
 });
@@ -176,6 +179,58 @@ check('reconcile autonomous: surfaced floor change QUEUES to the human inbox', (
   assert.ok(item, 'a floor-integrity-mismatch inbox item is queued in autonomous mode');
   assert.equal(item.breaking, true, 'it is BREAKING (always-escalate class)');
   assert.equal(item.explainedByVerdict, false, 'no verdict yet → not annotated');
+  assert.equal(item.unexplained, true, 'no verdict → the item is UNEXPLAINED (D13)');
+});
+
+// ── D13: the UNEXPLAINED-BREACH STOP (completes D6) ────────────────────────────
+
+check('D13 autonomous UNEXPLAINED floor breach → STOPS (halt + fifth always-escalate class)', () => {
+  // No accept verdict explains the diff → in autonomous mode something bypassed the
+  // pre-integration adversary, so reconcile STOPS (halt true), the fifth always-escalate class.
+  const root = newGitEffort({ runMode: 'autonomous' });
+  const r = reconcile(root);
+  assert.equal(r.floorIntegrity.surfaced, 1, 'the change is surfaced');
+  assert.equal(r.floorIntegrity.unexplained, 1, 'no accept verdict → UNEXPLAINED count is 1 (D13 signal)');
+  assert.equal(r.halt, true, 'an UNEXPLAINED autonomous floor breach STOPS the loop (D13)');
+  assert.match(r.haltReason, /UNEXPLAINED floor-integrity breach|unexplained floor-integrity breach/i);
+  const item = r.openInbox.find((i) => i.kind === 'floor-integrity-mismatch');
+  assert.ok(item && item.breaking && item.unexplained, 'queued BREAKING + UNEXPLAINED');
+  // D13 must not disturb the four first-line AMBIGUOUS classes: this halt carries no ambiguity.
+  assert.ok((r.evidence || []).some((e) => e.haltClass === 'floor-integrity-unexplained'),
+    'the D13 stop is its own halt class, not one of the four AMBIGUOUS classes');
+});
+
+check('D13 autonomous EXPLAINED floor diff → does NOT block (notice, no halt) yet still surfaces', () => {
+  // An accept verdict (content-referencing the REAL judged commit) explains the diff: the
+  // pre-integration adversary already judged it, so it is a NON-BLOCKING NOTICE — no halt — but
+  // it STILL surfaces and STILL queues (annotate-not-disarm: the human always sees it).
+  const root = newGitEffort({ runMode: 'autonomous' });
+  const head = git(root, 'rev-parse', 'HEAD').trim();
+  appendLedger(root, {
+    seq: 1, type: 'verifier-verdict', component: 'store',
+    diffRef: 'src/store/delete.rs', verdict: 'accept', oracle: 'baseline-intent',
+    by: 'intent-verifier', proposed: true, commit: head,
+  });
+  const r = reconcile(root);
+  assert.equal(r.halt, false, 'an EXPLAINED floor diff does NOT block the autonomous run (D13 notice)');
+  assert.equal(r.floorIntegrity.surfaced, 1, 'STILL surfaced (verdict never silences the hash)');
+  assert.equal(r.floorIntegrity.explainedByVerdict, 1, 'annotated explained-by-verdict');
+  assert.equal(r.floorIntegrity.unexplained, 0, 'explained → unexplained count is 0 → no STOP (D13)');
+  const item = r.openInbox.find((i) => i.kind === 'floor-integrity-mismatch');
+  assert.ok(item, 'STILL queued for the human (annotate-not-disarm)');
+  assert.equal(item.unexplained, false, 'the queued item is annotated explained → not unexplained');
+});
+
+check('D13 gated: surfaces both explained and unexplained without halting or synthesizing a blocking item', () => {
+  // GATED: the present human is the net, so neither an explained nor an unexplained floor diff
+  // halts here, and no extra blocking inbox item is synthesized — both just surface in the briefing.
+  const root = newGitEffort({ runMode: 'gated' });
+  const r = reconcile(root);
+  assert.equal(r.halt, false, 'gated never STOPS on a floor diff (the human is present)');
+  assert.equal(r.floorIntegrity.surfaced, 1, 'still surfaced in the briefing');
+  assert.equal(r.floorIntegrity.unexplained, 1, 'unexplained count is computed even in gated');
+  assert.equal(r.openInbox.some((i) => i.kind === 'floor-integrity-mismatch'), false,
+    'gated synthesizes no extra blocking inbox item');
 });
 
 check('reconcile: an accept verdict ANNOTATES the surfaced change but never clears it', () => {
@@ -233,6 +288,35 @@ check('reconcile: two-lanes-one-WO STILL halts (unchanged)', () => {
   const r = reconcile(root);
   assert.equal(r.halt, true, 'two lanes claiming one work order is still a HALT');
   assert.match(r.haltReason, /two lanes claim work order WO-9/);
+});
+
+check('reconcile: SHA-custody mismatched-trailer STILL halts (preserved class — prior-wave gap)', () => {
+  // The coverage gap the prior adversary wave flagged: a registered lane's branch carries a
+  // commit whose `Work-Order:` trailer names a DIFFERENT order than the lane's own, with no
+  // recorded SHA and no ledger line. The trailer is a hint, not an anchor — the mismatch is
+  // unaccounted custody and STILL HALTs (AMBIGUOUS), untouched by the D6/D13 floor demotion.
+  const root = newGitEffort({ runMode: 'autonomous' });
+  // Restore the pinned floor file so ONLY the SHA-custody trailer mismatch is the halt class
+  // under test (newGitEffort mutates it; we are isolating the preserved custody class here).
+  write(root, 'src/store/delete.rs', ORIGINAL);
+  const base = git(root, 'rev-parse', '--abbrev-ref', 'HEAD').trim();
+  // A lane branch one commit ahead of base, the commit trailered for a DIFFERENT work order.
+  git(root, 'checkout', '-q', '-b', 'lane/wo-1');
+  write(root, 'src/store/extra.rs', 'fn extra() {}\n');
+  git(root, 'add', '-A');
+  git(root, 'commit', '-q', '-m', 'lane work\n\nWork-Order: WO-OTHER');
+  git(root, 'checkout', '-q', base);
+  // The journal claims this branch is the lane for WO-1 (dispatched), with no recorded commits.
+  write(root, '.reasonable/journal.json', JSON.stringify({
+    effort: 'demo', currentVerticalSlice: 'confirm-delete', phase: 'vertical-slice-execution',
+    workOrders: { 'WO-1': { status: 'dispatched', branch: 'lane/wo-1', commits: [] } }, lanes: {},
+  }) + '\n');
+  const r = reconcile(root);
+  assert.equal(r.halt, true, 'a mismatched-trailer custody conflict is still a HALT');
+  assert.match(r.haltReason, /trailer Work-Order: WO-OTHER \(mismatch\)/);
+  // It is an AMBIGUOUS custody halt, NOT the D13 floor-unexplained class.
+  assert.ok((r.evidence || []).every((e) => e.haltClass !== 'floor-integrity-unexplained'),
+    'this is the SHA-custody AMBIGUOUS class, distinct from the D13 floor stop');
 });
 
 for (const t of tmps) { try { rmSync(t, { recursive: true, force: true }); } catch { /* best effort */ } }
