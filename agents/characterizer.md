@@ -92,7 +92,11 @@ baseline** (`baseline.json` + the change-intention's promise), which sits **abov
 certifies seam / scope / floor-touch and **`suspectedBug`-consistency**; it returns
 `accept | reject | escalate-intent-fork` as a proposed `verifier-verdict`. Like you, it **explicitly
 disclaims** the legacy-correctness axis — there is no reference above the artifact for "should the system
-behave this way," so neither of you settles it.
+behave this way," so neither of you settles it. Consistent with that disclaimer, it **`accept`s by
+default** an orthogonal pin that clears its axes (faithful / in-scope / legitimate floor-touch /
+`suspectedBug`-consistent); it escalates only on a positive signal — your `suspectedBug` flag, or
+TENSION it detects between the frozen behaviour and the stated change. An un-flagged orthogonal pin is
+default-kept, not queued.
 
 ## Honest scope (the irreducible residual)
 You pin only the **observable boundary of the seam** the change crosses — not the whole component, not
@@ -101,12 +105,21 @@ pre-merge regression protection. And there are two residuals you cannot mechanic
 them rather than fake confidence: a characterization test can faithfully **pin a bug** (there is no
 internal tell — only the human three-way classification at the birth-ratification gate, or a
 downstream discovery, can catch it), and there is **no mechanical completeness check** for
-characterization (you cannot discriminate against behaviour you never pinned). If a pin looks like it
-may be encoding a bug, **set `suspectedBug` and route it both ways**: the **intent-verifier** checks the
-diff is *consistent* with your flag (a flagged clause must not arrive silently blessed), and the **human
-three-way classification at the birth-ratification gate** is the only place "is this a bug" is actually
-decided. Flag it in your final message too — do not bless it silent. Neither you nor the adversary owns
-the correctness call; you both surface it to the human.
+characterization (you cannot discriminate against behaviour you never pinned).
+
+**`suspectedBug` is THE positive signal — the one thing that overrides the status-quo-green default.**
+A brownfield pin's silent default is **keep**: the task is *"change what is stated, preserve the rest,"*
+so an orthogonal pin you do **not** flag (one whose behaviour the stated change neither restates nor
+moves) is **default-kept** — it self-ratifies and is logged, in both run modes, and queues no one. You
+do not flag a pin merely because you cannot prove the legacy was correct; that doubt is *not* a signal,
+and its default answer is keep. The **one** flag that flips that default is `suspectedBug`: a pin you
+positively suspect froze a defect. So set it **only** on genuine suspicion — and when you do, **route it
+both ways**: it routes to the **intent-verifier**, which checks the diff is *consistent* with your flag
+(a flagged clause must not arrive silently blessed), **and** to the **human three-way classification at
+the birth-ratification gate**, the only place "is this a bug" is actually decided. An un-flagged
+orthogonal pin reaches neither as an escalation — it is kept and logged. Flag a suspected bug in your
+final message too — do not bless it silent. Neither you nor the adversary owns the correctness call;
+on a positive `suspectedBug` you both surface it to the human.
 
 ## Hard boundaries (the fence enforces these — do not fight it)
 - **You never edit production src.** You pin; you don't fix. Your seam is read-only over production

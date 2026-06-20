@@ -21,11 +21,17 @@ approval of each item (*silence never approves*). **autonomous**: perform the sa
 **self-approve and log** each decision to the ledger (`type:"ratification"`/`approvedBy:"autonomous"`,
 with rationale), and proceed without blocking. In **both** modes the full review runs — gate evidence
 is re-checked, every divergence is classified three ways (no unclassified divergence), and the route
-is re-sorted. **The protocol is absolute.** **Two** exceptions autonomous mode must still escalate to
-the human rather than self-approve: a **vision amendment** (queue it in the inbox, surface it; never
-silently self-approve a change to the user's goal), and a **born `characterized` three-way
-classification** (keep / fix-it-pins-a-bug / defer) — its legacy-correctness axis has no reference above
-the artifact, so no adversary can settle it; it is queued **BREAKING** and carried to the human (step 2,
+is re-sorted. **The protocol is absolute.** The standing exception autonomous mode must still escalate
+rather than self-approve is a **vision amendment** (queue it in the inbox, surface it; never silently
+self-approve a change to the user's goal). A **born `characterized` three-way classification**
+(keep / fix-it-pins-a-bug / defer) is **not** a blanket escalate: an **orthogonal** pin — one the task
+neither restates nor moves — DEFAULTS to **keep** (self-ratify + log), because the task itself supplies
+the missing legacy-correctness reference ("change what is stated, preserve the rest"), so *changing*
+that behaviour would be the scope violation, not keeping it. Such a pin self-ratifies and is logged in
+both modes; it does **not** queue the human. The classification escalates **BREAKING** only on a
+**positive conflict signal** — the characterizer's own `suspectedBug` flag, or the intent-verifier
+detecting TENSION between the frozen behaviour and the stated change (the pin sits in the change's blast
+radius). Both signals are judgeable against references that EXIST, so they earn the human's gate (step 2,
 D12 scope-out). Everything else self-ratifies and is logged as above.
 
 **Announce at start:** "Using the retro skill — the blocking heartbeat for vertical slice <id>."
@@ -54,17 +60,29 @@ D12 scope-out). Everything else self-ratifies and is logged as above.
      (the pin froze a defect; the change must move it — route to a grown test / `change-characterized`,
      never bless the bug), or **defer** (acknowledged but out of this vertical slice's scope). *Same rule:
      no unclassified born clause.*
-     - **Autonomous mode does NOT self-ratify this classification (D12 scope-out).** The keep /
-       fix-it-pins-a-bug / defer call turns on **is the pinned legacy behaviour correct** — and there is
-       **no reference above the artifact** for that (the characterizer's no-internal-tell bug-pin blind
-       spot, intent-verifier's explicitly-disclaimed axis). So no fresh-context adversary can stand in:
-       oracle-dependence has no oracle to bind to, so this is **not** a trio gap a refuter could close —
-       it is a **genuinely unsettleable** judgment. In **autonomous** mode it therefore joins the
-       always-escalate classes (§5.6 / §5.14F): each unclassified born `characterized` clause is queued
-       **BREAKING** to the inbox (step 6) and **carried to the human**, exactly like a vision amendment —
-       never self-approved, never silently left FLOOR. The autonomous loop logs the open classification
-       and surfaces it; it does **not** grade this on the human's behalf. In **gated** mode the present
-       human classifies each here, as written above.
+     - **Autonomous mode: an ORTHOGONAL pin DEFAULTS to keep — self-ratify + log; the human is engaged
+       only on a positive conflict signal (D12 scope-out).** The keep / fix-it-pins-a-bug / defer call
+       turns on **is the pinned legacy behaviour correct** — and for a pin that is **orthogonal** to the
+       stated change (neither restated by the task nor implicitly moved by it) the task itself supplies
+       the reference: "change what is stated, preserve the rest." So the DEFAULT answer EXISTS and it is
+       **keep** (leave it FLOOR), because *changing* unstated behaviour is itself the scope violation.
+       An orthogonal born `characterized` pin therefore **self-ratifies and is logged** in autonomous
+       mode (`type:"ratification"`, `approvedBy:"autonomous"`, rationale "orthogonal pin, status-quo-green
+       default") — it does **not** queue the human. This walks back the prior always-escalate wording:
+       treating the call as absolutely-unsettleable mis-graded its default. The bet is safe in **both**
+       directions — where the pin could be the wrong call it is RELEVANT to the change, and the
+       positive-signal route below catches it; where it is truly unjudgeable it is ORTHOGONAL, and
+       keep-as-is is the CORRECT answer, not merely the cautious one. Pins are logged, so a bad bet
+       surfaces downstream, never silently.
+       - **Autonomous mode DOES queue the human BREAKING on a positive conflict signal.** Two signals,
+         both judgeable against references that EXIST, escalate the classification to the inbox (step 6)
+         exactly like a vision amendment: (a) the characterizer's own **`suspectedBug` flag** (the pin
+         may freeze a defect — a disclosed suspicion, not a missing oracle); or (b) the intent-verifier
+         detecting **tension** between the frozen behaviour and the **stated change** (the pin sits in
+         the change's blast radius / the change implicitly requires it to move). On either signal the
+         autonomous loop logs the open classification, queues it BREAKING, and carries it to the human —
+         never self-approved, never silently left FLOOR. In **gated** mode the present human classifies
+         each here, as written above.
 3. **Approve the amendment batch (human, blocking).** Proposed contract *weakenings* are batched with a
    reason each. The human approves or rejects **individually**. Each approval is appended to the ledger
    `approvedBy:"human"` (`contract-amendment` skill). The blind-test-writer re-derives affected tests
@@ -88,8 +106,10 @@ D12 scope-out). Everything else self-ratifies and is logged as above.
    human-editable any time; you pick it up at the next dispatch wave.
 6. **Clear the approval inbox (BREAKING first, ADVISORY counted).** Resolve queued items in class order:
    **BREAKING** items (intent-fork, vision amendment, second budget extension, reconcile HALT, and — in
-   autonomous mode — each unsettled born `characterized` three-way classification from step 2) are decided
-   **individually before progress**; **ADVISORY** items (logged ratifications in autonomous mode, the
+   autonomous mode — each born `characterized` classification that raised a **positive conflict signal**
+   from step 2: a `suspectedBug` flag or intent-verifier tension with the stated change) are decided
+   **individually before progress**; **ADVISORY** items (logged ratifications in autonomous mode —
+   including each orthogonal born `characterized` pin kept by the status-quo-green default, the
    `kind:"other"` walls and per-gate gated-mode terminations batched here, planned supersessions from
    step 4, drift notes) are presented as a count. A **vision amendment** is human-gated, always,
    individually — even in autonomous mode. Unfreeze the lanes each item was freezing. **Inbox-load

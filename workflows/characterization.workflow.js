@@ -38,6 +38,17 @@
 // for that, so the characterizer's suspectedBug flag + the human three-way classification
 // keep that job.
 //
+// THE STATUS-QUO-GREEN DEFAULT (D12). The keep / fix-it-pins-a-bug / defer call on a born
+// `characterized` pin is NOT a blanket escalate. The brownfield task supplies the missing
+// legacy-correctness reference — "change what is stated, preserve the rest" — so an
+// ORTHOGONAL pin (the adversary ACCEPTED it against the baseline-intent and it carries NO
+// suspectedBug flag) DEFAULTS to keep: it is logged-and-kept, never escalated, in BOTH run
+// modes (changing unstated behaviour would itself be the scope violation). The human is
+// engaged ONLY on a POSITIVE conflict signal — the characterizer's `suspectedBug` flag, or
+// the adversary's ESCALATE verdict (tension against the baseline-intent / the change's
+// blast radius). So at result-assembly an accepted, unflagged pin self-ratifies, while a
+// reject / ESCALATE / suspectedBug pin routes to the human (autonomous: BREAKING).
+//
 // THE ONE INVERSION (architecture §18 BF2, §19). Where scaffold's invariant-verify
 // asks "is the suite GREEN, parked tests compiling, seams real?", a characterization
 // corpus is born GREEN-by-observation. So invariant-verify here means **each parked
@@ -818,10 +829,24 @@ if (ack === null || isCheckpoint(ack) || ack.persisted !== true) {
 
 // 8. Return the typed CHARACTERIZATION_RESULT to the human birth-ratification gate.
 //    The engine cannot block on a human; the main session is where blocking (gated
-//    mode) happens. Silence never ratifies a corpus. An invariant failure, any
-//    inadmissible / suspected-bug pin, or an adversary ESCALATE is surfaced for the
-//    human (autonomous: ESCALATE joins the always-escalate classes, a fifth
-//    disposition queued BREAKING — D8).
+//    mode) happens. Silence never ratifies a corpus. An invariant failure, an
+//    adversary ESCALATE (tension against the baseline-intent), or a `suspectedBug`
+//    pin is surfaced for the human (autonomous: each joins the always-escalate
+//    classes, queued BREAKING — D8).
+//
+//    THE STATUS-QUO-GREEN DEFAULT (D12). The keep / fix-it-pins-a-bug / defer call on
+//    a born `characterized` pin has a DEFAULT answer supplied by the task itself
+//    ("change what is stated, preserve the rest"): an ORTHOGONAL pin — one the
+//    adversary ACCEPTED against the baseline-intent and that carries NO suspectedBug
+//    flag — DEFAULTS to keep. It is logged-and-kept (the recorded verifier-verdict +
+//    the corpus births), never escalated, in BOTH run modes. The human is engaged
+//    ONLY on a POSITIVE conflict signal: (a) the characterizer's own `suspectedBug`
+//    flag, or (b) the intent-verifier's ESCALATE verdict (tension against the
+//    baseline-intent / the change's blast radius). Both are judgeable against
+//    references that EXIST, so they earn the gate; an accepted, unflagged pin is
+//    orthogonal and self-ratifies. (At analysis time no behaviorDelta is in flight,
+//    so the adversary's ESCALATE is the only "tension" channel; an in-run change's
+//    tension surfaces through the vertical-slice-runner.)
 //
 //    The floor backstop is routed by D13: an UNEXPLAINED autonomous breach
 //    (floorBackstop.stops) ESCALATES-and-stops — it joins allEscalations and blocks
@@ -831,6 +856,16 @@ if (ack === null || isCheckpoint(ack) || ack.persisted !== true) {
 //    eyes — annotate-not-disarm), but it does NOT block ratification.
 const invariantPassed = invariant.passed === true;
 const allEscalations = verifierEscalations.slice();
+// A `suspectedBug` pin is a POSITIVE conflict signal (a disclosed suspicion judged
+// against a reference that EXISTS), so it escalates to the human three-way
+// classification rather than riding the orthogonal logged-and-kept default. An
+// accepted pin with NO suspectedBug is orthogonal and is NOT pushed here. An
+// ACCEPTED pin that ALSO carries suspectedBug is still pushed — the verifier
+// accepted only its suspectedBug-CONSISTENCY (the axis it owns); the correctness
+// call stays the human three-way gate, so the two signals are not redundant.
+for (const p of suspectedBugs) {
+  allEscalations.push({ key: p.key, component: p.component, verdict: 'escalate', oracle: 'human three-way classification', reason: 'characterizer flagged suspectedBug — positive conflict signal; route to the human keep / fix-it-pins-a-bug / defer call (does not self-ratify).' });
+}
 const floorStops = !!(floorBackstop && floorBackstop.stops);
 if (floorStops) {
   allEscalations.push({ key: '(floor-integrity)', verdict: 'escalate', oracle: 'floor backstop', reason: floorBackstop.reason });
@@ -838,10 +873,12 @@ if (floorStops) {
 if (floorBackstop && !floorStops) {
   log('Result: floor-integrity diff surfaced as a NON-BLOCKING NOTICE (D13: explained-by-verdict or gated) — logged on floorBackstop for the human; it does not block ratification.');
 }
-// The corpus ratifies only when the invariant passes AND nothing escalated. An adversary
-// ESCALATE (or an UNEXPLAINED autonomous floor breach) routes to the human just like an
-// invariant failure; it never silently ratifies (the failure direction is always toward
-// MORE scrutiny — D6). An EXPLAINED/gated floor NOTICE does not count as an escalation.
+// The corpus ratifies (orthogonal pins logged-and-kept by the status-quo-green default)
+// only when the invariant passes AND nothing escalated. A POSITIVE conflict signal — an
+// adversary ESCALATE (tension), a `suspectedBug` pin, or an UNEXPLAINED autonomous floor
+// breach — routes to the human just like an invariant failure; it never silently ratifies
+// (the failure direction is always toward MORE scrutiny — D6). An accepted, unflagged
+// (orthogonal) pin and an EXPLAINED/gated floor NOTICE do not count as escalations.
 const clean = invariantPassed && allEscalations.length === 0;
 return {
   kind: clean ? 'ratify' : (invariantPassed ? 'escalate' : 'invariant-failed'),
@@ -854,13 +891,12 @@ return {
   escalations: allEscalations,
   floorBackstop,
   note: clean
-    ? 'Characterization corpus built and parked: ' + pinned.length + ' born `characterized` pin(s), each GREEN on HEAD, admitted by the reverse discriminator, and (where it touches the floor or a shared contract) accepted by the intent-verifier adversary against the baseline-intent. ' +
+    ? 'Characterization corpus built and parked: ' + pinned.length + ' born `characterized` pin(s), each GREEN on HEAD, admitted by the reverse discriminator, and (where it touches the floor or a shared contract) accepted by the intent-verifier adversary against the baseline-intent. Every pin is orthogonal (adversary-accepted, no suspectedBug), so each is KEPT by the status-quo-green default — logged-and-kept, not escalated, in both modes (D12). ' +
       (verdicts.length ? verdicts.length + ' verifier-verdict(s) recorded (annotate-not-disarm — advisory). ' : '') +
       (inadmissible.length ? inadmissible.length + ' inadmissible pin(s) reported (not blessed into the suite). ' : '') +
-      (suspectedBugs.length ? suspectedBugs.length + ' pin(s) flagged as possibly encoding a bug — for the human three-way classification. ' : '') +
       (floorBackstop ? 'A floor-integrity diff was surfaced as an explained-by-verdict/gated NOTICE (D13, advisory — does not block). ' : '') +
       'Present to the human birth-ratification gate; silence never ratifies.'
     : invariantPassed
-      ? 'Characterization corpus is GREEN-on-HEAD, but ' + allEscalations.length + ' item(s) ESCALATED to the human (adversary verdict and/or an UNEXPLAINED autonomous floor-integrity breach, D13): ' + allEscalations.map((e) => e.key).join(', ') + '. Do not ratify until the human resolves them — annotate-not-disarm means more eyes, never fewer.'
+      ? 'Characterization corpus is GREEN-on-HEAD, but ' + allEscalations.length + ' item(s) ESCALATED to the human on a POSITIVE conflict signal (an adversary ESCALATE / tension, a `suspectedBug` pin for the keep / fix-it-pins-a-bug / defer call, and/or an UNEXPLAINED autonomous floor-integrity breach — D12/D13): ' + allEscalations.map((e) => e.key).join(', ') + '. The orthogonal pins are kept by default; do not ratify until the human resolves the flagged item(s) — annotate-not-disarm means more eyes, never fewer.'
       : 'Characterization corpus FAILED its GREEN-on-HEAD invariant: ' + (invariant.failures || []).join('; ') + '. Do not ratify; route to the human.',
 };

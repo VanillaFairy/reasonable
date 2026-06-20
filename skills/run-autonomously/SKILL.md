@@ -59,6 +59,18 @@ use `reasonable:run` (gated). Mode is never guessed.
   Everything else self-ratifies and LOGs (above). These five — and only these five — block on the
   human even while autonomous.
 
+- **A born `characterized` classification is NOT a sixth always-escalate class.** Pinning legacy
+  behaviour green raises the keep / fix-it-pins-a-bug / defer call (retro step 2), but it does **not**
+  blanket-escalate in this mode. A brownfield task carries its own missing reference — "change what is
+  stated, preserve the rest" — so an **orthogonal** pin (one the task neither restates nor moves) has a
+  DEFAULT answer that EXISTS: **keep** it, because *changing* unstated behaviour would itself be the
+  scope violation. An orthogonal pin therefore self-ratifies and is LOGGED like any other gate, never
+  queued. The human is engaged only on a **positive conflict signal** — the characterizer's own
+  `suspectedBug` flag, or the intent-verifier detecting tension between the frozen behaviour and the
+  stated change — and *that* item queues BREAKING through #1-style routing. The bet is safe both ways:
+  where the keep could be wrong the pin is RELEVANT and the signal catches it; where it is truly
+  unjudgeable the pin is ORTHOGONAL and keep-as-is is correct. (See `retro` step 2.)
+
 - **The verification trio runs in BOTH modes; only its DEPTH is dial-gated.** The intent-verifier
   (a *judgment* adversary) judges every floor-/shared-contract-touching write against its named
   oracle in gated AND autonomous runs alike — autonomy never disables it. The supervision dial may
