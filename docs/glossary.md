@@ -39,6 +39,12 @@ one of the three is probably wrong.
    Infeasibility claims face skeptics. Success claims face auditors. State
    claims face reconciliation.
 
+   *Corollary (verifier/adversary family, in sync with DESIGN §4).* An adversary
+   **proposes** a verdict; it never self-executes the act its verdict authorizes
+   (read-only by capability; the orchestrator or a separate narrow writer
+   performs any resulting act). Scoped to the verifier/adversary family — it does
+   not inflate Law 3 into a fourth obligation.
+
 ---
 
 ## Terms
@@ -128,16 +134,102 @@ one of the three is probably wrong.
 - **Dead end** — a refutation-surviving infeasibility verdict; a retroactive
   spike. Code dies on its branch; knowledge is harvested; verdict enters the
   ledger.
+- **Worker-adversary-orchestrator trio** (a.k.a. **verification trio**; plain
+  alias **make-and-check**) — the named generalization of Law 3. A **worker**
+  (the mutator) executes; an **adversary** (fresh context, read-only *by
+  capability*, default-deny) judges the worker's *proposed* output against a
+  named reference that sits *above* the artifact, *before* it is integrated; an
+  **orchestrator** (deterministic control flow) dispatches both, routes
+  accept / reject / escalate, and loops — *spawning* the adversary rather than
+  spending its own scarce context. Reserve "trio" for this concept; the renamed
+  rot-vector triad is **the three lies** (below). Not everything is trio-wrapped:
+  see the **three-condition selectivity** below — any condition failing leaves
+  the check a **fence**.
+- **Verifier / adversary** (the family) — any read-only judge in a trio. Family
+  invariant (all three hold): **fresh context** + **read-only by capability** +
+  **propose-not-act** (returns a verdict as data; never performs the act its
+  verdict authorizes). The capability set is **per-instance** — default
+  Read / Grep / Glob, with Bash granted *only* where judging requires running a
+  pinned test (so "no Bash" is **not** a family invariant; the skeptic has Bash
+  by necessity). Instances: auditor, adjudicator, skeptic, grill-adversary,
+  intent-verifier.
+- **Intent-verifier** — the adversary placed on the pin / characterization
+  worker. Its reference (oracle) is the **baseline-intent / standing baseline**:
+  is this pin in the baseline we promised to capture? right seam? does it
+  *legitimately* touch floor-tracked files, consistent with the characterizer's
+  own `suspectedBug` flag? It **must not** judge whether the *legacy behavior is
+  correct* — there is no reference above the artifact for that (the
+  characterizer's bug-pin blind spot), which stays the human three-way
+  classification's job. An instance of the **verifier/adversary** family.
+- **Pre-integration verification** — the placement rule for an adversary: it
+  judges the worker's *proposed* output *before* that output is integrated into
+  the protected state (codebase / floor / cited reference), against a reference
+  *above* the artifact. Judging a thing against what it was derived from is
+  circular (agreement is tautological); the reference must dominate the
+  derivation.
+- **Three-condition selectivity** — the conjunction that makes a check a trio
+  rather than a fence; *all three* must hold, and *any* failing keeps it a fence
+  / gate (never trio-wrapped): (1) **oracle-dependence** — the verdict is a
+  semantic judgment against a reference *above* the artifact; (2)
+  **degrade-if-wrong** — a wrong *accept* corrupts **effort truth** (codebase /
+  floor / cited reference); (3) **non-decidability** — no script can compute the
+  verdict (*never simulate what a script can compute*). Mechanical binaries
+  (footprint/overlap, behaviorDelta-completeness, census skeleton emission,
+  transcription, discriminator/mutation/collision-classifier) and the decidable
+  fences (enforcementPaths / quarantine / role / locus / SHA / runmode /
+  two-lanes, and the sanity-regex hard-deny) are **false trios** — they stay
+  fences.
+- **The three tiers** — the ordered defense line a verdict passes through:
+  **fence** (decidable, front-line) → **adversary** (judgment) → **backstop
+  tripwire** (mechanical reconcile, last line).
+- **Fence** — a decidable, front-line capability block (a synchronous hook or a
+  computed binary): it *cannot* spawn a verifier and needs none, because a script
+  settles it. The blast-radius fence, the quarantine / role / locus / SHA /
+  runmode / two-lanes checks, and the sanity-regex hard-deny are fences.
+- **Backstop tripwire** — the *last* line: a mechanical reconcile check that
+  still fires and surfaces even after the front-line fence and the adversary. The
+  byte-level **floor-integrity hash** is a backstop tripwire — it cannot tell a
+  harmless additive pin from a real regression, so it is demoted from a
+  first-line *ambiguous→HALT* to a backstop that still fires, **annotated** by any
+  explaining verdict but **never silenced** by one (see *explained-by-verdict*).
+- **Explained-by-verdict** — the **advisory** annotation an adversary *accept*
+  places on a floor diff. **Annotate, not disarm**: the reconcile floor pass
+  *still* surfaces the diff, and in autonomous mode *still* queues it to the human
+  inbox; the always-escalate classes (including floor-integrity-mismatch) stay
+  intact. A missing or half-written verdict can therefore only cause *more* human
+  surfacing, never less — the failure direction is toward scrutiny.
+- **The three lies** — the rot-vector triad (renamed from the former bare
+  "trio"): false success ← auditor; false failure ← skeptic; undeclared failure
+  ← budgets + fences. Same disease (claims diverging from reality), same cure
+  shape (external evidence standards, never self-report). Distinct from the
+  **verification trio** above.
+- **Verifier-verdict** (ledger event) — the durable, **proposed** verdict an
+  adversary returns as data and a narrow writer (or the orchestrator) appends to
+  the on-disk append-only ledger, content-referencing the commit/hash it judged
+  (like `baseline.json` pinning file hashes — *no* git commit of orchestration
+  state). Shape: `{"type":"verifier-verdict", component, diffRef,
+  verdict:"accept|reject|escalate", oracle, by:"intent-verifier", proposed:true,
+  seq, commit}`. An autonomous `escalate` joins the always-escalate classes (a
+  fifth disposition, queued breaking).
 - **Skeptic** — a fresh-context agent that tries to *refute* an infeasibility
   claim ("find a way, or confirm the wall is real"). Only refutation-surviving
-  verdicts bind.
+  verdicts bind. An instance of the **verifier/adversary** family (its reference:
+  the infeasibility claim it must break; it carries Bash by necessity).
 - **Auditor** — verifies *success* claims (discriminator / bidirectional mapping
   / mutation / proportionality). Symmetry: one auditor refutes "it works,"
-  another (the skeptic) refutes "it can't work."
+  another (the skeptic) refutes "it can't work." An instance of the
+  **verifier/adversary** family (its reference: the success claim against the
+  contract + sanity invariants).
 - **Adjudicator** — read-only agent that judges each red test with the contract
   text as arbiter: implementation violates contract → fix implementation; test
   mistranslates a clause → fix test *citing the clause*. Produces verdicts;
-  fixes nothing.
+  fixes nothing. An instance of the **verifier/adversary** family (its reference:
+  the contract text; its arbiter verdict is downstream-backstopped by the
+  test↔contract parity fence and the discriminator).
+- **Grill-adversary** — a fresh-context agent that hunts one fork the draft
+  intention resolves two defensible ways; returns the first such fork, or (when
+  none survives) clears the draft. An instance of the **verifier/adversary**
+  family (its reference: draft coherence against vision + slice spec).
 - **Progress verdict** — the checkpoint artifact: what was tried, what binds,
   current hypothesis. Emitted when a budget is exhausted.
 - **Effort budget** — a harness-counted cap (attempts/turns/tool-calls) that
