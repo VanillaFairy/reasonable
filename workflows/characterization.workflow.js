@@ -6,8 +6,37 @@
 // observable, top-level scenarios as a PARKED baseline corpus of born `characterized`
 // clauses + parked characterization tests. It mirrors the scaffold pipeline shape:
 //
-//     read-only probe  ->  census / born-contract write  ->  parked characterization
-//     tests  ->  invariant-verify  ->  scribe  ->  return a typed result to the human
+//     provision a lane  ->  read-only probe  ->  census / born-contract write  ->
+//     parked characterization tests  ->  intent-verifier adversary  ->
+//     invariant-verify  ->  scribe  ->  return a typed result to the human
+//
+// THE LANE (architecture D7, the incident fix). The characterizer is a FENCED MUTATOR.
+// Run in the main checkout it has no lane descriptor, so the floor-containment fence
+// FAILS OPEN (fence.mjs: no reachable effort root -> allow) and there is no
+// pre-integration diff to judge — exactly the lane-less defect that let parked pins land
+// straight onto floor-tracked files unverified. So before any pin we PROVISION A LANE
+// (reasonable:lane-provisioner): a real registered worktree + a `.reasonable-lane.json`
+// descriptor + a journal record, in that order, so the fence is armed and a proposed
+// diff exists ABOVE the floor before it is integrated. The corpus pass is the worker;
+// it never runs lane-less.
+//
+// THE ADVERSARY (Law 3 corollary, the verification trio). Each pin is a semantic
+// judgment — "is this in the baseline we promised to capture, at the right seam,
+// legitimately touching floor-tracked files?" — that no script can compute (a byte hash
+// cannot tell a harmless additive pin from a real regression). So a fresh-context,
+// read-only-by-capability reasonable:intent-verifier ADVERSARY judges each pin's PROPOSED
+// output against the BASELINE-INTENT reference (D9) that sits ABOVE the artifact, BEFORE
+// it is integrated, and PROPOSES accept|reject|escalate — it never self-executes the act
+// its verdict authorizes. The orchestrator routes: reject -> back to the characterizer;
+// escalate -> the human inbox (in autonomous mode it JOINS the always-escalate classes);
+// accept -> a narrow writer records a `verifier-verdict` ledger append (D5) that ANNOTATES
+// the diff as explained-by-verdict (D6, annotate-not-disarm — advisory only; reconcile
+// still surfaces it). The adversary is RISK-GATED (D7): ALWAYS run where a pin touches the
+// floor or a shared contract; it may be skipped only for a pin boxed into a brand-new file
+// nothing depends on yet. The reference is ABOVE the artifact, never the floor it pins —
+// and the adversary does NOT judge "is the legacy behavior correct"; there is no reference
+// for that, so the characterizer's suspectedBug flag + the human three-way classification
+// keep that job.
 //
 // THE ONE INVERSION (architecture §18 BF2, §19). Where scaffold's invariant-verify
 // asks "is the suite GREEN, parked tests compiling, seams real?", a characterization
@@ -43,9 +72,11 @@ export const meta = {
   description: 'Brownfield analysis-time corpus pass: pin the observable top-level scenarios as a parked baseline of born `characterized` clauses + parked characterization tests, verify GREEN-on-HEAD, return a CHARACTERIZATION_RESULT to the human birth-ratification gate.',
   whenToUse: 'Launched from the main session at the brownfield scaffolding slot (config.brownfield true), after census has written baseline.json. Mirrors scaffold.workflow.js. NOT for in-run first-touch genesis (that lives in vertical-slice-runner).',
   phases: [
-    { title: 'Reconcile', detail: 'Unconditional recovery prologue: re-derive truth from git+ledger+contracts; read runMode; halt on AMBIGUOUS.' },
+    { title: 'Reconcile', detail: 'Unconditional recovery prologue: re-derive truth from git+ledger+contracts; read runMode; halt on AMBIGUOUS. The floor-integrity mismatch is a BACKSTOP tripwire here, not a first-line HALT — it surfaces, annotated by any explaining verdict (D6).' },
+    { title: 'Provision', detail: 'reasonable:lane-provisioner births a real registered worktree + .reasonable-lane.json descriptor + journal record BEFORE any pin, so the fence is armed (never fails open in the main checkout) and a pre-integration diff exists.' },
     { title: 'Probe', detail: 'Read-only: enumerate the existing observable top-level scenarios and their seams from the running system and the FLOOR.' },
     { title: 'Characterize', detail: 'Per scenario: census skeleton check -> characterizer pins a born `characterized` clause + a PARKED characterization test (contract -> ledger event -> test), each admitted by the reverse discriminator.' },
+    { title: 'Intent-verify', detail: 'Risk-gated adversary (reasonable:intent-verifier, fresh context, read-only): judges each floor-/contract-touching pin against the baseline-intent reference ABOVE the artifact, proposes accept|reject|escalate; reject -> back to characterizer, escalate -> human inbox, accept -> verifier-verdict ledger append (annotate-not-disarm).' },
     { title: 'Invariant-verify', detail: 'Read-only auditor: each parked characterization test PASSES on unmutated HEAD (the inverse of RED-on-HEAD~), parked tests compile, the FLOOR is green.' },
     { title: 'Scribe', detail: 'The lone serialized journal-writer records the corpus births to the derived index (journal.json + inbox.json).' },
   ],
@@ -65,6 +96,11 @@ const BRIEFING = {
   properties: {
     halt: { type: 'boolean', description: 'true when any artifact configuration was AMBIGUOUS (or runMode absent).' },
     haltReason: { type: ['string', 'null'] },
+    haltClass: {
+      type: ['string', 'null'],
+      enum: ['sha-custody', 'ledger-without-commit', 'runmode-absent', 'two-lanes-one-wo', 'floor-integrity', 'other', null],
+      description: 'Which class triggered the halt. floor-integrity DEMOTES to a BACKSTOP tripwire here (D6, annotate-not-disarm): it surfaces but does not first-line HALT the corpus pass. The other four classes stay first-line HALTs.',
+    },
     evidence: { type: ['string', 'null'], description: 'Conflicting SHAs / ledger-line-without-commit / unaccounted floor test.' },
     runMode: { type: ['string', 'null'], enum: ['gated', 'autonomous', null], description: 'Read from config.json, never inferred. Absent -> halt.' },
     brownfield: { type: 'boolean', description: 'Must be true for this pass to do work; false -> no-op.' },
@@ -116,6 +152,8 @@ const PIN_RESULT = {
     test: { type: ['string', 'null'], description: 'The parked characterization test name.' },
     seam: { type: ['string', 'null'] },
     supersessionPending: { type: 'boolean', description: 'True iff a behaviorDelta named this behaviour (analysis-time: normally false — no change is in flight yet).' },
+    touchesFloor: { type: 'boolean', description: 'The pin lands on a floor-tracked file (the parked test touches a FLOOR seam). Drives the D7 risk-gate: a floor touch ALWAYS runs the adversary.' },
+    citationsAdded: { type: 'boolean', description: 'The born clause added a `## Citations` bullet — i.e. the pin enriched a SHARED contract. Drives the D7 risk-gate (shared-contract touch always runs the adversary).' },
     atomicOrderHeld: { type: 'boolean', description: 'contract -> ledger event -> test held.' },
     reverseDiscriminator: {
       type: 'object',
@@ -131,6 +169,48 @@ const PIN_RESULT = {
     },
     suspectedBug: { type: 'boolean', description: 'The pin may faithfully encode a bug — flag for the human three-way classification.' },
     note: { type: ['string', 'null'] },
+  },
+};
+
+// The lane-provisioner's hand-off. The corpus pass is a FENCED MUTATOR, so it must run
+// inside a real registered worktree carrying a `.reasonable-lane.json` descriptor — never
+// the main checkout, where the floor-containment fence fails open (D7). A null/false ack
+// is a HALT: no armed fence => no legitimate place to pin.
+const PROVISION_ACK = {
+  type: 'object',
+  additionalProperties: false,
+  required: ['provisioned'],
+  properties: {
+    provisioned: { type: 'boolean', description: 'worktree + .reasonable-lane.json descriptor + journal record all present, in that order (idempotent on re-run).' },
+    worktree: { type: ['string', 'null'], description: 'The lane worktree path the characterizer must cwd into — a real registered worktree, NEVER the main checkout.' },
+    branch: { type: ['string', 'null'], description: 'The lane branch.' },
+    descriptorWritten: { type: 'boolean', description: 'The .reasonable-lane.json descriptor exists at the worktree root so the fence is armed (no fail-open-in-main-checkout window).' },
+    noOp: { type: 'boolean', description: 'True iff the lane already existed and provisioning was an idempotent no-op.' },
+    note: { type: ['string', 'null'] },
+  },
+};
+
+// One intent-verifier verdict on one PROPOSED pin (D5 shape). The adversary is read-only
+// by capability and PROPOSES the verdict as DATA (proposed:true); a narrow writer (the
+// orchestrator) performs the ledger append — it never self-executes the act it authorizes
+// (Law 3 corollary). The reference (`oracle`) is the BASELINE-INTENT, ABOVE the artifact
+// (D9): it judges "is this in the baseline we promised, at the right seam, legitimately
+// touching floor-tracked files, consistent with suspectedBug?" — NEVER "is the legacy
+// behavior correct" (no reference for that; that stays the human three-way classification).
+const VERIFIER_VERDICT = {
+  type: 'object',
+  additionalProperties: false,
+  required: ['key', 'component', 'verdict', 'oracle', 'proposed'],
+  properties: {
+    key: { type: 'string', description: 'The scenario key this verdict judges (joins back to its PIN_RESULT).' },
+    component: { type: 'string' },
+    diffRef: { type: ['string', 'null'], description: 'The proposed pin diff / commit / content hash judged (content-references the artifact, like baseline.json pins file hashes).' },
+    verdict: { type: 'string', enum: ['accept', 'reject', 'escalate'], description: 'accept = in the promised baseline, right seam, legitimate floor touch; reject = wrong seam / outside the baseline-intent / illegitimate floor touch -> back to characterizer; escalate = genuinely unsettleable -> human inbox.' },
+    oracle: { type: 'string', description: 'The named reference judged against — the baseline-intent / standing baseline, which sits ABOVE the artifact.' },
+    by: { type: 'string', description: 'The judging actor — "intent-verifier".' },
+    proposed: { type: 'boolean', description: 'Always true: the adversary PROPOSES; it never integrates. The orchestrator (a narrow writer) performs any resulting append.' },
+    touchesFloorOrContract: { type: 'boolean', description: 'Why the adversary ran at all (D7 risk-gate): the pin touches the floor or a shared contract. False => the orchestrator could have skipped it (boxed into a brand-new file).' },
+    reason: { type: ['string', 'null'], description: 'Terse justification against the named oracle (a wrong accept corrupts effort truth, so say only what the reference supports).' },
   },
 };
 
@@ -210,6 +290,23 @@ function dedupByKey(items) {
   return out;
 }
 
+// The adversary risk-gate (pure — D7). The supervision dial may ONLY let a PRESENT human
+// trade a check for speed; it can NEVER let an autonomous run disable a guard. So gate by
+// RISK = WHAT THE PIN TOUCHES, never by trust: a pin touches PROTECTED state when it lands
+// on a floor-tracked file (the scenario lists floorTests, or the characterizer reported a
+// floor touch) or enriches a shared contract (a Citations bullet to a neighbour). ALWAYS
+// verify those. A pin may be skipped ONLY when it is boxed into a brand-new file nothing
+// depends on yet (no floor tests, no shared-contract citation). In AUTONOMOUS mode the
+// gate stays maximally paranoid; in GATED mode the present human is the net, so a boxed-in
+// pin may be skipped — but a floor/contract touch is OFF the dial entirely (non-waivable).
+function pinTouchesProtectedState(pin, scenario) {
+  if (!pin || pin.status !== 'pinned') return false;
+  const floorFromScenario = !!(scenario && Array.isArray(scenario.floorTests) && scenario.floorTests.length > 0);
+  const floorFromPin = pin.touchesFloor === true;
+  const sharedContract = pin.citationsAdded === true;
+  return floorFromScenario || floorFromPin || sharedContract;
+}
+
 // ─────────────────────────────────────────────────────────────────────────────
 // Prompt builders (pure string functions — the only way to vary an agent by content,
 // since Date.now/random are forbidden). Each cites the effort root + plugin root from
@@ -219,6 +316,17 @@ function dedupByKey(items) {
 function root(a) { return (a && a.effortRoot) || '.'; }
 function plugin(a) { return (a && a.reasonableRoot) || '${reasonable}'; }
 
+// After provisioning, the FENCED MUTATOR (characterizer + the census-skeleton emit) must
+// operate INSIDE the lane worktree, where `.reasonable-lane.json` arms the floor-containment
+// fence and a pre-integration diff exists — NEVER in the main checkout (args.effortRoot),
+// where the fence fails open (D7, the lane-less hazard this pass exists to close). Narrow a
+// copy of args so root(a) resolves to the worktree for every in-lane write path
+// (contract -> ledger -> parked test, in that atomic order). Read-only roles (probe,
+// invariant, scribe, reconcile) keep the un-narrowed args. plugin root is unchanged.
+function laneScoped(a, worktree) {
+  return worktree ? { ...a, effortRoot: worktree } : a;
+}
+
 function reconcilePrompt(a) {
   return [
     'You are the reconcile prologue for the brownfield characterization corpus pass.',
@@ -227,10 +335,35 @@ function reconcilePrompt(a) {
     'the resume cache has zero authority. Run `node ' + plugin(a) + '/lib/reconcile.mjs` and read its',
     'exact output. Partition every artifact configuration into RESOLVED / SAFE-DEFAULT / AMBIGUOUS.',
     'An AMBIGUOUS configuration is a blocking halt — set halt:true with haltReason + evidence; never guess.',
+    'CLASSIFY every halt via haltClass. The four FIRST-LINE halt classes stay HALTs: sha-custody (custody',
+    'reclaim), ledger-without-commit (torn window), runmode-absent, two-lanes-one-wo. But a floor-integrity',
+    'mismatch DEMOTES to a BACKSTOP tripwire here (haltClass:"floor-integrity"): it still SURFACES (report it',
+    'in evidence + note) but it does NOT first-line HALT the corpus pass — the byte-level floor hash cannot',
+    'tell a harmless additive characterization pin from a real regression, so an explaining verifier-verdict',
+    'may annotate it downstream (annotate-not-disarm, D6). NEVER let an accept silence the hash.',
     'Read config.runMode (gated|autonomous); if absent/null on a cold restart, HALT (inferring mode is forbidden).',
     'Confirm config.brownfield: this pass only does work when it is true. If false, set brownfield:false (no-op).',
     'When brownfield is true, run the floor-integrity pass over baseline.json and report the FLOOR test ids.',
     'Return the BRIEFING. Evidence before assertions: name the command you ran and quote its output.',
+  ].join('\n');
+}
+
+function lanePrompt(a) {
+  return [
+    'You are the lane-provisioner. Provision the lane for the brownfield characterization corpus pass,',
+    'idempotently, BEFORE any fenced worker (the characterizer) edits code. The corpus pass is a FENCED',
+    'MUTATOR: run in the main checkout it has NO lane descriptor, so the floor-containment fence FAILS',
+    'OPEN — there would be no armed fence and no pre-integration diff to judge. So this lane MUST be a',
+    'real registered worktree, NEVER the main checkout.',
+    `Effort root: ${root(a)}. Plugin root: ${plugin(a)}.`,
+    'Do exactly three things in order (the ordering is the safety property): (1) git worktree add a real',
+    'registered worktree on a lane branch (NOT an engine-isolated throwaway); (2) write the one',
+    '.reasonable-lane.json descriptor at the new worktree root, narrowed for the characterizer role',
+    '(contractBirth:true, floorImpact, the corpus locus), with the effortRoot back-pointer; (3) record the',
+    'lane in the journal via the scribe — all before the worker is dispatched. Idempotent: an existing',
+    'registered worktree + present correct descriptor + recorded journal lane is a no-op success.',
+    'Return the PROVISION_ACK: the worktree path the characterizer must cwd into, and confirmation the',
+    'descriptor is written (the fence is armed). A false/absent descriptor is a HALT — never pin lane-less.',
   ].join('\n');
 }
 
@@ -272,6 +405,9 @@ function characterizePrompt(a, s) {
     'You are the characterizer (brownfield fenced mutator, contractBirth:true) pinning ONE observable',
     'top-level behaviour as a born `characterized` clause + a PARKED characterization test.',
     `Effort root: ${root(a)}. Plugin root: ${plugin(a)}.`,
+    'You operate INSIDE the provisioned lane worktree (the effort root above): cwd there, where the',
+    '`.reasonable-lane.json` descriptor arms the floor-containment fence. Every write below (contract,',
+    'ledger, parked test) lands under THIS root — never the main checkout, where the fence fails open.',
     `Scenario key: ${s.key}. Component: ${s.component}. Seam (read-only src): ${s.seam}.`,
     `Observable behaviour to pin (pin what IS, never what should be): ${s.observable}`,
     'This is the ANALYSIS-TIME corpus pass: no behaviorDelta / no change is in flight yet, so pins are born',
@@ -288,6 +424,64 @@ function characterizePrompt(a, s) {
     'You never edit production src; you pin, you never fix. If the behaviour looks like a bug, pin it AS-IS and',
     'set suspectedBug:true for the human three-way classification — never bless it silent, never fix it.',
     'Return a PIN_RESULT with the exact reverse-discriminator command + output. Evidence before assertions.',
+  ].join('\n');
+}
+
+function intentVerifierPrompt(a, pin, scenario) {
+  return [
+    'You are the intent-verifier ADVERSARY for ONE proposed characterization pin. Fresh context,',
+    'read-only BY CAPABILITY (Read/Grep/Glob; Bash ONLY to re-run the pinned test if your judgment',
+    'requires it). You PROPOSE a verdict; you NEVER integrate it and you fix NOTHING — the orchestrator',
+    '(a narrow writer) performs any resulting ledger append (Law 3 corollary).',
+    `Effort root: ${root(a)}. Plugin root: ${plugin(a)}.`,
+    `Proposed pin: key ${pin.key}, component ${pin.component}, clause ${JSON.stringify(pin.clause || null)},`,
+    `parked test ${JSON.stringify(pin.test || null)}, seam ${JSON.stringify(pin.seam || (scenario && scenario.seam) || null)}.`,
+    `The characterizer's own suspectedBug flag: ${pin.suspectedBug === true}.`,
+    'YOUR REFERENCE (the oracle, ABOVE the artifact): the BASELINE-INTENT / standing baseline this corpus',
+    'pass PROMISED to capture (read .reasonable/baseline.json and the change-intention). Judge ONLY:',
+    '  - Is this observable behaviour IN the baseline we promised to capture (a real top-level scenario,',
+    '    not an internal seam, not out of corpus scope)?',
+    '  - Is it pinned at the RIGHT seam (the declared locus the parked test actually captures)?',
+    '  - Does it LEGITIMATELY touch floor-tracked files (a floor touch that the baseline partition expects),',
+    '    or is it landing on protected floor state it has no business pinning?',
+    '  - Is it consistent with the characterizer\'s own suspectedBug flag (a suspected bug pinned as-is is',
+    '    fine; a suspected bug silently blessed or fixed is NOT)?',
+    'SCOPE LIMIT — be honest about it: you do NOT judge "is the legacy behavior CORRECT". There is no',
+    'reference for that (the characterizer has no internal tell for a bug); that stays the human three-way',
+    'classification. You judge the pin against the baseline-intent, never the world.',
+    'You CANNOT check the pin against what it was derived from (the legacy code) — that agreement would be',
+    'tautological; judge against the reference ABOVE it.',
+    'Return the VERIFIER_VERDICT: verdict accept|reject|escalate, oracle = the named baseline-intent',
+    'reference, by:"intent-verifier", proposed:true. accept = in the promised baseline, right seam,',
+    'legitimate floor touch. reject = wrong seam / outside the baseline-intent / illegitimate floor touch',
+    '(routes back to the characterizer). escalate = genuinely unsettleable (routes to the human inbox; in',
+    'autonomous mode it joins the always-escalate classes). A wrong ACCEPT corrupts effort truth — say only',
+    'what the reference supports.',
+  ].join('\n');
+}
+
+function verdictWriterPrompt(a, verdict, pin) {
+  return [
+    'You are a NARROW WRITER. The intent-verifier ADVERSARY proposed a verdict as data; it is read-only and',
+    'never integrates its own verdict (Law 3 corollary). You perform the one resulting act: append ONE',
+    'verifier-verdict event to the append-only ledger, content-referencing the pin it judged. Nothing else.',
+    `Effort root: ${root(a)}. Plugin root: ${plugin(a)}.`,
+    'Append exactly this event to `.reasonable/ledger.jsonl` (one JSON line; on-disk append, NOT a git commit',
+    'of orchestration state — verdict durability is the atomic on-disk append, D5):',
+    '  ' + JSON.stringify({
+      type: 'verifier-verdict',
+      component: pin.component,
+      diffRef: verdict.diffRef || null,
+      verdict: verdict.verdict,
+      oracle: verdict.oracle,
+      by: 'intent-verifier',
+      proposed: true,
+    }),
+    'Add the ledger seq and the code commit/hash the pin landed (`commit`) from the live ledger/git — do not',
+    'invent them. This verdict ANNOTATES the pin diff as explained-by-verdict: ADVISORY ONLY (D6). It does',
+    'NOT silence the floor-integrity backstop and does NOT remove the diff from reconcile\'s floor pass —',
+    'a missing or half-written verdict can only cause MORE human surfacing, never less. Write nothing but',
+    'this one ledger line. Return the SCRIBE_ACK (persisted true once the line is durably appended).',
   ].join('\n');
 }
 
@@ -348,15 +542,62 @@ if (state === null) {
   // null = user-skip / terminal API error after retries -> a verification gap, not a clean state.
   return { kind: 'halt', reason: 'reconcile returned null — recovery prologue did not complete; corpus not attempted.' };
 }
-if (state.halt) {
+if (state.halt && state.haltClass !== 'floor-integrity') {
+  // The four FIRST-LINE halt classes still HALT unchanged: sha-custody, ledger-without-commit,
+  // runmode-absent, two-lanes-one-wo (and any 'other' AMBIGUOUS the reconciler could not settle).
   return { kind: 'halt', reason: state.haltReason || 'reconcile: AMBIGUOUS configuration', evidence: state.evidence || null };
+}
+// floor-integrity is DEMOTED here from first-line HALT to a BACKSTOP tripwire (D6): the
+// byte-level floor hash cannot tell a harmless additive characterization pin from a real
+// regression, so it must not block this corpus pass at the door. It still SURFACES (carried
+// to the human inbox in the result below), and the intent-verifier's verifier-verdict can
+// later ANNOTATE the diff as explained-by-verdict — advisory only; it NEVER silences the hash.
+const floorBackstop = (state.halt && state.haltClass === 'floor-integrity')
+  ? { class: 'floor-integrity', reason: state.haltReason || 'floor-integrity mismatch (backstop tripwire)', evidence: state.evidence || null }
+  : null;
+if (floorBackstop) {
+  log('Reconcile: floor-integrity mismatch DEMOTED to a backstop tripwire (D6) — surfaced, not first-line HALT; an explaining verifier-verdict may annotate it (never silence it).');
 }
 if (state.brownfield !== true) {
   // Brownfield is one provenance, not a second methodology; absent it, this pass is a no-op.
   return { kind: 'no-op', reason: 'config.brownfield is not set — the characterization corpus pass is a no-op (greenfield path untouched).' };
 }
 
-// 2. Read-only probe: enumerate the observable top-level scenarios to characterize.
+// 2. Provision the lane BEFORE any pin (D7, the incident fix). The corpus pass is a fenced
+//    MUTATOR; in the main checkout its fence fails OPEN, so we never let it pin there. The
+//    lane-provisioner births a real registered worktree + descriptor + journal record, in
+//    that order, so the fence is armed and a pre-integration diff exists. A null/false ack
+//    is a HALT — no armed fence is no legitimate place to pin.
+phase('Provision');
+log('Provision: birthing the corpus-pass lane (worktree + descriptor + journal) so the fence is armed and a pre-integration diff exists.');
+const lane = await guard(
+  () => agent(lanePrompt(args), { agentType: 'reasonable:lane-provisioner', label: 'provision', schema: PROVISION_ACK }),
+  null,
+);
+if (isCheckpoint(lane)) {
+  return { kind: 'checkpoint', reason: 'provision: ' + lane.reason };
+}
+if (lane === null || lane.provisioned !== true || lane.descriptorWritten !== true) {
+  return {
+    kind: 'halt',
+    reason: 'lane not provisioned (null / provisioned:false / descriptor absent) — the characterizer would pin in the main checkout where the floor-containment fence fails open. Refusing to pin lane-less (D7).',
+  };
+}
+if (!lane.worktree) {
+  // Provisioned + descriptorWritten but no worktree path returned: we have nowhere armed to
+  // direct the mutator, so falling back to args.effortRoot would pin in the main checkout —
+  // the exact lane-less hazard. Refuse rather than silently mutate the fail-open checkout.
+  return {
+    kind: 'halt',
+    reason: 'lane provisioned but PROVISION_ACK.worktree is empty — no armed worktree path to direct the characterizer into; refusing to fall back to the main checkout (D7).',
+  };
+}
+// The corpus-pass mutator (characterizer + census-skeleton emit + re-pin) is governed by the
+// lane it just provisioned: narrow its effort root to the worktree where the fence is armed.
+const laneArgs = laneScoped(args, lane.worktree);
+log('Provision: lane ready at ' + lane.worktree + '; the fence is armed. Characterizer scoped to the worktree.');
+
+// 3. Read-only probe: enumerate the observable top-level scenarios to characterize.
 phase('Probe');
 log('Probe: enumerating the existing observable top-level scenarios (read-only).');
 const catalogue = await guard(
@@ -373,18 +614,22 @@ const scenarios = dedupByKey(catalogue.scenarios || []);
 if (scenarios.length === 0) {
   // Nothing observable to pin: an honest empty corpus (the floor still contains regressions).
   return {
-    kind: 'ratify',
+    kind: floorBackstop ? 'escalate' : 'ratify',
     runMode: state.runMode,
     pinned: [],
     inadmissible: [],
     suspectedBugs: [],
     invariant: null,
-    note: 'No observable top-level scenarios found to characterize. The FLOOR (baseline.json) still stands as the regression containment fence; the corpus is empty.',
+    verdicts: [],
+    escalations: floorBackstop ? [{ key: '(floor-integrity)', verdict: 'escalate', oracle: 'floor backstop', reason: floorBackstop.reason }] : [],
+    floorBackstop,
+    note: 'No observable top-level scenarios found to characterize. The FLOOR (baseline.json) still stands as the regression containment fence; the corpus is empty.' +
+      (floorBackstop ? ' A floor-integrity mismatch was surfaced as a backstop tripwire (D6) — route to the human; do not ratify until resolved.' : ''),
   };
 }
 log('Probe found ' + scenarios.length + ' observable top-level scenario(s) to characterize.');
 
-// 3. Characterize each scenario through the pin pipeline (NO BARRIER): census-skeleton
+// 4. Characterize each scenario through the pin pipeline (NO BARRIER): census-skeleton
 //    check -> characterizer pins (contract -> ledger event -> test) + reverse-discriminator
 //    admission. pipeline() so a fast scenario is verified the instant ITS chain returns,
 //    not after the slowest. Each stage guard()-wrapped so a budget ceiling becomes a
@@ -398,10 +643,10 @@ if (!withinBudget(args, budget)) {
 } else {
   const raw = await pipeline(
     scenarios,
-    (s) => guard(() => agent(censusCheckPrompt(args, s), { agentType: 'reasonable:census', label: 'census:' + s.key, phase: 'Characterize' }), null),
+    (s) => guard(() => agent(censusCheckPrompt(laneArgs, s), { agentType: 'reasonable:census', label: 'census:' + s.key, phase: 'Characterize' }), null),
     (skeleton, s) => {
       if (isCheckpoint(skeleton)) return { key: s.key, component: s.component, status: 'error', atomicOrderHeld: false, note: 'census checkpoint: ' + skeleton.reason };
-      return guard(() => agent(characterizePrompt(args, s), { agentType: 'reasonable:characterizer', label: 'pin:' + s.key, phase: 'Characterize', schema: PIN_RESULT }), null);
+      return guard(() => agent(characterizePrompt(laneArgs, s), { agentType: 'reasonable:characterizer', label: 'pin:' + s.key, phase: 'Characterize', schema: PIN_RESULT }), null);
     },
   );
   // pipeline() drops a thrown item to null; a guard()-wrapped throw surfaces as a
@@ -432,7 +677,86 @@ if (budgetExhausted) {
   };
 }
 
-// 4. Invariant-verify (read-only): GREEN ON HEAD — the inverse of RED-on-HEAD~ —
+// 5. Intent-verify (the verification trio, Law 3 corollary). A fresh-context, read-only-
+//    by-capability intent-verifier ADVERSARY judges each PROPOSED pin against the baseline-
+//    intent reference ABOVE the artifact (D9), BEFORE it is integrated, and PROPOSES
+//    accept|reject|escalate as DATA — it never self-executes. RISK-GATED (D7): we ALWAYS run
+//    it where a pin touches the floor or a shared contract; we may SKIP only a pin boxed into
+//    a brand-new file (no floor test, no shared-contract citation). The orchestrator routes:
+//    reject -> one bounded re-pin by the characterizer (fixed control flow cannot grow an
+//    unbounded loop); a still-rejected pin ESCALATES. escalate -> the human inbox (in
+//    autonomous mode it JOINS the always-escalate classes). accept -> a NARROW WRITER appends
+//    the verifier-verdict (D5), which ANNOTATES the diff as explained-by-verdict (D6, advisory
+//    only). guard()-wrapped so a budget ceiling is a checkpoint, never a misread gap.
+phase('Intent-verify');
+const verdicts = [];
+const verifierEscalations = [];
+for (let i = 0; i < pinned.length; i++) {
+  const pin = pinned[i];
+  const scenario = scenarios.find((s) => s && s.key === pin.key) || null;
+  if (!pinTouchesProtectedState(pin, scenario)) {
+    // Boxed into a brand-new file nothing depends on yet — risk-gate lets this pin past
+    // unverified. The floor-touch trip-wire and the annotate-not-disarm backstop are OFF the
+    // dial entirely; this skip only applies to a pin that touches NEITHER floor nor a shared
+    // contract, in EITHER run mode (the gate trades a check for speed, never disables a guard).
+    log('Intent-verify: pin ' + pin.key + ' is boxed into a brand-new file (no floor/contract touch) — adversary skipped per the risk-gate (D7).');
+    continue;
+  }
+  let verdict = await guard(
+    () => agent(intentVerifierPrompt(laneArgs, pin, scenario), { agentType: 'reasonable:intent-verifier', label: 'intent-verify:' + pin.key, phase: 'Intent-verify', schema: VERIFIER_VERDICT }),
+    null,
+  );
+  if (isCheckpoint(verdict)) {
+    return { kind: 'checkpoint', reason: 'intent-verify: ' + verdict.reason, pinned, inadmissible, suspectedBugs };
+  }
+  if (verdict === null) {
+    // A missing verdict can only cause MORE human surfacing, never less (D6): escalate it.
+    verifierEscalations.push({ key: pin.key, component: pin.component, verdict: 'escalate', reason: 'intent-verifier returned null — verdict not obtained; surfacing for the human (annotate-not-disarm: never fewer eyes).' });
+    continue;
+  }
+  if (verdict.verdict === 'reject') {
+    // Route reject back to the characterizer for ONE bounded re-pin against the same scenario,
+    // then re-judge. A fixed control flow cannot grow an unbounded loop, so a still-rejected pin
+    // escalates rather than thrashing toward acceptance.
+    log('Intent-verify: pin ' + pin.key + ' REJECTED by the adversary (' + (verdict.reason || 'no reason') + ') — routing back to the characterizer for one re-pin.');
+    const repin = await guard(
+      () => agent(characterizePrompt(laneArgs, scenario || { key: pin.key, component: pin.component, seam: pin.seam, observable: '(re-pin against the adversary verdict)' }), { agentType: 'reasonable:characterizer', label: 'repin:' + pin.key, phase: 'Intent-verify', schema: PIN_RESULT }),
+      null,
+    );
+    if (!isCheckpoint(repin) && repin && repin.status === 'pinned') {
+      pinned[i] = repin;
+      verdict = await guard(
+        () => agent(intentVerifierPrompt(laneArgs, repin, scenario), { agentType: 'reasonable:intent-verifier', label: 'intent-verify:' + pin.key + ':retry', phase: 'Intent-verify', schema: VERIFIER_VERDICT }),
+        null,
+      );
+    }
+    if (isCheckpoint(verdict) || verdict === null || verdict.verdict !== 'accept') {
+      verifierEscalations.push({ key: pin.key, component: pin.component, verdict: 'escalate', reason: 'pin still not accepted after one re-pin (' + ((verdict && verdict.reason) || 'no verdict') + ') — escalating to the human.' });
+      continue;
+    }
+  }
+  if (verdict.verdict === 'escalate') {
+    verifierEscalations.push({ key: pin.key, component: pin.component, verdict: 'escalate', oracle: verdict.oracle, reason: verdict.reason || 'adversary escalated: genuinely unsettleable against the baseline-intent.' });
+    continue;
+  }
+  // accept: a NARROW WRITER (separated from the read-only adversary, Law 3 corollary) appends
+  //  the verifier-verdict to the on-disk append-only ledger (D5). This ANNOTATES the diff as
+  //  explained-by-verdict — advisory only; it does NOT silence the floor-integrity backstop (D6).
+  const verdictAck = await guard(
+    () => agent(verdictWriterPrompt(laneArgs, verdict, pin), { agentType: 'reasonable:journal-writer', label: 'verdict-write:' + pin.key, phase: 'Intent-verify', schema: SCRIBE_ACK }),
+    null,
+  );
+  if (verdictAck === null || isCheckpoint(verdictAck) || verdictAck.persisted !== true) {
+    // A half-written verdict surfaces MORE, never less (D6): treat a failed append as an
+    // escalation rather than swallowing the accept.
+    verifierEscalations.push({ key: pin.key, component: pin.component, verdict: 'escalate', reason: 'accept verdict could not be durably appended to the ledger — surfacing (annotate-not-disarm).' });
+    continue;
+  }
+  verdicts.push({ key: pin.key, component: pin.component, verdict: 'accept', oracle: verdict.oracle });
+}
+log('Intent-verify: ' + verdicts.length + ' pin(s) accepted (verdict recorded); ' + verifierEscalations.length + ' escalated to the human inbox.');
+
+// 6. Invariant-verify (read-only): GREEN ON HEAD — the inverse of RED-on-HEAD~ —
 //    plus parked-compile + floor-green. The auditor runs the commands itself.
 phase('Invariant-verify');
 log('Invariant-verify: confirming every parked characterization test is GREEN on HEAD (the inverse of RED-on-HEAD~), parked tests compile, the floor is green.');
@@ -447,7 +771,7 @@ if (invariant === null) {
   return { kind: 'halt', reason: 'invariant-verify returned null — the corpus invariant (GREEN-on-HEAD) was not confirmed; do not ratify an unverified corpus.' };
 }
 
-// 5. Scribe the derived index (serial, awaited). A null/false ack is a HALT — the
+// 7. Scribe the derived index (serial, awaited). A null/false ack is a HALT — the
 //    script must not proceed believing the index persisted (it loses no truth: the
 //    derived index is rebuildable from git+ledger).
 phase('Scribe');
@@ -463,22 +787,36 @@ if (ack === null || isCheckpoint(ack) || ack.persisted !== true) {
   };
 }
 
-// 6. Return the typed CHARACTERIZATION_RESULT to the human birth-ratification gate.
+// 8. Return the typed CHARACTERIZATION_RESULT to the human birth-ratification gate.
 //    The engine cannot block on a human; the main session is where blocking (gated
-//    mode) happens. Silence never ratifies a corpus. An invariant failure or any
-//    inadmissible / suspected-bug pin is surfaced for the three-way classification.
+//    mode) happens. Silence never ratifies a corpus. An invariant failure, any
+//    inadmissible / suspected-bug pin, an adversary ESCALATE, or the demoted floor-
+//    integrity backstop is surfaced for the human (autonomous: ESCALATE joins the
+//    always-escalate classes, a fifth disposition queued BREAKING — D8).
 const invariantPassed = invariant.passed === true;
+const allEscalations = verifierEscalations.slice();
+if (floorBackstop) allEscalations.push({ key: '(floor-integrity)', verdict: 'escalate', oracle: 'floor backstop', reason: floorBackstop.reason });
+// The corpus ratifies only when the invariant passes AND nothing escalated. An adversary
+// ESCALATE (or a surfaced floor backstop) routes to the human just like an invariant failure;
+// it never silently ratifies (the failure direction is always toward MORE scrutiny — D6).
+const clean = invariantPassed && allEscalations.length === 0;
 return {
-  kind: invariantPassed ? 'ratify' : 'invariant-failed',
+  kind: clean ? 'ratify' : (invariantPassed ? 'escalate' : 'invariant-failed'),
   runMode: state.runMode,
   pinned,
   inadmissible,
   suspectedBugs,
   invariant,
-  note: invariantPassed
-    ? 'Characterization corpus built and parked: ' + pinned.length + ' born `characterized` pin(s), each GREEN on HEAD and admitted by the reverse discriminator. ' +
+  verdicts,
+  escalations: allEscalations,
+  floorBackstop,
+  note: clean
+    ? 'Characterization corpus built and parked: ' + pinned.length + ' born `characterized` pin(s), each GREEN on HEAD, admitted by the reverse discriminator, and (where it touches the floor or a shared contract) accepted by the intent-verifier adversary against the baseline-intent. ' +
+      (verdicts.length ? verdicts.length + ' verifier-verdict(s) recorded (annotate-not-disarm — advisory). ' : '') +
       (inadmissible.length ? inadmissible.length + ' inadmissible pin(s) reported (not blessed into the suite). ' : '') +
       (suspectedBugs.length ? suspectedBugs.length + ' pin(s) flagged as possibly encoding a bug — for the human three-way classification. ' : '') +
       'Present to the human birth-ratification gate; silence never ratifies.'
-    : 'Characterization corpus FAILED its GREEN-on-HEAD invariant: ' + (invariant.failures || []).join('; ') + '. Do not ratify; route to the human.',
+    : invariantPassed
+      ? 'Characterization corpus is GREEN-on-HEAD, but ' + allEscalations.length + ' item(s) ESCALATED to the human (adversary verdict and/or the demoted floor-integrity backstop): ' + allEscalations.map((e) => e.key).join(', ') + '. Do not ratify until the human resolves them — annotate-not-disarm means more eyes, never fewer.'
+      : 'Characterization corpus FAILED its GREEN-on-HEAD invariant: ' + (invariant.failures || []).join('; ') + '. Do not ratify; route to the human.',
 };
