@@ -53,6 +53,60 @@ project's discretion; the ledger and the human-authored standing artifacts
   verdicts/<id>.md             # adjudicator / skeptic / auditor outputs
 ```
 
+## Who writes each artifact — and why the orchestrator reaches for Bash
+
+The message bus has a second rule beyond *format*: **who may write each artifact,
+and how.** The fence enforces it, so it belongs in one place rather than being
+re-derived every session.
+
+The load-bearing fact: **once `.reasonable/` exists, the fence fails closed (D7b)
+for every `Write`/`Edit` by an actor with no lane descriptor — and the main
+session's own checkout has none.** So during an active effort the orchestrator (the
+main session) does **not** hand-edit source or worker-owned artifacts. It
+*dispatches* the worker whose role owns the write, and that worker — in a
+provisioned lane — does the editing. Two consequences that look like quirks but are
+the design:
+
+- **The orchestrator writes its *own* bookkeeping via Bash.** The standing
+  artifacts (vision, topology, route, config, supervision, lexicon, policies), plus
+  the work-orders and vertical-slice specs it cuts during the run, are the
+  orchestrator's to write — but `Write`/`Edit` is fenced shut for it the moment
+  `.reasonable/` exists. So it writes them with **Bash** (heredoc / redirection).
+  The no-lane Bash path is *intentionally not fenced*: a no-lane actor is the
+  trusted control plane, not a worker to be contained. This is the sanctioned write
+  path for the orchestrator, not a workaround to rediscover.
+- **`census` writes via Bash for the same reason — by capability.** Its toolset is
+  `Read, Grep, Glob, Bash` — **no `Write`/`Edit`** by design (a read-only role
+  shouldn't carry edit tools). So it emits its skeleton contracts via Bash and
+  `baseline.json` via `lib/baseline.mjs`. Same rule, made structural by the allowlist.
+
+Everything a **dedicated worker** owns goes through that worker, never the
+orchestrator's Bash:
+
+| Artifact | Written by | How |
+|---|---|---|
+| vision · topology · route · config · supervision · resource-lexicon · sanity-invariants · documentation-policy | **orchestrator** (main session, at analysis) | Bash (no-lane path) |
+| work-orders/`<id>`.json · vertical-slices/`<id>`.md | **orchestrator** (main session, during the run) | Bash (no-lane path) |
+| intention.md | **intention-writer** (after the coherence-grill ratifies) | its own atomic commit |
+| baseline.json + skeleton contracts | **census** (brownfield, at analysis) | Bash + `lib/baseline.mjs` (no-lane path) |
+| contracts/`<component>`.md | **implementer** (enrich grown) · **characterizer** (birth characterized) | in-lane; only the lane's own contracts (§5.10) |
+| ledger.jsonl | initialized empty at analysis; thereafter **each worker** appends its own line | inside that worker's D3a atomic commit |
+| journal.json · inbox.json | **journal-writer** (the single serialized scribe, D3b) | the derived index (rebuildable by reconcile) |
+| .reasonable-lane.json | **lane-provisioner** (before any fenced worker is dispatched) | `git worktree add` + the one descriptor write |
+| knowledge/`<id>`.md | **spike-runner** (or a dead-end ceremony) | from the quarantine |
+| progress-verdicts/ · ripple-manifests/ | **implementer** (checkpoint / escalation) | in-lane |
+| verdicts/`<id>`.md | **adjudicator · skeptic · auditor** | read-only judgments, returned to the orchestrator, which persists them |
+
+**The fence's Bash backstop (law 7).** Within a lane, the fence also inspects
+`Bash`: a detected shell write to the **control surface** — the enforcement layer
+(§5.14D) or a foreign/unauthorized contract (§5.10) — is denied just as the
+equivalent `Edit` would be, so a lane cannot `echo >> ledger.jsonl` its way around
+laws 1/2/4. It is a *backstop, not a sandbox*: the locus boundary for Bash still
+rests on the role allowlist plus the downstream footprint/audit (fully fencing a
+shell is undecidable). The recognized write forms live in `lib/shell-writes.mjs`;
+the boundary is `lib/fence.mjs` law 7. The no-lane Bash path (orchestrator, census)
+is deliberately left open per the rule above.
+
 Each **lane worktree** additionally carries, at its own root:
 
 ```
