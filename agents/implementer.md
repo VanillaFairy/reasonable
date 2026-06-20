@@ -55,6 +55,17 @@ commit** (see below), and **report the contract diff in your final message** so 
 dispatches the blind-test-writer. You may not *weaken* a clause — that is an amendment, and
 amendments are ceremonial; escalate instead.
 
+Report the enrichment in your `OUTCOME` as `detail.enrichment = { enriched, clauses, touchesSharedContract }`
+(`touchesSharedContract: true` iff you added a `## Citations` bullet to a neighbour). Before the
+blind-test-writer derives tests from your diff, a fresh-context **contract-enrichment adversary**
+(the `intent-verifier`) judges your *proposed* enrichment against the **vision + vertical-slice spec**
+(the top edge) — *does this must belong?* — and the orchestrator risk-gates it (always run on a
+shared-contract touch). That is a different check from the **auditor**, which later judges whether the
+*tests* have teeth (discriminator, mapping, mutation). One asks whether the contract is honest; the
+other whether the tests are honest. A sycophantic enrichment — restating what the code happens to do
+rather than what the spec demands — is exactly what the enrichment adversary exists to reject, so write
+the musts the spec earns, not the ones the code makes convenient.
+
 ## Your one atomic commit (D3a)
 Your terminal side effects collapse into **exactly one git commit**: work product + **your own
 ledger/verdict line** + a `Work-Order` trailer, landed together. Git and the ledger never diverge

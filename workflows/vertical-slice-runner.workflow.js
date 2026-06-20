@@ -9,16 +9,38 @@
 // Shape (architecture §19 sketch, faithfully):
 //   reconcile prologue (agent)  ─ unconditional, total, halting recovery (§12, D8b/D9)
 //     └ if state.halt → return {kind:'halt'}
+//     floor-integrity is a tier-3 BACKSTOP tripwire here, not a first-line HALT (D6):
+//     it surfaces every floor change, annotated explained-by-verdict (advisory) by any
+//     accept. D13 — the UNEXPLAINED-BREACH STOP: in AUTONOMOUS mode an UNEXPLAINED
+//     breaking floor-integrity-mismatch (no accept verdict explains it — something
+//     bypassed the pre-integration adversary) is the FIFTH always-escalate class: the
+//     reconciler sets halt=true (queue BREAKING + stop), so it returns {kind:'halt'}
+//     above. An EXPLAINED floor diff is a non-blocking notice (surfaces, run continues).
+//     In GATED mode both just surface in the briefing for the present human.
 //   route-planner (agent)       ─ footprints + resources + trust-staleness (§6, §16, D11/D13)
 //   groupDisjoint (pure)        ─ set-algebra over locus | contract | resource (mirrors
 //                                  lib/footprint.mjs independent(), D11)
 //   budget + agent-cap guarded while loop (§15, D16a/D16c)
 //     per wave: the enrichment pipeline() (§5.6, no barrier, §8)
-//        [ provisionThenImplement → blindTest → adjudicate → audit ]
+//        [ provisionThenImplement → intentVerify → blindTest → adjudicate → audit ]
 //        each agent() guard()-wrapped: a budget THROW → {kind:'checkpoint'} (D16b)
 //        provisionThenImplement folds in the conditional brownfield genesis prologue:
 //        the in-run `characterization-needed` agent sequence (BF7) — NOT a nested
 //        workflow() (one-level nesting forbids it, §15 D16d).
+//        intentVerify is the §5.6 CONTRACT-ENRICHMENT adversary — the verification
+//        trio's leg on the implementer's self-authored contract enrichment (the
+//        sycophancy / rot-vector-3 surface). A fresh-context, read-only-by-capability
+//        reasonable:intent-verifier judges the PROPOSED contract diff against the
+//        VISION + VERTICAL-SLICE SPEC oracle (ABOVE the artifact, D9 — never
+//        intention.md, never the contract the implementer wrote, which would be
+//        circular), BEFORE the blind-test-writer derives tests from it. RISK-GATED
+//        (D7): ALWAYS run where the enrichment touches a shared contract (a citation
+//        to a neighbour); may skip a boxed-in own-contract-only delta. accept|reject|
+//        escalate, propose-not-act (D2): reject → back to the implementer; escalate →
+//        the human inbox (autonomous: joins the always-escalate classes, D8). This is
+//        NOT a behaviorDelta-completeness verifier — that is a FALSE TRIO (D12): an
+//        undeclared move surfaces mechanically as an unaccounted floor break, a padded
+//        delta is caught by the existing two-oracle collision classifier.
 //     trap router: switch over OUTCOME.kind → its pre-written membrane crossing (§8)
 //     serial journalWrite (the script's only derived-index write); null → HALT (§6, D3b)
 //   computeGreen = floorGreen && trustedGreen (BF3)
@@ -57,7 +79,20 @@ const BRIEFING = {
   properties: {
     halt: { type: 'boolean' },
     haltReason: { type: 'string' },
+    // Which class triggered the halt. The four first-line AMBIGUOUS classes stay HALTs;
+    // floor-integrity-unexplained is the D13 fifth always-escalate STOP (an UNEXPLAINED
+    // autonomous floor breach). A plain floor-integrity diff that is explained-by-verdict
+    // (or any gated floor diff) is NOT a halt — it surfaces as a notice.
+    haltClass: {
+      type: ['string', 'null'],
+      enum: ['sha-custody', 'ledger-without-commit', 'runmode-absent', 'two-lanes-one-wo', 'floor-integrity-unexplained', 'other', null],
+    },
     evidence: { type: 'object', additionalProperties: true },
+    // D13: of the surfaced floor-integrity diffs, how many are UNEXPLAINED (no `accept`
+    // verifier-verdict explains them) — reconcile.mjs `floorIntegrity.unexplained`. In
+    // AUTONOMOUS mode >0 is the fifth always-escalate STOP; an EXPLAINED diff (>0 surfaced
+    // but unexplained:0) is a non-blocking notice. Null/0 when no floor diff surfaced.
+    floorUnexplained: { type: ['integer', 'null'] },
     runMode: { type: ['string', 'null'], enum: ['gated', 'autonomous', null] },
     currentVerticalSlice: { type: ['string', 'null'] },
     brownfield: { type: 'boolean' },
@@ -130,6 +165,38 @@ const CHARACTERIZATION = {
     seam: { type: 'string' },
     behaviorDelta: { type: 'array', items: { type: 'string' } },
     note: { type: 'string' },
+  },
+};
+
+// VERIFIER_VERDICT — what the §5.6 CONTRACT-ENRICHMENT adversary returns on one
+// PROPOSED contract enrichment (D5 shape, matching the verifier-verdict ledger event
+// in docs/artifacts.md + the characterization spine). The adversary is read-only by
+// capability and PROPOSES the verdict as DATA (proposed:true); a narrow writer (the
+// orchestrator) performs the ledger append — it never self-executes the act its
+// verdict authorizes (Law 3 corollary, D2). The reference (`oracle`) is the VISION +
+// VERTICAL-SLICE SPEC, ABOVE the artifact (D9): a sycophantic enrichment passes any
+// tests-vs-contract audit with honors, so it is judged at INTENT level against the top
+// edge — NEVER against intention.md and NEVER against the contract the implementer
+// itself wrote (that derivation is circular).
+const VERIFIER_VERDICT = {
+  type: 'object',
+  required: ['workOrder', 'verdict', 'oracle', 'proposed'],
+  additionalProperties: true,
+  properties: {
+    workOrder: { type: 'string' },
+    component: { type: 'string' },
+    // The proposed enrichment diff / clause(s) / commit-or-hash judged (content-references).
+    diffRef: { type: ['string', 'null'] },
+    verdict: { type: 'string', enum: ['accept', 'reject', 'escalate'] },
+    // The named reference judged against — vision + vertical-slice spec, ABOVE the artifact.
+    oracle: { type: 'string' },
+    by: { type: 'string' },              // "intent-verifier"
+    proposed: { type: 'boolean' },       // always true: propose-not-act (D2)
+    // Why the adversary ran (D7 risk-gate): the enrichment touches a shared contract
+    // (a Citations bullet to a neighbour). False ⇒ the orchestrator could have skipped
+    // it (a boxed-in own-contract-only delta).
+    touchesSharedContract: { type: 'boolean' },
+    reason: { type: ['string', 'null'] },
   },
 };
 
@@ -374,9 +441,11 @@ function reconcilePrompt(a) {
     `Target vertical slice: ${a.verticalSliceId}`,
     'Partition every artifact configuration into RESOLVED / SAFE-DEFAULT / AMBIGUOUS.',
     'Read config.runMode; if it is absent/null on a cold restart, HALT (defaulting to a "safer" mode is a forbidden inference).',
-    'Run the floor-integrity reconcile pass (brownfield): an unaccounted floor change is AMBIGUOUS → HALT.',
+    'Keep the four FIRST-LINE AMBIGUOUS → HALT classes: sha-custody (mismatched-trailer reclaim), ledger-without-commit (torn window), runmode-absent, two-lanes-one-WO.',
+    'Run the floor-integrity reconcile pass (brownfield) as a tier-3 BACKSTOP tripwire, NOT a first-line HALT (D6): it always SURFACES every floor diff (report it in evidence + note) and never SILENCES it; an `accept` verifier-verdict ANNOTATES the diff explained-by-verdict (ADVISORY ONLY — that annotation never clears the surfacing).',
+    'Report floorUnexplained = reconcile.mjs `floorIntegrity.unexplained` (surfaced floor diffs with NO accept verdict). D13 — the UNEXPLAINED-BREACH STOP: in AUTONOMOUS mode floorUnexplained>0 is the FIFTH always-escalate class — something bypassed the pre-integration adversary, so set halt:true (queue BREAKING + STOP, do not grind on). An EXPLAINED floor diff (surfaced but floorUnexplained:0) is a non-blocking NOTICE: log it and continue. In GATED mode both just surface in the briefing for the present human (no halt).',
     'Compute the trust-staleness set: trusted-green tests whose governing clause was amended/extended since last verification.',
-    'Return the BRIEFING. Set halt:true with haltReason+evidence for ANY AMBIGUOUS configuration — never guess a recovery state.',
+    'Return the BRIEFING. Set halt:true with haltReason+evidence for ANY of the four first-line AMBIGUOUS classes, or for an UNEXPLAINED autonomous floor breach (haltClass:"floor-integrity-unexplained") — never guess a recovery state.',
   ].join('\n');
 }
 
@@ -393,6 +462,42 @@ function routePrompt(state, a) {
     'Cite .reasonable/intention.md (the oracle) on every priority/scope fork; an unsettleable fork is an intent-fork, not a silent guess (D5b).',
     'Size waves so the slice cannot plausibly approach the 1000-agent lifetime cap (D16c).',
     'Return the ROUTE_PLAN.',
+  ].join('\n');
+}
+
+// intentVerifyPrompt — the §5.6 CONTRACT-ENRICHMENT adversary. Fresh context, read-only
+// BY CAPABILITY; it carries the PROPOSED contract diff + its oracle, never the
+// implementer's transcript (inheriting the mutator's narrative collapses the judgment
+// into agreement). The oracle sits ABOVE the artifact (D9): the VISION + the
+// VERTICAL-SLICE SPEC — never intention.md, never the contract the implementer wrote.
+function intentVerifyPrompt(wo, a) {
+  return [
+    'You are the intent-verifier ADVERSARY for ONE proposed CONTRACT ENRICHMENT (the §5.6 contract-enrichment instance of the verification trio). Fresh context, read-only BY CAPABILITY (Read/Grep/Glob).',
+    'A worker (the implementer) self-authored a contract enrichment fresh from the code. A sycophantic enrichment passes any tests-vs-contract audit with honors — only INTENT-level review against the top edge catches it. You judge the PROPOSED diff BEFORE the blind-test-writer derives tests from it.',
+    `Effort root: ${a.effortRoot}`,
+    `Work order: ${wo.id} (component: ${wo.role || 'implementer'}). Read the proposed contract diff from the ledger enrichment entry + the contract file; do NOT read the implementer's transcript.`,
+    'YOUR REFERENCE (the oracle, ABOVE the artifact, D9): the VISION + the VERTICAL-SLICE SPEC. Judge ONLY against that top edge. You may NOT judge the enrichment against .reasonable/intention.md, and you may NOT judge it against the contract the implementer itself wrote (that derivation is circular — agreement is tautological).',
+    'Judge: (1) does each new must serve a behaviour the vision + slice spec actually demand — not scope sprawl, not a sycophantic restatement of what the code happens to do? (2) is it pinned at the right component / seam, not reaching past the locus? (3) where the enrichment cites a NEIGHBOUR (a shared-contract touch), is that citation warranted by the spec, or is it smuggling coupling the spec does not sanction?',
+    'PROPOSE-NOT-ACT (Law 3 corollary, D2): return the verdict as DATA; you integrate nothing and fix nothing. A narrow writer / the orchestrator appends any resulting ledger event.',
+    'Return the VERIFIER_VERDICT: verdict accept|reject|escalate, oracle = "vision + vertical-slice spec", by:"intent-verifier", proposed:true, touchesSharedContract reflecting why you ran. accept = every new must is warranted by the vision + slice spec, at the right seam. reject = over- or under-claims against the spec / wrong seam / unwarranted neighbour coupling — CITE the specific over/under-claim and the spec it violates (routes back to the implementer). escalate = two defensible readings the spec cannot settle — name both (routes to the human inbox; in autonomous mode it joins the always-escalate classes). A wrong ACCEPT corrupts effort truth — say only what the reference supports; where it is silent, escalate rather than invent an accept.',
+  ].join('\n');
+}
+
+// verdictWriterPrompt — the NARROW WRITER. The read-only adversary proposed an accept as
+// data; this writer performs the one resulting act (Law 3 corollary, D2): append ONE
+// verifier-verdict event to the on-disk append-only ledger, content-referencing the
+// enrichment commit it judged (D5 — durability is the atomic on-disk append, NOT a git
+// commit of orchestration state). The append ANNOTATES the diff explained-by-verdict —
+// advisory only (D6); it silences no guard.
+function verdictWriterPrompt(wo, verdict, a) {
+  return [
+    'You are a NARROW WRITER. The intent-verifier ADVERSARY proposed an `accept` verdict on a contract enrichment as data; it is read-only and never integrates its own verdict (Law 3 corollary). You perform the one resulting act: append ONE verifier-verdict event to the append-only ledger, content-referencing the enrichment it judged. Nothing else.',
+    `Effort root: ${a.effortRoot}`,
+    `Work order: ${wo.id}.`,
+    'Append exactly this event to .reasonable/ledger.jsonl (one JSON line; an on-disk append, NOT a git commit of orchestration state — verdict durability is the atomic on-disk append, D5):',
+    '  ' + j({ type: 'verifier-verdict', component: wo.role || wo.id, diffRef: verdict.diffRef || null, verdict: verdict.verdict, oracle: verdict.oracle, by: 'intent-verifier', proposed: true }),
+    'Add the ledger seq and the code commit/hash the enrichment landed (`commit`) from the live ledger/git — do not invent them.',
+    'This verdict ANNOTATES the enrichment diff as explained-by-verdict: ADVISORY ONLY (D6). It does NOT silence any floor or reconcile guard and does NOT bless the enrichment past review — a missing or half-written verdict can only cause MORE human surfacing, never less. Write nothing but this one ledger line. Return {persisted:true} once the line is durably appended (persisted:false / null otherwise — the orchestrator surfaces it).',
   ].join('\n');
 }
 
@@ -449,6 +554,7 @@ async function provisionThenImplement(wo, _orig, _idx, ctx) {
       `Vertical slice: ${wo.verticalSlice || a.verticalSliceId}`,
       'Stay within your declared locus; request scope expansion from the orchestrator (a cheap logged message) rather than editing out of locus.',
       'Enrich your OWN contract with newly-learned musts and log the contract diff to the ledger.',
+      'Report your enrichment in the OUTCOME detail as detail.enrichment = { enriched, clauses:[ids you added], touchesSharedContract (true iff a new Citations bullet to a neighbour) } so the contract-enrichment adversary can risk-gate and judge the PROPOSED diff against the vision + slice spec BEFORE tests derive from it.',
       'Collapse your terminal effects into ONE atomic commit: work product + your own ledger/verdict line + a Work-Order trailer (D3a).',
       'If you hit a wall, emit the matching OUTCOME kind (scope-expansion / ripple / jurisdiction / spike-needed / infeasible / intent-fork / other) — never thrash toward green.',
       'Cite .reasonable/intention.md when a fork turns on a scope/priority choice; an unsettleable fork is intent-fork (BREAKING), never a silent guess.',
@@ -456,6 +562,92 @@ async function provisionThenImplement(wo, _orig, _idx, ctx) {
     ].join('\n'),
     { label: `implement:${wo.id}`, phase: 'Enrich', agentType: 'reasonable:implementer', schema: OUTCOME },
   ));
+}
+
+// intentVerify — the §5.6 CONTRACT-ENRICHMENT adversary, the verification trio's leg
+// on the implementer's self-authored contract enrichment (rot vector 3 / sycophancy).
+// A fresh-context, read-only-by-capability intent-verifier judges the PROPOSED contract
+// diff against the VISION + VERTICAL-SLICE SPEC oracle (ABOVE the artifact, D9 — never
+// intention.md, never the contract the implementer wrote, which is circular), BEFORE
+// the blind-test-writer derives tests from it. It runs INSIDE the trio shape:
+//   • Carry a trapped/non-green prior OUTCOME forward untouched (short-circuit).
+//   • RISK-GATE (D7): ALWAYS run when the enrichment touches a SHARED contract (a
+//     citation to a neighbour); SKIP a boxed-in own-contract-only delta (a false trio).
+//     The dial trades a check for speed — it NEVER disables the floor/shared-contract
+//     guard; the gate keys on what the enrichment TOUCHES, never on trust.
+//   • A work order that enriched NOTHING has no diff to judge → pass the prior through.
+//   • PROPOSE-NOT-ACT (D2): the adversary returns the verdict as data; a narrow writer
+//     appends the verifier-verdict ledger event (D5). accept → continue the chain;
+//     reject → one bounded re-implement by the implementer then re-judge, still-not-
+//     accepted → intent-fork (BREAKING) to the human; escalate → intent-fork (BREAKING,
+//     autonomous: joins the always-escalate classes, D8). A null/half-written verdict
+//     fails toward scrutiny (intent-fork), never silently past.
+async function intentVerify(prev, wo, _idx, ctx) {
+  if (!prev || prev.kind !== 'green') return prev; // trapped lane: carry the trap forward
+  const a = ctx.args;
+
+  // The implementer reports its enrichment in the OUTCOME detail: which clauses it
+  // added and whether the delta added a Citations bullet (a shared-contract touch).
+  const enr = (prev.detail && prev.detail.enrichment) || {};
+  const enriched = !!(enr.clauses && enr.clauses.length) || enr.enriched === true;
+  if (!enriched) return prev; // nothing self-authored to judge — no diff, no adversary.
+
+  const touchesSharedContract = enr.touchesSharedContract === true || enr.citationsAdded === true;
+  if (!touchesSharedContract) {
+    // Boxed-in own-contract-only enrichment nothing depends on yet — the risk-gate lets
+    // it past unverified (a false trio). This skip keys on what the enrichment TOUCHES,
+    // in EITHER run mode; a shared-contract touch is OFF the dial entirely (non-waivable).
+    log(`intent-verify: ${wo.id} enrichment is own-contract-only (no shared-contract touch) — adversary skipped per the risk-gate (D7).`);
+    return prev;
+  }
+
+  let verdict = await guard(wo.id, () => ctx.agent(intentVerifyPrompt(wo, a), {
+    label: `intent-verify:${wo.id}`, phase: 'Enrich', agentType: 'reasonable:intent-verifier', schema: VERIFIER_VERDICT,
+  }));
+  if (verdict && verdict.kind === 'checkpoint') return verdict; // budget ceiling / null gap
+
+  // reject → ONE bounded re-implement against the verdict, then re-judge. A fixed control
+  // flow cannot grow an unbounded loop, so a still-rejected enrichment escalates rather
+  // than thrashing toward acceptance.
+  if (verdict && verdict.verdict === 'reject') {
+    log(`intent-verify: ${wo.id} enrichment REJECTED by the adversary (${verdict.reason || 'no reason'}) — routing back to the implementer for one re-enrichment.`);
+    const reimpl = await provisionThenImplement(wo, null, _idx, ctx);
+    if (reimpl && reimpl.kind === 'checkpoint') return reimpl;
+    if (!reimpl || reimpl.kind !== 'green') return reimpl; // re-implement trapped → carry that trap
+    verdict = await guard(wo.id, () => ctx.agent(intentVerifyPrompt(wo, a), {
+      label: `intent-verify:${wo.id}:retry`, phase: 'Enrich', agentType: 'reasonable:intent-verifier', schema: VERIFIER_VERDICT,
+    }));
+    if (verdict && verdict.kind === 'checkpoint') return verdict;
+    if (!verdict || verdict.verdict !== 'accept') {
+      return { kind: 'intent-fork', workOrder: wo.id, verticalSlice: wo.verticalSlice || a.verticalSliceId,
+        detail: { stage: 'intent-verify', reason: `enrichment still not accepted after one re-enrichment (${(verdict && verdict.reason) || 'no verdict'})`, oracle: 'vision + vertical-slice spec' },
+        note: 'contract-enrichment adversary: re-enrichment still rejected — escalating to the human' };
+    }
+  }
+
+  // escalate (or a null/absent verdict) → intent-fork to the human. The failure
+  // direction is always toward scrutiny (annotate-not-disarm spirit): a missing verdict
+  // surfaces MORE, never less. In autonomous mode an escalate joins the always-escalate
+  // classes (the trap router queues it BREAKING).
+  if (!verdict || verdict.verdict === 'escalate') {
+    return { kind: 'intent-fork', workOrder: wo.id, verticalSlice: wo.verticalSlice || a.verticalSliceId,
+      detail: { stage: 'intent-verify', reason: (verdict && verdict.reason) || 'intent-verifier returned no verdict — surfacing (fail toward scrutiny)', oracle: (verdict && verdict.oracle) || 'vision + vertical-slice spec' },
+      note: 'contract-enrichment adversary escalated: enrichment unsettleable against the vision + slice spec' };
+  }
+
+  // accept → a NARROW WRITER (separated from the read-only adversary, Law 3 corollary)
+  // appends the verifier-verdict ledger event (D5). The append ANNOTATES the enrichment
+  // diff (advisory, D6); it integrates/blesses/silences nothing. A failed append fails
+  // toward scrutiny → intent-fork.
+  const ack = await guard(wo.id, () => ctx.agent(verdictWriterPrompt(wo, verdict, a), {
+    label: `verdict-write:${wo.id}`, phase: 'Enrich', agentType: 'reasonable:journal-writer', schema: { type: ['object', 'null'], additionalProperties: true },
+  }));
+  if (!ack || ack.kind === 'checkpoint' || ack.persisted === false) {
+    return { kind: 'intent-fork', workOrder: wo.id, verticalSlice: wo.verticalSlice || a.verticalSliceId,
+      detail: { stage: 'intent-verify', reason: 'accept verdict could not be durably appended to the ledger — surfacing (annotate-not-disarm: never fewer eyes)' },
+      note: 'contract-enrichment adversary accepted but the verifier-verdict append failed — escalating' };
+  }
+  return prev; // accepted + recorded: the enrichment stands; continue the chain.
 }
 
 // blindTest — fresh-context agent; receives ONLY old+new contract text, never the
@@ -672,7 +864,25 @@ phase('Reconcile');
 // guard()-wrapped): a reconcile failure is a HALT, not a budget checkpoint.
 let state = await agent(reconcilePrompt(a), { label: 'reconcile', agentType: 'reasonable:reconciler', schema: BRIEFING });
 if (!state || state.halt) {
-  return { kind: 'halt', reason: (state && state.haltReason) || 'reconcile returned null or AMBIGUOUS (recovery halt)' };
+  // Carry the D13 distinction in the slice-runner's own halt result rather than
+  // relying solely on reconcile.mjs setting halt: a floor-integrity-unexplained halt
+  // is the fifth always-escalate STOP (an UNEXPLAINED autonomous floor breach), tagged
+  // distinctly from the four first-line AMBIGUOUS classes for the main-session router.
+  const haltClass = state && state.haltClass || null;
+  return {
+    kind: 'halt',
+    haltClass,
+    floorUnexplained: state && typeof state.floorUnexplained === 'number' ? state.floorUnexplained : null,
+    reason: (state && state.haltReason) ||
+      (haltClass === 'floor-integrity-unexplained'
+        ? 'UNEXPLAINED autonomous floor-integrity breach — fifth always-escalate STOP (D13)'
+        : 'reconcile returned null or AMBIGUOUS (recovery halt)'),
+  };
+}
+// An EXPLAINED floor diff (or any gated floor diff) does not halt: it surfaces as a
+// non-blocking NOTICE (annotate-not-disarm — the human always sees it, the run continues).
+if (typeof state.floorUnexplained === 'number' && state.floorUnexplained === 0 && (state.evidence || state.haltReason)) {
+  log('Reconcile: floor-integrity diff surfaced as a NON-BLOCKING NOTICE (D6/D13: explained-by-verdict or gated) — logged, run continues.');
 }
 
 // Effective run mode (carried, never inferred). reconcile read config.runMode; an
@@ -703,14 +913,18 @@ while (!verticalSliceGreen && withinBudget(a, budget) && withinAgentCap(state)) 
 
   for (const wave of waves) {
     log(`dispatching wave of ${wave.workOrders.length} work order(s).`);
-    state.agentsDispatched += wave.workOrders.length * 6; // rough per-WO agent tally (provision+[characterize]+implement+blind+adjudicate+audit-leaf)
+    state.agentsDispatched += wave.workOrders.length * 7; // rough per-WO agent tally (provision+[characterize]+implement+intent-verify+blind+adjudicate+audit-leaf)
 
     // The enrichment pipeline (§5.6) — NO barrier between stages (§8): a fast-trapping
     // lane is triaged the instant ITS chain returns, not after the slowest lane. Each
     // stage callback receives (prevResult, originalItem, index); we close over ctx.
+    // intentVerify sits BEFORE blindTest: the contract-enrichment adversary judges the
+    // PROPOSED contract diff against the vision + slice spec (D9) before tests derive
+    // from it — a sycophantic enrichment must not become the oracle the tests track.
     const outcomes = await pipeline(
       wave.workOrders,
       (wo, orig, i) => provisionThenImplement(wo, orig, i, ctx),
+      (prev, wo, i) => intentVerify(prev, wo, i, ctx),
       (prev, wo, i) => blindTest(prev, wo, i, ctx),
       (prev, wo, i) => adjudicate(prev, wo, i, ctx),
       (prev, wo, i) => audit(prev, wo, i, ctx),

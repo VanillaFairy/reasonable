@@ -72,20 +72,36 @@ drive these stages — you read this so you can interpret the `GATE_RESULT` and 
 1. **Provision + implement.** The `lane-provisioner` creates the worktree + `.reasonable-lane.json` +
    journal record *before* the fenced worker (closes the descriptor-less window). The `implementer`
    then builds thin-real on path, loud stubs off path, **writes its own contract enrichment + ledger
-   line in its one atomic commit**, and emits an `OUTCOME`. (Rot guard 3: the contract is written by
-   the implementer fresh from the code, so the **retro** reviews contract diffs at intent level.) On a
-   brownfield first touch the runner folds in the in-run `characterizer` genesis (provider-first, after
-   the implementer's `behaviorDelta`) — an **agent sequence, never a nested `workflow()`** (one-level
-   nesting forbids it).
-2. **Blind test.** The `blind-test-writer` — a *fresh context* — gets **only** the old and new contract
+   line in its one atomic commit**, and emits an `OUTCOME` (reporting its enrichment in
+   `detail.enrichment`). On a brownfield first touch the runner folds in the in-run `characterizer`
+   genesis (provider-first, after the implementer's `behaviorDelta`) — an **agent sequence, never a
+   nested `workflow()`** (one-level nesting forbids it).
+2. **Intent-verify the enrichment** (the contract-enrichment adversary — closes rot guard 3
+   *pre-integration*). Because the implementer writes its own contract fresh from the code, a
+   *sycophantic* enrichment — one that restates what the code does rather than what the spec demands —
+   would pass any tests-vs-contract audit with honors; only **intent-level** review against the top
+   edge catches it. So before the blind-test-writer derives tests from the diff, a fresh-context,
+   read-only `intent-verifier` judges the **proposed** enrichment against the **vision + vertical-slice
+   spec** (the oracle *above* the artifact — never `intention.md`, never the contract the implementer
+   wrote, which would be circular). It is **risk-gated** (D7): the runner **always** runs it when the
+   enrichment touches a **shared contract** (a citation to a neighbour); it may skip a boxed-in
+   own-contract-only delta. The adversary **proposes** `accept | reject | escalate` and acts on nothing
+   (Law-3 corollary) — a narrow writer appends the `verifier-verdict` ledger event on accept; **reject**
+   routes back to the implementer for one bounded re-enrichment (still-rejected → `intent-fork`);
+   **escalate** → the human inbox (autonomous: joins the always-escalate classes). This is **not** a
+   `behaviorDelta`-completeness verifier — that would be a *false trio*: an undeclared move surfaces
+   mechanically as an unaccounted floor break, and a padded delta is caught by the two-oracle collision
+   classifier. *(The retro still reviews accepted contract diffs at intent level — the adversary moves
+   the first cut of that review earlier, it does not replace the human heartbeat.)*
+3. **Blind test.** The `blind-test-writer` — a *fresh context* — gets **only** the old and new contract
    text. It never sees the implementation or the diff; it has no Bash. (Rot guard 1: tests written
    looking at code assert what the code does.)
-3. **Adjudication fork.** The runner runs the tests; for each red it dispatches the read-only
+4. **Adjudication fork.** The runner runs the tests; for each red it dispatches the read-only
    `adjudicator` with the failing test + the contract clause as the sole arbiter: *implementation
    violates contract* → fix the implementation (test untouched); *test mistranslates a clause* → fix
    the test, citing the clause. (Rot guard 2: green-ness is never the goal of test-editing; most reds
    are impl-bugs.) A scope/jurisdiction fork cites `.reasonable/intention.md` (the oracle).
-4. **Audit** (`adversarial-audit` skill), as a read-only `parallel()` leaf, escalating: **(a)**
+5. **Audit** (`adversarial-audit` skill), as a read-only `parallel()` leaf, escalating: **(a)**
    discriminator per enrichment (new tests must FAIL at the pre-task commit); **(b)** bidirectional
    mapping; **(c)** mutation sampling at the **vertical-slice gate**; **(d)** reverse discriminator for
    characterization clauses. Gate = **AND over all checks**. Collapses to one discriminator at the low
@@ -132,7 +148,9 @@ Inspect `outcome.kind` and act:
 - **`intent-fork`** → an ambiguity neither code nor `intention.md` can settle → **human inbox
   (BREAKING)**; in gated mode block for the decision, in autonomous mode this is the one class that
   still routes to the human (it can turn on a vision/scope choice). A **vision amendment** always
-  routes to the human regardless of mode.
+  routes to the human regardless of mode. *(The contract-enrichment adversary surfaces here too: a
+  re-enrichment the adversary still rejects, or an `escalate` it cannot settle against the vision +
+  slice spec, returns as an `intent-fork`.)*
 - **`other`** → an unknown wall the schema can't name → **human inbox (BREAKING)**; fail-safe.
 - **`unforeseen-regression`** (a floor break the change did not declare via `behaviorDelta`, mechanically
   classified by `toGateResult`'s two-oracle classifier) → BREAKING; present the broken floor tests and
@@ -149,6 +167,21 @@ The reconcile prologue found an **AMBIGUOUS** configuration (or the scribe could
 index). Truth is intact — reconcile rebuilds the derived index from git + ledger + contracts. Present
 `reason` to the human; do **not** guess a recovery state (defaulting to a "safer" mode is a forbidden
 inference). Resolve the ambiguity, then re-launch.
+
+**The floor-integrity backstop is the fifth always-escalate class (D6 + D13).** The byte-level
+floor-integrity hash cannot tell a harmless additive pin from a real regression, so it no longer
+first-line HALTs — it is a **tier-3 backstop tripwire**: reconcile *surfaces* every floor change,
+annotated `explained-by-verdict` (advisory) by any `accept`. But the demotion moved the floor gate
+*earlier* (to the pre-integration intent-verifier), it did not remove it — so an unattended run must
+still stop on a surprise regression that bypassed that adversary. **D13 — the unexplained-breach
+stop:** in **autonomous** mode an **unexplained** breaking floor-integrity-mismatch (a surfaced floor
+diff that **no** `accept` verdict explains — `result.floorIntegrity.unexplained > 0`) is the **fifth
+always-escalate class**: reconcile sets `halt = true` (queue **BREAKING** + stop the loop), so it
+returns as a `halt` here — do **not** grind on; present it and resolve before re-launch. An
+**explained** floor diff (the adversary accepted it pre-integration) is a **non-blocking notice**: it
+surfaces and is logged, the run continues. In **gated** mode neither halts — both just surface in the
+briefing for the present human. Annotate-not-disarm holds throughout: the human always sees the diff,
+explained or not; an `accept` only ever causes **more** surfacing, never less.
 
 ## 4. Spikes & dead ends (information vs. walls)
 - **Mid-slice spike** (surfaced as a `blocked` / `spike-needed` `GATE_RESULT`): **you** launch
@@ -245,6 +278,11 @@ on. Changing mode or profile mid-effort requires an explicit human instruction, 
 - **Letting the implementer write tests, or the test-writer see code.** Both break the verification
   chain. The runner enforces fresh blind subagents, capability-enforced.
 - **Iterating tests to green.** The runner's adjudication fork rules; most reds are impl-bugs.
+- **Trusting a self-authored contract enrichment because the tests pass.** Tests derive *from* the
+  contract — they cannot catch a sycophantic enrichment. The contract-enrichment adversary judges the
+  enrichment against the vision + slice spec *before* tests derive from it, and it always runs on a
+  shared-contract touch. Don't conflate it with the auditor (which judges whether the *tests* have
+  teeth) — one asks whether the contract is honest, the other whether the tests are.
 - **Five vertical slices at once.** That spends feedback. One slice in flight by default.
 - **Resolving a ripple as one big commit.** The runner sequences topologically ordered single-contract
   runs; parity at every commit. You only escalate the cycles.
