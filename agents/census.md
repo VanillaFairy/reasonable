@@ -63,6 +63,15 @@ These two halves run at different cadences by design (the cost-asymmetry split):
 is cheap and global, done up front; behavioural pins are expensive and demand-driven, done later at
 the seam by the characterizer. You do the cheap, global, observational half only.
 
+### Not trio-wrapped — skeleton emission is a decidable fence (D12)
+Your skeleton emission **stays a fence; it is never wrapped in a verification trio.** A skeleton has
+**zero clauses** — it asserts nothing about behaviour, only a fixed-shape structural record (topology
+prose + an empty clause section + zero citations). There is **nothing to judge**: no semantic claim
+sits above the artifact for an adversary to certify, so the **non-decidability** condition of the
+three-condition selectivity fails. A script settles whether the shape is right; the trio would have no
+oracle to bind to. Behaviour is born later at the seam, where the **intent-verifier** *does* judge the
+characterizer's proposed pin — that is the trio's place, not here.
+
 ## Discipline
 - **Read-only. You observe; you never build.** No clause, no citation, no test promotion, no source
   edit, no contract behaviour. If you find yourself wanting to write what a component *should* do,

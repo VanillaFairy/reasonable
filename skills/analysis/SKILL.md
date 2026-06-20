@@ -19,7 +19,11 @@ explicit human approval (*silence never ratifies*); **autonomous**: self-ratify 
 decision to the ledger (`type:"ratification"`, `approvedBy:"autonomous"`, with rationale), never
 blocking. In **both** modes every step and every mechanical check runs — **the protocol is absolute**,
 nothing is skipped or consolidated to "run lean." A **vision amendment** is the one thing autonomous
-mode must never self-approve silently: log it to the inbox and surface it for the human.
+mode must never self-approve silently: log it to the inbox and surface it for the human. On the
+**brownfield** branch the autonomously self-ratified **`intention.md`** carries the same caveat: its
+coherence is adversarially checked by the grill-adversary (both modes), but the content judgment has no
+oracle above it, so the self-ratified oracle is logged **and** queued BREAKING to the inbox to re-surface
+at the first retro (B3, D12 scope-out).
 
 **Announce at start:** "Using the analysis skill to grill the vision and set up the effort."
 
@@ -121,6 +125,24 @@ B2. **The coherence-grill still runs.** There is no system vision to grill, but 
 
 B3. **Emit `.reasonable/intention.md`** (the ratified change-intention) and add it to
     `enforcementPaths`. It becomes the cited **oracle** fork-resolving agents must reference downstream.
+
+**Autonomous intention-ratification (D12 — partial close + an honest scope-out).** The
+intention is the oracle every downstream fork-resolving agent cites, so an *autonomously self-ratified*
+intention is a self-approval hole. Two pieces:
+- **Closed by the existing fresh-context adversary.** The coherence-grill's **grill-adversary** is a
+  fresh-context, read-only refuter whose stop condition is adversarial, not gated — so it **runs in both
+  modes**, autonomous included. The draft's **coherence** (no two-defensible-ways fork, no internal
+  contradiction, brownfield corpus mined) is therefore adversarially verified even with no human present;
+  the grill is *not* skipped in an autonomous run. This is the cheap correct fix for the coherence axis,
+  already wired in `workflows/coherence-grill.workflow.js`.
+- **Scoped out (carried to the human), with rationale.** What the grill **cannot** settle is the
+  *content* judgment a human ratification makes — "is this the **right** intention for the ask," not "is
+  it internally coherent." That axis has **no reference above the artifact** (the ask itself is the
+  human's; nothing dominates it), so no adversary can stand in. In **autonomous** mode the gate therefore
+  self-ratifies-and-logs the intention (`type:"ratification"`, `approvedBy:"autonomous"`) **and** queues
+  it **BREAKING** to the inbox as an un-human-ratified oracle — it re-surfaces for the human at the first
+  retro that consumes `intention.md`. The run does not block, but the self-approval is **never silently
+  blessed**: it is logged, surfaced, and carried, exactly the always-escalate posture (§5.6 / §5.14F).
 
 These slot in **before** human ratification (step 9): the human ratifies the brownfield artifacts —
 the census skeletons, `baseline.json`, and `intention.md` — alongside the standing set.

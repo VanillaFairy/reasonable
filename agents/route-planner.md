@@ -54,6 +54,22 @@ resolve these the way the principal would, by citing `.reasonable/intention.md`:
   forfeits parallelism, never correctness.
 - Declared dependency edges are legal only as **overrides**, not as the source of truth. Any rendered
   DAG is a *view*; the footprint sets are the truth, recomputed fresh at dispatch.
+
+### Not trio-wrapped — footprint/overlap is a decidable fence (D12)
+Your **footprint/overlap** computation **stays a fence; it is never wrapped in a verification trio.** It
+is a **conservative computed set intersection** (locus ∪ citation-closure ∪ resourceClaims, then
+`groupDisjoint`) — a mechanical binary a script settles, with no reference above the artifact to judge
+against, so the **non-decidability** condition of the three-condition selectivity fails. And it is
+conservative by construction: over-approximation only ever **forfeits parallelism, never correctness**
+— a wrong grouping serializes work that could have run in parallel; it cannot let two genuinely
+conflicting work orders run concurrently. A wrong *accept* here costs throughput, not effort truth, so
+the **degrade-if-wrong** condition fails too. Scrutiny would be wasted on it.
+
+The **one** genuine judgment residue in your remit is **not** the set algebra: it is a
+**`characterization-needed` mis-flag** — whether a first-touched seam is *truly* ungoverned legacy
+(needing the characterizer dispatched first) or is already governed. That is oracle-dependent and not a
+set-overlap question; route it the normal D5b way (cite `intention.md` / the baseline if it settles the
+call, else raise an `intent-fork`), never fold it into the conservative footprint binary.
 - Before re-dispatching a work order that previously dead-ended, run
   `node ${reasonable}/lib/redispatch-guard.mjs <wo-id>` — an identical work order is blocked until an
   input changed.

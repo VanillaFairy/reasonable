@@ -21,9 +21,12 @@ approval of each item (*silence never approves*). **autonomous**: perform the sa
 **self-approve and log** each decision to the ledger (`type:"ratification"`/`approvedBy:"autonomous"`,
 with rationale), and proceed without blocking. In **both** modes the full review runs — gate evidence
 is re-checked, every divergence is classified three ways (no unclassified divergence), and the route
-is re-sorted. **The protocol is absolute.** The one exception autonomous mode must still escalate to
-the human: a **vision amendment** (queue it in the inbox, surface it; never silently self-approve a
-change to the user's goal).
+is re-sorted. **The protocol is absolute.** **Two** exceptions autonomous mode must still escalate to
+the human rather than self-approve: a **vision amendment** (queue it in the inbox, surface it; never
+silently self-approve a change to the user's goal), and a **born `characterized` three-way
+classification** (keep / fix-it-pins-a-bug / defer) — its legacy-correctness axis has no reference above
+the artifact, so no adversary can settle it; it is queued **BREAKING** and carried to the human (step 2,
+D12 scope-out). Everything else self-ratifies and is logged as above.
 
 **Announce at start:** "Using the retro skill — the blocking heartbeat for vertical slice <id>."
 
@@ -51,6 +54,17 @@ change to the user's goal).
      (the pin froze a defect; the change must move it — route to a grown test / `change-characterized`,
      never bless the bug), or **defer** (acknowledged but out of this vertical slice's scope). *Same rule:
      no unclassified born clause.*
+     - **Autonomous mode does NOT self-ratify this classification (D12 scope-out).** The keep /
+       fix-it-pins-a-bug / defer call turns on **is the pinned legacy behaviour correct** — and there is
+       **no reference above the artifact** for that (the characterizer's no-internal-tell bug-pin blind
+       spot, intent-verifier's explicitly-disclaimed axis). So no fresh-context adversary can stand in:
+       oracle-dependence has no oracle to bind to, so this is **not** a trio gap a refuter could close —
+       it is a **genuinely unsettleable** judgment. In **autonomous** mode it therefore joins the
+       always-escalate classes (§5.6 / §5.14F): each unclassified born `characterized` clause is queued
+       **BREAKING** to the inbox (step 6) and **carried to the human**, exactly like a vision amendment —
+       never self-approved, never silently left FLOOR. The autonomous loop logs the open classification
+       and surfaces it; it does **not** grade this on the human's behalf. In **gated** mode the present
+       human classifies each here, as written above.
 3. **Approve the amendment batch (human, blocking).** Proposed contract *weakenings* are batched with a
    reason each. The human approves or rejects **individually**. Each approval is appended to the ledger
    `approvedBy:"human"` (`contract-amendment` skill). The blind-test-writer re-derives affected tests
@@ -73,7 +87,8 @@ change to the user's goal).
    ratifies the frontier. The **vision** never changes here — only the **route**. The route file is
    human-editable any time; you pick it up at the next dispatch wave.
 6. **Clear the approval inbox (BREAKING first, ADVISORY counted).** Resolve queued items in class order:
-   **BREAKING** items (intent-fork, vision amendment, second budget extension, reconcile HALT) are decided
+   **BREAKING** items (intent-fork, vision amendment, second budget extension, reconcile HALT, and — in
+   autonomous mode — each unsettled born `characterized` three-way classification from step 2) are decided
    **individually before progress**; **ADVISORY** items (logged ratifications in autonomous mode, the
    `kind:"other"` walls and per-gate gated-mode terminations batched here, planned supersessions from
    step 4, drift notes) are presented as a count. A **vision amendment** is human-gated, always,

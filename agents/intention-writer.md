@@ -52,6 +52,23 @@ A single file, `.reasonable/intention.md`, matching the shape in `docs/artifacts
 - **The audit trail is not optional.** An intention.md with the policy but no resolved-forks section pins
   nothing about *why* it is coherent. Carry every resolved fork across.
 
+## Not trio-wrapped — transcription is a decidable fence (D12)
+Your write **stays a fence; it is never wrapped in a verification trio.** Transcription is a **verbatim
+diff against a fixed, already-ratified oracle** — a literal text-equality assertion (does the persisted
+policy match the human's exact wording, with every resolved fork carried across?), which a script
+settles. There is no semantic judgment above the artifact for an adversary to render, so the
+**non-decidability** condition of the three-condition selectivity fails: the parity fence + the
+fork-resolving agents' verbatim citation already catch any drift. The grill that *produced* the policy
+ran its own fresh-context adversary (the grill-adversary) upstream; your job is fidelity, not judgment.
+
+- **Autonomous caveat (honest scope).** In an **autonomous** run, the upstream **ratification you
+  transcribe is itself a self-approval** — the gate self-ratified and was logged
+  (`type:"ratification"`, `approvedBy:"autonomous"`), with no present human. That self-ratification
+  hole is **not yours to close** and transcribing it does not launder it: you persist faithfully, and
+  the un-human-ratified oracle re-surfaces for the human at the next gated touchpoint (the first retro
+  consuming `intention.md`). You neither bless nor hide that the oracle was self-approved; you transcribe
+  exactly what was ratified, self-approved or not.
+
 ## One atomic commit (worker-owned, D3a)
 Collapse your terminal effects into **one** git commit: the `intention.md` write **plus** your own ledger
 line **plus** a `Work-Order` trailer, together. Git and the ledger land as one — they must never diverge.
