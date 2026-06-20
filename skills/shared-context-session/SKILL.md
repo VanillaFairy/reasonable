@@ -38,6 +38,11 @@ roles and what they must NOT learn from your session:
   your hunch about which side is wrong.
 - **skeptic** must attack an infeasibility claim from a fresh context — it must not inherit the
   claimant's transcript (thrash lives in the transcript).
+- **intent-verifier** must judge a mutator's *proposed* diff against a named reference that sits
+  **above** the artifact — it must **never inherit the mutator's transcript**, reasoning, or
+  self-assessment. Carrying the worker's narrative would collapse its judgment into agreement with
+  the very thing it is checking; its reference is the oracle above the artifact, not the worker's
+  story about the diff.
 
 **The rule:** what crosses out of a shared-context session crosses as an **artifact**, never as
 conversation. Distill the session into the appropriate durable artifact (a vision update, a ledger

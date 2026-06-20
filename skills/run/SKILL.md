@@ -28,6 +28,17 @@ do not assume.
   `lib/*.mjs` scripts) runs and is recorded. "Run it lean" / "consolidate the ceremony" is not a
   gated-mode option; if the work is too small to warrant the full protocol, that is a **triage**
   decision made *before* entering (route to `simple-task`), never a mid-effort shortcut.
+- **The intent-verifier is a JUDGMENT adversary, not a mechanical check — so the dial may gate it.**
+  The verification trio's adversary (the `intent-verifier`) renders a *semantic* verdict against a
+  named reference above the artifact; it is **risk-gated**, not run unconditionally like the
+  mechanical checks above. It runs where the write touches the floor or a shared contract, and may be
+  skipped where the write is boxed-in (a present human trading a check for speed — D7). This is the
+  one place the dial actually changes *whether* a check fires; the mechanical gate checks never skip.
+  **The only mode difference for the adversary itself is when it escalates**, never whether it runs:
+  in **gated** mode it escalates **early** (on the first whiff of an unsettleable fork — the present
+  human is cheap); in autonomous mode it escalates **only the genuinely unsettleable**. In both
+  modes an `escalate-intent-fork` crosses to the human inbox; in gated mode it surfaces in the
+  briefing for your decision. Neither mode lets an `accept` *disarm* anything — it annotates only.
 
 ## Committing is authorized — and mandatory (the iron rule)
 

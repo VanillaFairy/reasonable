@@ -41,7 +41,12 @@ Every mechanism in the plugin is one of these three, at some scale:
    Approvals cross as explicit human acts, never timeouts.
 3. **External verification** — no actor grades its own work. Tests are written blind to
    implementations. Verdicts come from read-only adjudicators. Infeasibility faces skeptics; success
-   faces auditors; state faces reconciliation.
+   faces auditors; state faces reconciliation. The reusable shape is the **verification trio**
+   (worker → adversary → orchestrator): a worker mutates, a fresh read-only **adversary** judges the
+   *proposed* output against a reference above the artifact and *proposes* a verdict (it never
+   self-executes the act it authorizes), and the orchestrator routes accept / reject / escalate.
+   *(As with the commit iron rule under Law 1, the surface states the law and leaves its corollary —
+   propose-not-act, read-only by capability — to `DESIGN.md` §4 and `docs/glossary.md`.)*
 
 ## Intellectual ancestry
 

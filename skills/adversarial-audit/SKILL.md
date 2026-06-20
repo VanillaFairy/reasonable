@@ -16,6 +16,15 @@ judgment half is yours. Never ask a model to simulate what a script can compute.
 **Drives:** the `auditor` agent. **Terms:** `docs/glossary.md`. (`${reasonable}` = this plugin's root
 directory — `$CLAUDE_PLUGIN_ROOT` in hooks; substitute the installed absolute path.)
 
+> **Auditor vs intent-verifier — complementary, not duplicates.** Both are verifier-family adversaries
+> (read-only, reference above the artifact, propose-not-act). They differ on *what they verify*. The
+> **auditor is the MECHANICAL-teeth instance**: it post-verifies a *green success claim* with checks a
+> script computes (discriminator, mapping, mutation, sanity scan). The **intent-verifier is the
+> JUDGMENT adversary**: it pre-verifies a mutator's *proposed* diff with a *semantic* verdict a script
+> cannot compute (is this pin in the baseline we promised, at the right seam?). Auditor = "the green is
+> not faked" by machine; intent-verifier = "the intent is faithful" by judgment. Do not fold one into
+> the other, and never ask the auditor to *simulate* the intent-verifier's judgment (or vice versa).
+
 ## The escalating checks (cheap → expensive)
 
 ### (a) Discriminator check — per enrichment, fully automatic

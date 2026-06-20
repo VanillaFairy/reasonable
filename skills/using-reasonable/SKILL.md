@@ -103,6 +103,48 @@ deterministic pipeline with stochastic nodes** — not deterministic nodes.
 
 Anything that isn't one of these three, at some scale, is probably not a `reasonable` rule.
 
+## Two enforcement primitives: the categorical fence and the verification trio
+
+Law 3 ("no actor grades its own work") and capability-beats-discipline together yield two reusable
+shapes for putting a check between *produced* and *trusted*. Know which one a given guard is:
+
+- **The categorical fence** — a *decidable*, front-line capability block: a synchronous hook or
+  allowlist that says yes/no by a rule a script can compute (enforcement-path locus, role test-path,
+  no-foreign-contracts, SHA custody, runmode-present, two-lanes, the sanity-regex hard-deny). No
+  judgment, no model — it just refuses. This is the default; most guards are fences.
+- **The verification trio** (worker → adversary → orchestrator; plain alias *make-and-check*) — the
+  named generalization of Law 3 for the cases a fence *cannot* decide. A **worker** (a mutator)
+  produces a *proposed* diff; a fresh, read-only-**by-capability** **adversary** judges it against a
+  **named reference that sits ABOVE the artifact** (never the worker's own output or transcript — that
+  agreement would be tautological) and **proposes** a verdict `accept | reject | escalate`; the
+  **orchestrator** routes the verdict and a narrow writer performs any resulting act. The adversary
+  **never self-executes the act its verdict authorizes** (the Law-3 corollary, `DESIGN.md` §4) and an
+  `accept` **annotates, never disarms** (it marks a diff `explained-by-verdict` *advisory only* — it
+  turns off no guard). Family members: auditor, adjudicator, skeptic, grill-adversary,
+  **intent-verifier**. The verdict is a durable `verifier-verdict` ledger event (proposed, content-
+  referencing the code commit; no git commit of state).
+
+**Wrap a check in a trio only when all three hold** (else it stays a fence): the check is
+**oracle-dependent** (needs a reference a script can't encode) AND it would **degrade if wrong**
+silently AND it is **non-decidable** (no mechanical yes/no settles it). Any condition failing leaves
+a **false trio** — keep it a fence.
+
+### The three tiers a verdict passes through (FENCE → ADVERSARY → BACKSTOP)
+
+The same value can be guarded at up to three ordered tiers, cheapest first:
+
+1. **Fence** — the decidable front line (above). Refuses what a rule can settle, synchronously.
+2. **Adversary** — the judgment tier: the trio's fresh read-only judge, for what a fence can't
+   decide. Renders a semantic verdict against a reference above the artifact.
+3. **Backstop tripwire** — the *last* line: a mechanical reconcile check that **still fires and
+   surfaces** even after the fence and the adversary. The byte-level **floor-integrity hash** is the
+   exemplar — it cannot tell a harmless additive pin from a real regression, so it is demoted from a
+   first-line HALT to a backstop that still fires, **annotated** by an explaining `accept` but
+   **never silenced** by one. In autonomous mode an *unexplained* breaking floor-integrity mismatch
+   (no accept verdict explains it — something bypassed the pre-integration adversary) is an
+   always-escalate class: the orchestrator queues BREAKING and **stops** the loop. An *explained*
+   floor diff is a non-blocking notice. The failure direction is always *toward* human scrutiny.
+
 ## The commit iron rule ("done" entails committed)
 
 A corollary of Law 1 (Parity), strong enough to name: **uncommitted == not done.** A gate that
@@ -132,6 +174,6 @@ reasonable effort *is* the standing ask.
 - Procedure skills: `component-contract`, `gate-mechanics`, `contract-amendment`,
   `adversarial-audit`, `shared-context-session`
 - Agents (roles): `implementer`, `blind-test-writer`, `adjudicator`, `auditor`, `skeptic`,
-  `spike-runner`, `retro-synthesizer`, `scaffolder`, `route-planner`
+  `intent-verifier`, `spike-runner`, `retro-synthesizer`, `scaffolder`, `route-planner`
 - The law (hooks/scripts): `lib/*.mjs` (fence, budget, footprint, discriminator, mutation,
   burndown, citation-resolve, redispatch-guard, commit-accounting, sanity, reconcile)
