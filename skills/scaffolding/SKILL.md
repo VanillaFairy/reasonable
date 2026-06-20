@@ -52,7 +52,10 @@ directory — `$CLAUDE_PLUGIN_ROOT` in hooks; substitute the installed absolute 
 
 1. **Dispatch the `scaffolder` agent** (a fresh subagent) with: the topology sketch, the vision's user
    stories, and the stack binding. Its job: real wiring end-to-end with trivial behavior, the parked
-   scenario suite (compiling), thin initial contracts, loud stubs everywhere off the skeleton path.
+   scenario suite (compiling), thin initial contracts, loud stubs everywhere off the skeleton path. The
+   build runs in a **provisioned lane** (a real registered worktree + `.reasonable-lane.json` descriptor),
+   born before the scaffolder so the floor-containment fence is armed and the born contracts exist as a
+   pre-integration diff — never lane-less in the main checkout (D7).
 2. **Verify the skeleton's invariants** (you, in the main session — do not take the agent's word):
    - **The skeleton is committed.** `node ${reasonable}/lib/commit-gate.mjs --check` is clean —
      "uncommitted == not done" (the commit iron rule). An uncommitted skeleton is one `git checkout`
@@ -70,9 +73,22 @@ directory — `$CLAUDE_PLUGIN_ROOT` in hooks; substitute the installed absolute 
      resolve.
    - **No fake reachable from the production composition root.** A fake in `main`'s object graph is a
      parity violation even if tests pass.
-3. **Initialize contracts in the ledger.** Record the births (the thin contracts) so the retro can see
+3. **Verify the born contracts (the adversary, distinct from the structural checks above).** The checks in
+   step 2 are *decidable* (compile / green / real-wiring / no-fake-in-composition-root). This is the
+   *semantic* one a script cannot compute: do the born thin contracts' clauses **over- or under-claim what
+   the skeleton actually wires?** A fresh-context, read-only `intent-verifier` judges each born contract
+   against the **topology sketch + vision** — the oracle **above** the artifact (the contract is derived
+   subtractively from them, so judging it against the skeleton it describes would be circular). It proposes
+   `accept | reject | escalate` and **self-executes nothing**. **Risk-gated (D7):** always run it where a
+   born contract enriches a shared contract (a `## Citations` bullet) or touches floor-tracked state; skip
+   only a contract boxed into a brand-new component nothing depends on yet. **reject** → the main session
+   re-specs the contract (a cited over/under-claim) and re-runs; **escalate** → the human inbox (autonomous:
+   joins the always-escalate classes); **accept** → a narrow writer appends a `verifier-verdict` ledger event
+   that **annotates** the contract `explained-by-verdict` (advisory only — *annotate, not disarm*). The
+   human sign-off then ratifies a **pre-verified** artifact.
+4. **Initialize contracts in the ledger.** Record the births (the thin contracts) so the retro can see
    the topology arrived as expected.
-4. **Update the journal** to phase `scaffolding` → ready for `vertical-slice-execution`; record the
+5. **Update the journal** to phase `scaffolding` → ready for `vertical-slice-execution`; record the
    skeleton's commit. Then go to **Sign-off**.
 
 ### Brownfield path (characterize the observable baseline — BF7)
@@ -111,14 +127,16 @@ There is no skeleton to build; the system already walks. Pin what it *already do
    `vertical-slice-execution`; record the corpus births (clause + parked test + component). Then go to
    **Sign-off**.
 
-### Sign-off (both paths)
+### Sign-off (both paths — the final step)
 
-5. **Human sign-off (blocking).** Present what the chosen path produced — **greenfield**: the skeleton
-   (with the green promoted scenario, if any), the parked count, where the loud stubs are, the thin
-   contracts. **Brownfield**: the parked characterization corpus (born `characterized` pins, each GREEN
-   on HEAD and reverse-discriminator-admitted), the FLOOR coverage, the inadmissible pins (not blessed
-   into the suite), and any suspected-bug pins for the three-way classification. The human ratifies (the
-   last one-time ratification before the vertical-slice loop). **Silence never ratifies.**
+**Human sign-off (blocking).** Present what the chosen path produced — **greenfield**: the skeleton
+(with the green promoted scenario, if any), the parked count, where the loud stubs are, the thin
+contracts, **and the born-contract adversary's verdicts** (the contracts the human ratifies are already
+adversary-reviewed against topology + vision; any escalation is surfaced, never silently ratified).
+**Brownfield**: the parked characterization corpus (born `characterized` pins, each GREEN on HEAD and
+reverse-discriminator-admitted), the FLOOR coverage, the inadmissible pins (not blessed into the suite),
+and any suspected-bug pins for the three-way classification. The human ratifies (the last one-time
+ratification before the vertical-slice loop). **Silence never ratifies.**
 
 ## Discipline
 
@@ -126,7 +144,9 @@ There is no skeleton to build; the system already walks. Pin what it *already do
   workflow's summary — the skeleton's value is in real seams; the corpus's value is in GREEN-on-HEAD pins
   with teeth.
 - **Thin means thin (greenfield).** If the scaffolder implemented real behavior in a node, that's
-  vertical slice work that leaked in — send it back. The skeleton validates seams, not features.
+  vertical slice work that leaked in — send it back. The skeleton validates seams, not features. The
+  born-contract adversary catches the contract-side leak: a clause that over-claims behaviour the
+  skeleton does not wire is a reject against topology + vision.
 - **Pin what is, never what should be (brownfield).** The characterizer records current behavior, bugs
   and all; it never fixes and never edits production src. A wrong-looking pin is flagged for the human,
   not corrected.
@@ -135,7 +155,8 @@ There is no skeleton to build; the system already walks. Pin what it *already do
 
 ## Output
 
-**Greenfield:** a ratified walking skeleton, a compiling parked scenario suite, thin contracts.
+**Greenfield:** a ratified walking skeleton, a compiling parked scenario suite, thin contracts
+(adversary-reviewed against topology + vision before sign-off).
 **Brownfield:** a ratified parked characterization corpus (born `characterized` pins, GREEN on HEAD),
 the FLOOR standing as the regression-containment fence — invariant-verify = GREEN on HEAD. Either way
 the journal is advanced to the vertical-slice loop. Then invoke `vertical-slice-execution` for the first

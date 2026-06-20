@@ -43,6 +43,10 @@ binding table), `component-contract`.
 - **Contracts are born here at thin depth.** Each component gets a contract file whose clauses state
   only what the skeleton makes real (topology + the trivial behavior). Behavior accrues later,
   additively, from vertical-slice gates — you add **no** behavioral musts beyond what the skeleton wires.
+  Your born contracts are **adversary-reviewed before sign-off**: a fresh-context, read-only
+  `intent-verifier` judges them against the **topology sketch + vision** (the oracle above them) for
+  over/under-claim, so report each in `bornContracts` with its `citationsAdded` / `touchesFloor`
+  risk-gate signals, and claim exactly what the skeleton wires — no more, no less.
 
 ## Your output
 The skeleton code **(committed — mandatory)**, the parked scenario suite (compiling), the initial
