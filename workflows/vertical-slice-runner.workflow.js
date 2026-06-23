@@ -237,6 +237,27 @@ const OUTCOME = {
   },
 };
 
+// SCRIBE_ACK — the lone serialized journal-writer's acknowledgement (D3b), shared by
+// BOTH journal-writer dispatches in this file (the verifier-verdict append and the
+// derived-index scribe). The top-level type MUST be the literal 'object': the Messages
+// API rejects a forced-tool input_schema whose top-level type is an array
+// ({type:['object','null']} => 'tools.N.custom.input_schema.type: Input should be object').
+// Because a `schema` FORCES a tool call, the scribe CANNOT emit a bare JSON null to mean
+// "I could not persist" — it reports that in the explicit `persisted` field. A bare-null
+// return is reserved for agent death/skip. Every consumer HALTs (or fails toward scrutiny)
+// on (null || checkpoint || persisted !== true): the script must not proceed believing a
+// transition persisted. Mirrors characterization.workflow.js.
+const SCRIBE_ACK = {
+  type: 'object',
+  additionalProperties: false,
+  required: ['persisted'],
+  properties: {
+    persisted: { type: 'boolean', description: 'journal.json + inbox.json (or the verifier-verdict ledger line) written faithfully against their schemas.' },
+    transition: { type: ['string', 'null'], description: 'The transition persisted (program-counter advance / verifier-verdict appended).' },
+    note: { type: ['string', 'null'] },
+  },
+};
+
 // ─────────────────────────────────────────────────────────────────────────────
 // guard() — the budget-throw membrane (architecture §15, D16b).
 //
@@ -497,7 +518,7 @@ function verdictWriterPrompt(wo, verdict, a) {
     'Append exactly this event to .reasonable/ledger.jsonl (one JSON line; an on-disk append, NOT a git commit of orchestration state — verdict durability is the atomic on-disk append, D5):',
     '  ' + j({ type: 'verifier-verdict', component: wo.role || wo.id, diffRef: verdict.diffRef || null, verdict: verdict.verdict, oracle: verdict.oracle, by: 'intent-verifier', proposed: true }),
     'Add the ledger seq and the code commit/hash the enrichment landed (`commit`) from the live ledger/git — do not invent them.',
-    'This verdict ANNOTATES the enrichment diff as explained-by-verdict: ADVISORY ONLY (D6). It does NOT silence any floor or reconcile guard and does NOT bless the enrichment past review — a missing or half-written verdict can only cause MORE human surfacing, never less. Write nothing but this one ledger line. Return {persisted:true} once the line is durably appended (persisted:false / null otherwise — the orchestrator surfaces it).',
+    'This verdict ANNOTATES the enrichment diff as explained-by-verdict: ADVISORY ONLY (D6). It does NOT silence any floor or reconcile guard and does NOT bless the enrichment past review — a missing or half-written verdict can only cause MORE human surfacing, never less. Write nothing but this one ledger line. Return the SCRIBE_ACK: persisted:true once the line is durably appended, persisted:false otherwise (the orchestrator surfaces it). A bare-null return is reserved for agent death/skip and also surfaces.',
   ].join('\n');
 }
 
@@ -640,9 +661,9 @@ async function intentVerify(prev, wo, _idx, ctx) {
   // diff (advisory, D6); it integrates/blesses/silences nothing. A failed append fails
   // toward scrutiny → intent-fork.
   const ack = await guard(wo.id, () => ctx.agent(verdictWriterPrompt(wo, verdict, a), {
-    label: `verdict-write:${wo.id}`, phase: 'Enrich', agentType: 'reasonable:journal-writer', schema: { type: ['object', 'null'], additionalProperties: true },
+    label: `verdict-write:${wo.id}`, phase: 'Enrich', agentType: 'reasonable:journal-writer', schema: SCRIBE_ACK,
   }));
-  if (!ack || ack.kind === 'checkpoint' || ack.persisted === false) {
+  if (!ack || ack.kind === 'checkpoint' || ack.persisted !== true) {
     return { kind: 'intent-fork', workOrder: wo.id, verticalSlice: wo.verticalSlice || a.verticalSliceId,
       detail: { stage: 'intent-verify', reason: 'accept verdict could not be durably appended to the ledger — surfacing (annotate-not-disarm: never fewer eyes)' },
       note: 'contract-enrichment adversary accepted but the verifier-verdict append failed — escalating' };
@@ -829,9 +850,9 @@ async function journalWrite(state) {
       'Record the program-counter transitions write-ahead, and append the pending inbox items with their BREAKING/ADVISORY class.',
       `Transitions: ${j({ greenWorkOrders: state.greenWorkOrders || [], checkpoints: (state.checkpoints || []).length, blocked: (state.blocked || []).length })}`,
       `Pending inbox: ${j(state.pendingInbox || [])}`,
-      'Return a non-null acknowledgement object on success; return null ONLY if the write could not be persisted (the script will HALT).',
+      'Return the SCRIBE_ACK: persisted:true once journal.json + inbox.json are durably written faithfully against their schemas; persisted:false if you cannot complete a clean, faithful write (the script reads persisted:false as HALT — it must not proceed believing a transition persisted). A bare-null return is reserved for agent death/skip and also HALTs.',
     ].join('\n'),
-    { label: 'scribe:journal', phase: 'Enrich', agentType: 'reasonable:journal-writer', schema: { type: ['object', 'null'], additionalProperties: true } },
+    { label: 'scribe:journal', phase: 'Enrich', agentType: 'reasonable:journal-writer', schema: SCRIBE_ACK },
   );
   return ack;
 }
@@ -935,8 +956,8 @@ while (!verticalSliceGreen && withinBudget(a, budget) && withinAgentCap(state)) 
 
     // The script's ONLY derived-index write — serial, awaited; null → HALT (§6, D3b).
     const ack = await journalWrite(state);
-    if (ack === null) {
-      return { kind: 'halt', reason: 'scribe-null: derived index not persisted (reconcile will rebuild it next run)' };
+    if (ack === null || ack.kind === 'checkpoint' || ack.persisted !== true) {
+      return { kind: 'halt', reason: 'scribe did not persist the derived index (null / checkpoint / persisted:false) — index not written; reconcile rebuilds it from git+ledger on the next run.' };
     }
 
     // A BREAKING trap (spike-needed / infeasible / intent-fork / other) means a human

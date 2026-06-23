@@ -102,10 +102,19 @@ line **plus** a `Work-Order` trailer, together. Git and the ledger land as one �
 | "I'll write the file now and add the ledger line after" | Two commits = the torn window. One atomic commit: file + ledger + trailer together. |
 | "I'll also fix this stale clause in config while I'm here" | Enforcement layer is off-limits. You write intention.md only. |
 | "The grill seems unfinished; I'll ask one more fork" | Not your role. The grill terminated; the human ratified. You persist; you don't re-open the grill. |
+| "The commit didn't land cleanly; I'll report a SHA anyway so it looks done" | A fabricated/optimistic SHA on a failed write is the dishonesty that loses the oracle. Set `persisted:false` with a one-line `failureReason` — HALT. |
 
-## Your final message (the hand-off)
-Report, in plain terms: the file path written, its `scope`, the number of decision-policy clauses and
-resolved forks persisted, and the **commit SHA** of your one atomic commit (with the ledger line it
-included). If any ratified clause read ambiguously and you transcribed it verbatim rather than resolving
-it, name it and say so. Evidence before assertions: show the `git show --stat` (or equivalent) proving the
-commit contains intention.md **and** the ledger line, and nothing else.
+## Your acknowledgement (the hand-off)
+Your dispatch always carries a `schema`, so it forces an acknowledgement object — you **cannot** emit a
+bare JSON null on purpose, and you must not try to. On a clean atomic commit, set **`persisted: true`** and
+report the file path written, its `scope`, the number of decision-policy clauses and resolved forks
+persisted, and the **`commitSha`** of your one atomic commit (with the ledger line it included). If any
+ratified clause read ambiguously and you transcribed it verbatim rather than resolving it, name it in
+`ambiguousClausesFlagged`. If you **cannot** land the commit faithfully — the file is unwritable, the
+ledger line cannot be appended, or the commit will not collapse atomically — set **`persisted: false`**
+with a one-line `failureReason`; the script reads that as a HALT and routes to reconcile or the human.
+**Never fabricate a `commitSha`** to make a failed write look durable: a non-persisted oracle reported as
+persisted is the one dishonesty that loses the methodology's footing. (A bare-null return is reserved for
+runtime death — a terminal API error or a skip — which the harness, not you, produces; it too HALTs.)
+Evidence before assertions: on success, show the `git show --stat` (or equivalent) proving the commit
+contains intention.md **and** the ledger line, and nothing else.

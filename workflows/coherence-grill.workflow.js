@@ -70,17 +70,25 @@ const FORK_OR_NONE = {
   },
 }
 
-// The intention-writer's hand-off after one atomic commit.
+// The intention-writer's hand-off after one atomic commit. Only `persisted` is required:
+// a `schema` FORCES this object, so the writer CANNOT emit a bare JSON null to mean "I
+// could not persist" (the forced tool call always yields a non-null object). An in-band
+// failure rides `persisted:false` (+ failureReason); a bare-null return is reserved for
+// agent death/skip. The consumer HALTs on (null || persisted !== true) — the methodology
+// must not proceed believing intention.md landed when it did not. The top-level type MUST
+// stay the literal 'object' (the Messages API rejects a top-level array type).
 const WRITER_REPORT = {
   type: 'object',
   additionalProperties: false,
-  required: ['filePath', 'scope', 'policyClauseCount', 'resolvedForkCount', 'commitSha'],
+  required: ['persisted'],
   properties: {
-    filePath: { type: 'string', description: 'The path written — must be .reasonable/intention.md.' },
+    persisted: { type: 'boolean', description: 'The one atomic commit (intention.md + its ledger line + Work-Order trailer) durably landed.' },
+    filePath: { type: 'string', description: 'The path written — must be .reasonable/intention.md (present on success).' },
     scope: { type: 'string', enum: ['full', 'micro'] },
     policyClauseCount: { type: 'integer', minimum: 0 },
     resolvedForkCount: { type: 'integer', minimum: 0 },
-    commitSha: { type: 'string', description: 'SHA of the one atomic commit containing intention.md + its ledger line + Work-Order trailer.' },
+    commitSha: { type: 'string', description: 'SHA of the one atomic commit containing intention.md + its ledger line + Work-Order trailer (present on success).' },
+    failureReason: { type: 'string', description: 'On persisted:false, the one-line reason the write could not land — never fabricate a commit to look durable.' },
     ambiguousClausesFlagged: {
       type: 'array',
       items: { type: 'string' },
@@ -202,13 +210,16 @@ if (report && report.kind === 'checkpoint') {
   return report
 }
 
-// null scribe write = the intention did NOT durably land. The grill is done but
-// the oracle is not persisted — HALT rather than claim success (the methodology
-// must not proceed believing intention.md exists when it does not).
-if (!report) {
+// The intention did NOT durably land — HALT rather than claim success (the methodology
+// must not proceed believing intention.md exists when it does not). A `schema` FORCES a
+// WRITER_REPORT object, so an in-band failure rides persisted:false; a bare-null return is
+// reserved for agent death/skip. Both HALT — the grill is done but the oracle is not durable.
+if (!report || report.persisted !== true) {
   return {
     kind: 'halt',
-    reason: 'intention-writer returned null — intention.md not persisted; oracle did not land',
+    reason: (report && report.failureReason)
+      ? `intention-writer could not persist intention.md (${report.failureReason}) — oracle did not land`
+      : 'intention-writer did not persist intention.md (null / persisted:false) — oracle did not land',
   }
 }
 
@@ -283,9 +294,11 @@ function intentionWriterPrompt(a, scope) {
     'LEDGER LINE to commit alongside intention.md in the SAME atomic commit:',
     asBlock(a.ledgerLine),
     '',
-    'Return a StructuredOutput report: {filePath, scope, policyClauseCount, resolvedForkCount, commitSha,',
-    'ambiguousClausesFlagged?}. Show git evidence (e.g. git show --stat) that the one commit contains',
-    'intention.md AND the ledger line, and nothing else.',
+    'Return the WRITER_REPORT. On a clean atomic commit set persisted:true with {filePath, scope,',
+    'policyClauseCount, resolvedForkCount, commitSha, ambiguousClausesFlagged?}; if you CANNOT land the',
+    'commit faithfully set persisted:false with a one-line failureReason (the script HALTs — never fabricate',
+    'a SHA, and do not emit a bare null on purpose: bare-null is reserved for death). Show git evidence',
+    '(e.g. git show --stat) that the one commit contains intention.md AND the ledger line, and nothing else.',
   ].join('\n')
 }
 
