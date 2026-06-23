@@ -366,10 +366,12 @@ Model bindings are configurable; the defaults above encode the user's standing p
 
 ### 6.4 Skills
 
-**Entry skills** (how an effort starts — they set the run mode (§5.12) and route into the phases):
-1. `run` — the **gated** (default) entry. Every ratification gate blocks for explicit human approval.
-2. `run-autonomously` — the **autonomous** entry. Gates self-ratify and are logged; the system never blocks; every step and every mechanical check still runs. Selectable only by explicit, contemporaneous invocation — never from a standing directive.
-3. `using-reasonable` — the **shared reference** (precedence and supersession, applicability triage, the two run modes, the Three Laws, the phase map, where things live). Read first by both entries; also useful standalone.
+**Entry skills** (how an effort starts — they set the run mode (§5.12) and route into the phases). These two are the *only* ways to start an effort:
+1. `develop` — the **gated** (default) entry. Every ratification gate blocks for explicit human approval.
+2. `develop-autonomously` — the **autonomous** entry. Gates self-ratify and are logged; the system never blocks; every step and every mechanical check still runs. Selectable only by explicit, contemporaneous invocation — never from a standing directive.
+
+**Shared reference** (not an entry, not a user command):
+- `using-reasonable` — the **shared reference** (precedence and supersession, applicability triage, the two run modes, the Three Laws, the phase map, where things live). Loaded on demand by the model — read first by both entries and cited by several agent constitutions. It carries `user-invocable: false`, so it has no slash command and never starts an effort.
 
 **Phase skills** (user-invocable orchestration checklists; rigid — follow exactly):
 1. `analysis` — vision grilling (grill-me style: one question at a time, in prose with a recommended answer per question, never option menus; explore the codebase instead of asking when possible), topology sketch, initial route, **applicability triage** (§7), documentation-integration policy, resource lexicon, sanity invariants. Outcomes include "this workflow is not applicable — choose freely."

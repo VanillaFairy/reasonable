@@ -1,7 +1,15 @@
 ---
 name: using-reasonable
-description: The shared reference for the reasonable methodology (outside-in, contract-governed, adversarially verified development) — precedence, applicability triage, the two run modes, the Three Laws, the phase map, and where things live. To START an effort, invoke reasonable:run (gated, the default) or reasonable:run-autonomously (autonomous); those entry skills set the mode and route into the phases. Supersedes per-brick TDD planning.
+description: The shared reference for the reasonable methodology (outside-in, contract-governed, adversarially verified development) — precedence, applicability triage, the two run modes, the Three Laws, the phase map, and where things live. To START an effort, invoke reasonable:develop (gated, the default) or reasonable:develop-autonomously (autonomous); those entry skills set the mode and route into the phases. Supersedes per-brick TDD planning.
+user-invocable: false
 ---
+
+<!-- Not a user command and NOT an entry point. This is the shared methodology
+     reference loaded ON DEMAND by the model when develop / develop-autonomously / analysis
+     and the implementer / scaffolder constitutions say "Read using-reasonable".
+     `user-invocable: false` keeps that model-load working while removing the
+     /reasonable:using-reasonable slash command. Efforts start ONLY via
+     reasonable:develop or reasonable:develop-autonomously. -->
 
 # Using Reasonable
 
@@ -22,10 +30,10 @@ pinning component APIs at the moment of least knowledge. The cure is two meta-pr
 
 An effort runs in exactly one of two modes, selected **only** by which entry skill the user invokes:
 
-- **`reasonable:run` — GATED (the default).** Every human-ratification gate (analysis sign-off,
+- **`reasonable:develop` — GATED (the default).** Every human-ratification gate (analysis sign-off,
   scaffold sign-off, each retro) **blocks and waits** for explicit human approval. Silence never
   ratifies.
-- **`reasonable:run-autonomously` — AUTONOMOUS.** Gates self-ratify and are **logged**; the system
+- **`reasonable:develop-autonomously` — AUTONOMOUS.** Gates self-ratify and are **logged**; the system
   never blocks on the human. But **every step and every mechanical check still runs** — autonomy
   means "do not wait for the human," never "skip a step."
 
