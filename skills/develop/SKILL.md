@@ -1,15 +1,15 @@
 ---
-name: run
-description: Use when the user invokes /reasonable:run, or asks to start/run a reasonable effort that should be human-supervised. The DEFAULT, fully-gated entry point to the reasonable methodology — every human-ratification gate (analysis sign-off, scaffold sign-off, each retro) BLOCKS and waits for explicit human approval. Protocol is absolute; no step or mechanical check may be skipped, consolidated, or guessed.
+name: develop
+description: Use when the user invokes /reasonable:develop, or asks to start a reasonable effort that should be human-supervised. The DEFAULT, fully-gated entry point to the reasonable methodology — every human-ratification gate (analysis sign-off, scaffold sign-off, each retro) BLOCKS and waits for explicit human approval. Protocol is absolute; no step or mechanical check may be skipped, consolidated, or guessed.
 ---
 
-# reasonable: run — GATED mode
+# reasonable: develop — GATED mode
 
 **Announce at start:** "Using the reasonable methodology in **gated** mode — every ratification gate will block for your explicit approval."
 
 This is the **gated** entry point and the default way to run `reasonable`. Whether an effort is
 gated or autonomous is decided **only** by which entry skill the user invokes
-(`reasonable:run` vs `reasonable:run-autonomously`) — it is never inferred from a standing
+(`reasonable:develop` vs `reasonable:develop-autonomously`) — it is never inferred from a standing
 directive, and it is **never guessed or implied**. If you are unsure which the user wants, ask;
 do not assume.
 
@@ -42,7 +42,7 @@ do not assume.
 
 ## Committing is authorized — and mandatory (the iron rule)
 
-Invoking `reasonable:run` **is** the standing authorization to commit the effort's own work product
+Invoking `reasonable:develop` **is** the standing authorization to commit the effort's own work product
 as it proceeds — it supersedes the harness default "commit only when the user asks" for that work
 product (see `using-reasonable`, the commit iron rule). This is **not** in tension with gated mode:
 committing is *durability*, not *ratification*. Gated mode still blocks for your nod on the things
@@ -75,7 +75,7 @@ Two engine limits govern what this skill launches directly (architecture §15, �
    both values. Write `"runMode": "gated"` into `.reasonable/config.json` and `"profile": "strict"`
    into `.reasonable/supervision.json` (gated = maximum oversight). `config.json` is fence-protected
    (`enforcementPaths`), so an agent cannot self-promote the mode. **Mode is never inferred** from a
-   standing directive — only this explicit `reasonable:run` invocation sets it. Lower phases must
+   standing directive — only this explicit `reasonable:develop` invocation sets it. Lower phases must
    **not** override the profile this skill set (they may write it only if it is unset, falling back
    to `standard`).
 2. **Triage + methodology.** Read `using-reasonable` for the precedence rules, the triage table

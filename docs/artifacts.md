@@ -159,7 +159,7 @@ also as suffixes). `lintableInvariants` are the regex subset of the sanity
 invariants the lint hook enforces.
 
 `runMode` ∈ `"gated" | "autonomous" | null`. The entry skill writes it
-(`run`→`gated`, `run-autonomously`→`autonomous`); reconcile reads it into the
+(`develop`→`gated`, `develop-autonomously`→`autonomous`); reconcile reads it into the
 briefing and the main session re-asserts it on the next launch. **An absent /
 `null` `runMode` on a cold restart is a HALT** — defaulting to the "safer" mode
 is still an inference, which the framework forbids. `config.json` is itself
@@ -517,7 +517,7 @@ Per-role narrowing the orchestrator applies:
 ```
 
 `profile` ∈ `strict | standard | trusting` (glossary). The **initial** profile is
-set by the entry skill (`run`→`strict`, `run-autonomously`→`trusting`); the
+set by the entry skill (`develop`→`strict`, `develop-autonomously`→`trusting`); the
 analysis phase writes it and must not override an already-set value (fallback
 `standard`), and the retro tunes it thereafter. No profile waives a mechanical
 check. Budgets start tight; retros loosen them with telemetry.

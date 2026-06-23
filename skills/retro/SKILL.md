@@ -14,7 +14,7 @@ at the retro, the human is the control plane (vision, route, amendments, dial). 
 
 ## Mode behavior (gated vs autonomous)
 
-Read `mode` from `.reasonable/config.json` (set by `reasonable:run` / `reasonable:run-autonomously`).
+Read `mode` from `.reasonable/config.json` (set by `reasonable:develop` / `reasonable:develop-autonomously`).
 The retro is a ratification gate, so mode governs whether it blocks — **gated**: the retro **blocks**;
 present gate evidence, divergence classification, and the amendment batch, and wait for explicit human
 approval of each item (*silence never approves*). **autonomous**: perform the same review, then

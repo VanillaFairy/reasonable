@@ -18,7 +18,7 @@ launch nested workflows (spike/scaffold), merge lanes, and reconcile the journal
 
 ## Mode behavior (gated vs autonomous)
 
-Read `mode` from `.reasonable/config.json` (set by `reasonable:run` / `reasonable:run-autonomously`)
+Read `mode` from `.reasonable/config.json` (set by `reasonable:develop` / `reasonable:develop-autonomously`)
 and pass it to the runner in `args.runMode`. Approval gates (the inbox, merges, second budget
 extensions) behave by mode — **gated**: they **block** for an explicit human nod (*silence never
 consents*); **autonomous**: decide, **log** to the ledger (`approvedBy:"autonomous"`), and proceed
@@ -246,7 +246,7 @@ it at the membrane before merging and closing:
 ## Run mode and the supervision profile
 Two distinct controls govern human involvement; **neither ever waives a mechanical check.**
 
-The run **mode** — `gated` (`reasonable:run`) or `autonomous` (`reasonable:run-autonomously`), set at
+The run **mode** — `gated` (`reasonable:develop`) or `autonomous` (`reasonable:develop-autonomously`), set at
 entry, recorded in `config.json`, and passed to the runner as `args.runMode` — governs **gate-blocking
 at the membrane**:
 - **gated:** every ratification gate and merge waits for an explicit human nod. Silence never consents.

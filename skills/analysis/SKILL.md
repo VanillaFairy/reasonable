@@ -13,7 +13,7 @@ this is a legitimate **shared-context session** (grilling is judgment-across-art
 
 ## Mode behavior (gated vs autonomous)
 
-Read `mode` from `.reasonable/config.json` (set by `reasonable:run` / `reasonable:run-autonomously`).
+Read `mode` from `.reasonable/config.json` (set by `reasonable:develop` / `reasonable:develop-autonomously`).
 This phase's human-ratification gate behaves by mode — **gated**: the gate **blocks** and waits for
 explicit human approval (*silence never ratifies*); **autonomous**: self-ratify and **log** the
 decision to the ledger (`type:"ratification"`, `approvedBy:"autonomous"`, with rationale), never
@@ -72,7 +72,7 @@ The vision you are extracting has three parts:
 7. **Config + supervision.** Emit `.reasonable/config.json` from the stack binding table
    (`gate-mechanics/references/<stack>.md`): build/test commands, test globs, park marker, loud-stub
    markers, enforcement paths, lintable invariants. Emit `.reasonable/supervision.json` —
-   **preserve the supervision `profile` the entry skill (`run`/`run-autonomously`) already set; only
+   **preserve the supervision `profile` the entry skill (`develop`/`develop-autonomously`) already set; only
    write a profile if none is set, falling back to `standard`.** Default budgets — start **tight**,
    retros loosen with data.
    - **Plant the gitignore entries (idempotent).** Ensure the target repo's `.gitignore` contains

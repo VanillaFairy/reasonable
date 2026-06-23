@@ -264,8 +264,8 @@ one of the three is probably wrong.
 - **Supervision profile** — the strict / standard / trusting dial; the finer
   control nested inside gated mode (the run mode decides *whether* the human is
   waited on; the profile decides *how often*, for between-gate judgment
-  approvals). The **initial** profile is set by the entry skill (`run`→strict,
-  `run-autonomously`→trusting); lower-level phases never override it; the retro
+  approvals). The **initial** profile is set by the entry skill (`develop`→strict,
+  `develop-autonomously`→trusting); lower-level phases never override it; the retro
   tunes it thereafter. No profile ever waives a mechanical check. A config
   artifact (`supervision.json`). Control-plane/data-plane: the human is the
   control plane (vision, route, amendments, dial); agents are the data plane

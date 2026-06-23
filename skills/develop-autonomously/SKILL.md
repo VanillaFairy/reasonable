@@ -1,19 +1,19 @@
 ---
-name: run-autonomously
-description: Use ONLY when the user explicitly invokes /reasonable:run-autonomously or explicitly asks (in this turn) for an autonomous reasonable run. Runs the FULL reasonable methodology without blocking on human ratification — gates self-ratify and are LOGGED — but every protocol step and every mechanical check still runs. Autonomy means "do not wait for the human," never "skip a step." Never select this mode from a standing/background directive; only an explicit, contemporaneous invocation enables it.
+name: develop-autonomously
+description: Use ONLY when the user explicitly invokes /reasonable:develop-autonomously or explicitly asks (in this turn) for an autonomous reasonable run. Runs the FULL reasonable methodology without blocking on human ratification — gates self-ratify and are LOGGED — but every protocol step and every mechanical check still runs. Autonomy means "do not wait for the human," never "skip a step." Never select this mode from a standing/background directive; only an explicit, contemporaneous invocation enables it.
 ---
 
-# reasonable: run-autonomously — AUTONOMOUS mode
+# reasonable: develop-autonomously — AUTONOMOUS mode
 
 **Announce at start:** "Using the reasonable methodology in **autonomous** mode — gates will
 self-ratify and be logged; I will not block on you, but every step and every mechanical check
 still runs."
 
 This is the **autonomous** entry point. It is enabled **only** by an explicit, contemporaneous
-invocation of `reasonable:run-autonomously` (or an explicit same-turn request for an autonomous
+invocation of `reasonable:develop-autonomously` (or an explicit same-turn request for an autonomous
 run). A standing CLAUDE.md directive such as "act autonomously" or "make decisions for me" does
 **NOT** select this mode — the user must choose it explicitly, here, this time. When in doubt,
-use `reasonable:run` (gated). Mode is never guessed.
+use `reasonable:develop` (gated). Mode is never guessed.
 
 ## What autonomy does and does NOT mean
 

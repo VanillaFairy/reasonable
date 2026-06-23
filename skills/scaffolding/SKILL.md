@@ -25,8 +25,8 @@ that mode's steps, skip the other's. Brownfield steps are no-ops when `config.br
 
 ## Mode behavior (gated vs autonomous)
 
-Read both `mode` and `brownfield` from `.reasonable/config.json` (set by `reasonable:run` /
-`reasonable:run-autonomously` and by triage in `analysis`). The sign-off gate behaves by `mode` —
+Read both `mode` and `brownfield` from `.reasonable/config.json` (set by `reasonable:develop` /
+`reasonable:develop-autonomously` and by triage in `analysis`). The sign-off gate behaves by `mode` —
 **gated**: it **blocks** and waits for explicit human approval (*silence never ratifies*);
 **autonomous**: self-ratify and **log** it to the ledger (`type:"ratification"`,
 `approvedBy:"autonomous"`, with rationale), never blocking. In **both** modes every step and every

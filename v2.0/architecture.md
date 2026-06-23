@@ -399,7 +399,7 @@ default subagent, which the per-agentType hooks never grant a lane allowlist —
 
 ## 14. Run modes and the supervision dial
 
-**Run mode is set only by the entry skill** (`reasonable:run` → gated; `reasonable:run-autonomously` →
+**Run mode is set only by the entry skill** (`reasonable:develop` → gated; `reasonable:develop-autonomously` →
 autonomous), **never inferred from a standing directive** (the one-sentence difference between *autonomous*
 and *unsupervised*). (D10)
 
@@ -418,7 +418,7 @@ exception even in autonomous mode: a **vision/intention amendment** always termi
 surfaced — autonomy decides the *how*, never silently redefines the *what*.
 
 The **supervision dial** (strict / standard / trusting) is the finer control *inside* gated mode; the entry
-skill sets the initial profile (`run`→strict, `run-autonomously`→trusting), lower phases never override it,
+skill sets the initial profile (`develop`→strict, `develop-autonomously`→trusting), lower phases never override it,
 and the retro tunes it. No profile waives a mechanical check.
 
 ---
@@ -653,7 +653,7 @@ Twelve greenfield components, plus three brownfield ones (gated on `config.brown
 | **`lane-provisioner`** | privileged narrow agent | `git worktree add` + write `.reasonable-lane.json` + record the lane — before the worker; idempotent; ensures a checkpoint-only lane has a trailered commit |
 | **`journal-writer` (scribe)** | the script's single derived-index hand | writes only `journal.json` + `inbox.json`; serial, awaited; null return → HALT (§6) |
 | **reconcile** | agent wrapping rewritten `lib/reconcile.mjs` + SessionStart hook | the unconditional, total, halting recovery prologue (§12); reads `config.runMode`; computes the trust-staleness set |
-| **main-session orchestrator** | entry/phase skills (the human decision plane) | `reasonable:run` / `:run-autonomously` / `:retro`: write `config.runMode`, run reconcile, present the briefing (BREAKING first), block for the human in gated mode, apply route re-sort + amendment batch + intent-check records at the retro, then re-launch the next vertical slice; launch spike/scaffold (never inline) |
+| **main-session orchestrator** | entry/phase skills (the human decision plane) | `reasonable:develop` / `:develop-autonomously` / `:retro`: write `config.runMode`, run reconcile, present the briefing (BREAKING first), block for the human in gated mode, apply route re-sort + amendment batch + intent-check records at the retro, then re-launch the next vertical slice; launch spike/scaffold (never inline) |
 | **`spike.workflow.js`** | workflow (single timeboxed agent) | quarantined falsifiable spike → knowledge artifact; spike-runner path-fenced to quarantine ([fence.mjs:85-93](../lib/fence.mjs#L85-L93)); launched by the main session (nesting limit) |
 | **`census`** *(brownfield, §18)* | read-only agent | once at analysis: dep-graph → skeleton topology contracts (zero clauses/citations); partition the existing suite → `baseline.json` (FLOOR, untrusted) |
 | **`characterizer`** *(brownfield, §18)* | fenced mutator agent | read-only on src; pins current behaviour as `characterized` clauses + parked characterization tests, just-in-time at first touch, after the implementer's `behaviorDelta` |
