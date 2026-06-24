@@ -1,26 +1,13 @@
-# reasonable 2.0 — architecture
+# reasonable — architecture
 
-**Status:** foundational, revised. This is the implementation-ready architecture for re-seating the
-`reasonable` methodology onto the Claude Code **Dynamic Workflows** engine. It supersedes the earlier
-sketch (preserved as [architecture.sketch.md](architecture.sketch.md)) and is **derived freshly from the
-refined [principles.md](principles.md)** under the framework's own posture — *default-deny:* nothing in the
-old sketch was carried forward unless it positively survived an adversary, and several of its load-bearing
-claims did not.
+**Status:** the implementation architecture. This is how the `reasonable` methodology sits on the Claude
+Code **Dynamic Workflows** engine, derived from [principles.md](principles.md) under the framework's own
+posture (*default-deny*). It is the *how* to [DESIGN.md](DESIGN.md)'s *what*; the two are kept in step with
+the plugin as it stands.
 
-**How this was produced (and why that matters).** The revision applied reasonable's own machinery to
-itself: independent lenses re-derived the architecture *blind* to the old sketch (anti-anchoring), separate
-adversaries attacked each inherited claim (external verification), each open question was resolved
-propose-then-refute, and a completeness critic hunted for principles left without a mechanism. Every claim
-this document makes *about the existing code* was then verified by hand against `lib/`. Where the old sketch
-said "confirmed against lib," it was sometimes wrong; those places are now marked honestly as **build
-requirements**, not facts.
-
-**The headline correction.** The old sketch asserted unbuilt behavior as confirmed fact — most dangerously
-that "the fence fails closed" and "reconcile is a total halting function." Both are false against today's
-code. The architecture's safety arguments depend on those behaviors, so this document names them as
-**new code with concrete specs**, and keeps the honest status from principles.md: *verified by
-construction, not by use.* The construction is now sound; the foundation is still proven only by the first
-dogfood effort.
+Every claim it makes about the code is verified against `lib/`. The methodology's own honest caveat carries
+through from principles.md: a design is proven only in practice, by the dogfood efforts that exercise the
+loop — not on paper.
 
 ---
 
@@ -39,39 +26,29 @@ Read in this order; each is load-bearing and this document does not restate them
   `parallel()` (barrier), `pipeline()` (no barrier), `log()`, `phase()`, `args`, `budget`, `workflow()`
   (one-level nesting). `resumeFromRunId` is replay-based crash recovery but **same-session only**.
   Concurrency caps at `min(16, cores-2)`; 1000 agents per run lifetime; 4096 items per fan-out call.
-- **[DESIGN.md](../DESIGN.md) + [docs/artifacts.md](../docs/artifacts.md)** — the *program*. The full v0.1
-  methodology (vertical slices, contracts, the §5.6 enrichment pipeline, retros, the ratchet) and its on-disk data
+- **[DESIGN.md](DESIGN.md) + [artifacts.md](artifacts.md)** — the *program*. The full methodology
+  (vertical slices, contracts, the §5.6 enrichment pipeline, retros, the ratchet) and its on-disk data
   plane. This is what runs *on* the substrate.
-- **The live `lib/`** — what is *actually built* vs. what this architecture *requires built*. Verified files:
-  `fence.mjs`, `reconcile.mjs`, `footprint.mjs`, `effort.mjs`, `contract.mjs`.
+- **The `lib/` engine** — the dependency-free Node modules that enforce all of the above:
+  `fence.mjs`, `reconcile.mjs`, `footprint.mjs`, `effort.mjs`, `contract.mjs`, and their siblings.
 
 ---
 
-## 2. The adoption decision — committed
+## 2. The orchestration substrate
 
-**Adopt Dynamic Workflows as *the* orchestration substrate. The v0.1 main-session phase-skill orchestrator
-is retired; there is one path.** (D1)
+**Dynamic Workflows is *the* orchestration substrate — there is one orchestration path, the pure
+vertical-slice script.** (D1)
 
-This is a **deliberate human decision** that overrides the default the re-derivation recommended. Default-deny
-and feedback-over-prediction argued for keeping the v0.1 orchestrator as a live fallback until the first
-dogfood proved the engine. The principal chose full commitment instead — trading the safety of a fallback
-for a single clean path with no dual-maintenance burden, and forcing the dogfood to be the real test. That
-tradeoff is the principal's to make; it is recorded here as the conscious bet it is, not buried.
-
-What full commitment does **not** change: durability. Workflows is adopted as the *orchestration* substrate
-only. Durability was never the engine's to provide (see §11) — so "commit fully to the engine" and "the
-engine gives us almost no durability" sit on different planes and do not conflict.
-
-The first dogfood effort remains the proving ground (§24). The architecture commits to the single path; the
-*methodology* is still verified only by use.
+Workflows is the *orchestration* substrate only. Durability is not the engine's to provide (see §11) — so
+"the engine orchestrates" and "the engine gives almost no durability" sit on different planes and do not
+conflict: durability is reasonable's own, via git + the append-only ledger + reconcile.
 
 ---
 
 ## 3. The four planes
 
-The old "three layers" overloaded the word **control plane** onto the engine — but in DESIGN.md (§5.12) and
-the glossary, the control plane is canonically *the human*. The fix is to name four planes and never reuse
-"control plane" for the engine. (D2)
+reasonable names **four planes**, and reserves **control plane** for its canonical meaning in DESIGN.md
+(§5.12) and the glossary — *the human*. The engine is a substrate, never the control plane. (D2)
 
 | Plane | Who/what | Owns |
 |---|---|---|
@@ -107,12 +84,11 @@ waves.
 
 ---
 
-## 5. Analysis and the coherence-grill — the intention as oracle (NEW)
+## 5. Analysis and the coherence-grill — the intention as oracle
 
-This is the single largest piece the old sketch was missing: the entire *intent* half of the framework had
-no mechanism. principles.md leans on an **intention** — a decision-policy, grilled into existence,
-adversarially coherence-checked, then used as the **oracle** that lets a machine resolve later forks the way
-the principal would. None of it existed in the prior architecture.
+The *intent* half of the framework runs here. principles.md leans on an **intention** — a decision-policy,
+grilled into existence, adversarially coherence-checked, then used as the **oracle** that lets a machine
+resolve later forks the way the principal would.
 
 **Mechanism (D15):** a main-session phase skill `reasonable:analysis` runs *before* any vertical slice and produces a
 fence-protected `.reasonable/intention.md`. It wraps a `coherence-grill.workflow.js` whose **stop condition
@@ -122,9 +98,8 @@ and is put to the human — *this is the human's attention spent up front, the s
 terminates only when the adversary returns "no ambiguous fork found" (principles.md's stop condition —
 *not* "the next question seems low-value").
 
-The ratified `intention.md` becomes the cited **oracle** (§9). It must be added to the fence's
-`enforcementPaths` — it is **not** there today (verified: [effort.mjs:109-114](../lib/effort.mjs#L109-L114)
-lists ledger/journal/supervision/config/inbox, but not `intention.md`), so fence-protecting it is new code.
+The ratified `intention.md` is the cited **oracle** (§9) and a fence-enforced artifact — in the fence's
+`enforcementPaths`, alongside the ledger, journal, supervision, config, and inbox.
 
 **The falsifiable defeater (D18).** principles.md's success test has teeth: *a human correcting a
 non-breaking agent choice after the fact is a recorded failure of the intent-check.* Realized as a ledger
@@ -143,8 +118,8 @@ incoherence (the *change* still has an intention even when the legacy system emb
 
 The script has no filesystem. So it can **move** the methodology's program counter (decide the next
 transition) but it can never **write** it. This forces a clean writer-role split by **data class** — and
-resolves a real contradiction in the old sketch, which had a separate scribe writing the ledger *after* the
-worker committed (two atomic effects = the torn window the sketch elsewhere claimed to have killed).
+keeps the worker's commit and its ledger line a single atomic effect: a separate scribe writing the ledger
+*after* the worker committed would be two atomic effects, re-opening the torn window.
 
 - **Authoritative state → the worker's own atomic commit (D3a).** Each worker agent collapses its terminal
   side effects into **one** git commit: work product + its own ledger/verdict entry + a `Work-Order`
@@ -193,7 +168,7 @@ doesn't try — it returns, and the *main session* is where blocking (in gated m
 
 ---
 
-## 8. The trap protocol (open question Q1)
+## 8. The trap protocol
 
 **A mid-agent capability trap surfaces as a structured `agent()` return the script branches on — not a
 polled inbox.** (D5) The fence denies a tool call mid-agent; the agent converts the denial (or any wall)
@@ -254,7 +229,7 @@ ones do, and each one's answer enriches the intention so the system gets quieter
 
 ---
 
-## 10. Dynamism (open question Q2)
+## 10. Dynamism
 
 **Inter-vertical-slice dynamism comes from re-launching; intra-vertical-slice dynamism comes from looping.** (D6)
 
@@ -273,38 +248,34 @@ is mode-independent.
 
 ---
 
-## 11. Replay vs. changing state (open question Q3) — and the WAL question
+## 11. Replay vs. changing state — and the WAL question
 
 **`resumeFromRunId` is demoted off the correctness path entirely.** (D9) It is a pure **speed**
 optimization: a same-session cache with zero authority. The sole correctness authority is the
 **unconditional reconcile prologue** that re-derives truth from git+ledger+contracts at the start of *every*
 run. The pure script carries no freshness logic (it can't — it has no filesystem).
 
-This dissolves Q3 rather than proving the old sketch's fragile guarantee. The sketch claimed a same-session
-prefix-staleness *guarantee*, which (a) contradicted its own "resume has zero authority" and (b) rested on a
-false premise: the engine caches on `agent()` **call identity** (prompt/args/order), not on a contract
-*file* changing under a textually-identical call. A read-only consumer whose prompt doesn't embed the
-contract text **would** be served stale. The resolution: since nothing downstream trusts the cache for
+Reconcile re-derives truth every run rather than trusting any same-session prefix-staleness guarantee. Such
+a guarantee would rest on a false premise: the engine caches on `agent()` **call identity** (prompt/args/order),
+not on a contract *file* changing under a textually-identical call — so a read-only consumer whose prompt
+doesn't embed the contract text **would** be served stale. Since nothing downstream trusts the cache for
 correctness, a stale prefix is at worst **slower, never wrong** — reconcile re-derives truth regardless.
 
-### The WAL question, answered
+### The WAL question
 
-> *A past decision dropped the bespoke WAL trap-protocol in favor of Dynamic Workflows. Does it still stand?*
+There is **no bespoke WAL** — and the reason is load-bearing.
 
-**The decision stands; the reasoning that justified it does not** — and the distinction is load-bearing.
-
-- **The old justification is wrong (superseded by D8).** The sketch said durability is "inherited from
-  `resumeFromRunId`." But `resumeFromRunId` is same-session-only and the script is pure — it provides *no*
-  durability across the exact event durability exists for (a crash that ends the session). "The engine gives
-  us durability for free" is false.
-- **You still need no bespoke WAL — for the correct reason.** Git plus the append-only ledger **already are**
-  the write-ahead log. Git is itself an intent-then-commit log; the ledger is append-only. There is no
-  separate WAL protocol to invent.
-- **But "no protocol to build" was too glib.** Git+ledger only *function* as a WAL given two things the
-  sketch hand-waved: (1) the worker's terminal effects collapse into **one** atomic commit, so git is never
-  ahead of the ledger (D3a — the sketch's separate-scribe design re-created the torn window); and (2)
-  reconcile becomes a **total, halting** recovery function (D8b — see §11, new code). These are the residual
-  durability obligation: real, and **new code**, but reconcile + atomic-commit discipline, not a bespoke WAL.
+- **Durability is not "inherited from `resumeFromRunId`" (D8).** `resumeFromRunId` is same-session-only and
+  the script is pure — it provides *no* durability across the exact event durability exists for (a crash that
+  ends the session). The engine does not give durability for free.
+- **No bespoke WAL is needed, for the correct reason.** Git plus the append-only ledger **already are** the
+  write-ahead log. Git is itself an intent-then-commit log; the ledger is append-only. There is no separate
+  WAL protocol to invent.
+- **What that requires.** Git+ledger only *function* as a WAL given two things: (1) the worker's terminal
+  effects collapse into **one** atomic commit, so git is never ahead of the ledger (D3a — a separate-scribe
+  design would re-create the torn window); and (2) reconcile is a **total, halting** recovery function (D8b —
+  see §11). These two — atomic-commit discipline + a halting reconcile — are the durability obligation, not a
+  bespoke WAL.
 
 ---
 
@@ -322,11 +293,9 @@ itself).
    nothing trusts it for correctness.
 
 **Cross-session recovery is the only authoritative path and runs unconditionally as every run's prologue**
-(crash-only: recovery is the only path, so it is tested every session). This requires the **reconcile
-rewrite (D8b) — new code.** Verified: today [reconcile.mjs](../lib/reconcile.mjs) returns
-`{active:true, notes}` unconditionally and **never halts** (its notes are advisory strings like "harvest
-candidate (verify gate, then merge or sweep)"). The rewrite makes `reconcile()` a **total function**:
-partition every artifact configuration into
+(crash-only: recovery is the only path, so it is tested every session). Reconcile (D8b —
+[reconcile.mjs](../lib/reconcile.mjs)) is a **total function**: it partitions every artifact configuration
+into
 
 - **RESOLVED** — downgrade dispatched-with-no-work to pending; re-claim an orphan-in-registered-lane whose
   SHA reconciles and whose atomic commit included its ledger line; merge clean green.
@@ -337,8 +306,7 @@ partition every artifact configuration into
 
 **Trailers are hints, not anchors.** DESIGN §5.14B calls Work-Order trailers "convenience, never truth"
 (agents can forge them). SHA accounting against the ledger is truth; the trailer is only a re-claim hint.
-The old sketch's elevation of the trailer to a recovery *anchor* is corrected: a trailer mismatch is
-AMBIGUOUS → halt.
+A trailer is never a recovery *anchor* — SHA accounting is; a trailer mismatch is AMBIGUOUS → halt.
 
 **The checkpoint-commit anchor fix (D8b).** Verified hole: harvest keys on `commitsAhead > 0`
 ([reconcile.mjs:30-39](../lib/reconcile.mjs#L30-L39)), so a 0-commit checkpoint lane downgrades to pending
@@ -348,7 +316,7 @@ matching SHA as a live checkpoint, not pending.
 
 ---
 
-## 13. Capability law and worktrees (open question Q4)
+## 13. Capability law and worktrees
 
 **The fence does not bind inside an engine-spawned worktree — and today it does not bind inside *any*
 descriptor-less location, because it fails OPEN.** This is the headline correction.
@@ -361,10 +329,9 @@ if (!lane) process.exit(0); // not in a lane — main checkout / no effort — a
 ```
 
 — unconditional fail-**open**, with no branch distinguishing "effort reachable but no lane descriptor" from
-"no effort at all." The old sketch's "the fence fails closed, confirmed against fence.mjs" is **false**; the
-cited lines prove the opposite.
+"no effort at all." This is the gap D7b closes (below).
 
-**The fix (D7b — new code, small because the building block exists).** In `fence.mjs`, when `findLane` is
+**The mechanism (D7b).** In `fence.mjs`, when `findLane` is
 null, call `findEffortRoot` (already exported, [effort.mjs:85](../lib/effort.mjs#L85)); if an effort root is
 reachable, **deny** ("presumed hostile: effort worktree with no lane descriptor"); only if no effort is
 reachable at all, `process.exit(0)`. The fence then fails **closed** inside an effort and open only in a
@@ -389,9 +356,9 @@ facts: a lane cannot self-seed its descriptor (`.reasonable-lane.json` is in `EN
 ([fence.mjs:85-93](../lib/fence.mjs#L85-L93)) and the per-role test-path rules
 ([fence.mjs:111-132](../lib/fence.mjs#L111-L132)) bind as described.
 
-**The script holds zero enforcement authority** and is designed as hostile. The old sketch's "the script
-refuses to emit an `agent()` lacking an agentType" is downgraded to author discipline (the substrate gives
-the script no validation hook over its own calls); the real protection is that a bare `agent()` spawns the
+**The script holds zero enforcement authority** and is designed as hostile. The script cannot refuse to emit
+an `agent()` lacking an agentType — the substrate gives it no validation hook over its own calls, so that is
+author discipline only; the real protection is that a bare `agent()` spawns the
 default subagent, which the per-agentType hooks never grant a lane allowlist — so its edits are denied by
 **absence of grant**, not by the script.
 
@@ -403,12 +370,11 @@ default subagent, which the per-agentType hooks never grant a lane allowlist —
 autonomous), **never inferred from a standing directive** (the one-sentence difference between *autonomous*
 and *unsupervised*). (D10)
 
-- **Writer (new code).** The entry skill writes `{runMode:'gated'|'autonomous'}` into
-  `.reasonable/config.json`. `config.json` is already fence-protected
-  ([effort.mjs:112](../lib/effort.mjs#L112), verified), so an agent cannot self-promote mode.
-- **Reader (new code).** Verified: `reconcile.mjs` reads `journal.supervision` (the dial) but **no run-mode
-  field**, and the documented `config.json` schema has none. Add: reconcile reads `config.runMode`, includes
-  it in the briefing, and the main session re-asserts it into the next launch's args. **If `config.runMode`
+- **Writer.** The entry skill writes `{runMode:'gated'|'autonomous'}` into `.reasonable/config.json`.
+  `config.json` is fence-protected ([effort.mjs:112](../lib/effort.mjs#L112)), so an agent cannot
+  self-promote mode.
+- **Reader.** Reconcile reads `config.runMode`, includes it in the briefing, and the main session re-asserts
+  it into the next launch's args. **If `config.runMode`
   is absent on a cold restart, reconcile HALTS** — defaulting to the "safer" mode is still an inference, and
   the framework forbids inferring mode.
 
@@ -519,7 +485,7 @@ Genesis runs in two layers with different cadences (the §5.4 cost-asymmetry spl
 
 A characterization clause is admissible only if its test (a) **passes on unmutated HEAD** and (b) goes
 **RED, when run alone**, under at least one locus-scoped source mutant. This **reverse discriminator** is the
-exact dual of greenfield's "RED at HEAD~." It is **new code in `discriminator.mjs`**, reusing that file's
+exact dual of greenfield's "RED at HEAD~." It lives in `discriminator.mjs`, reusing that file's
 existing single-test overlay (`testOneCommand.replace('{test}', testName)`, verified
 [discriminator.mjs:119-120](../lib/discriminator.mjs#L119-L120)). It explicitly does **not** delegate to
 `mutation-sample.mjs`, which (verified [mutation-sample.mjs:104](../lib/mutation-sample.mjs#L104)) runs the
@@ -695,18 +661,17 @@ from the per-agentType allowlist + the PreToolUse hooks, never the script.
 - **Privileged narrow:** `lane-provisioner` (git worktree + descriptor write only), `journal-writer`
   (derived index only).
 
-Most already exist as v0.1 agent definitions; **new** are `grill-adversary`, `intention-writer`,
-`lane-provisioner`, `journal-writer`, `reconciler` (as a dispatched agent wrapping the rewritten lib), and —
-for brownfield — `census` and `characterizer`.
+The full set spans the verifiers, fenced mutators, and privileged-narrow roles above — including
+`grill-adversary`, `intention-writer`, `lane-provisioner`, `journal-writer`, `reconciler` (a dispatched
+agent wrapping the reconcile lib), and — for brownfield — `census` and `characterizer`.
 
 ---
 
-## 21. The build punch-list (what is new code)
+## 21. The mechanism inventory
 
-This is what "ready to be implemented" means — the concrete delta from today's `lib/`. Each item was
-verified to be unbuilt or wrongly-built against the live code.
+Each mechanism, the gap it closes, and the decision that governs it.
 
-| # | Build requirement | Today | Decision |
+| # | Mechanism | Gap it closes | Decision |
 |---|---|---|---|
 | 1 | **Fence fails closed inside an effort** — `findLane` null → `findEffortRoot`; deny if reachable | fail-open ([fence.mjs:70-71](../lib/fence.mjs#L70-L71)) | D7b |
 | 2 | **reconcile = total halting function** (RESOLVED / SAFE-DEFAULT / AMBIGUOUS→halt) | never halts ([reconcile.mjs](../lib/reconcile.mjs)) | D8b |
@@ -716,7 +681,7 @@ verified to be unbuilt or wrongly-built against the live code.
 | 6 | **`intention.md`** + the coherence-grill workflow + add to `enforcementPaths` | does not exist | D15 |
 | 7 | **Fork-resolving agents cite the intention oracle**; `intent-fork` OUTCOME arm | no oracle, no arm | D5b |
 | 8 | **Intent-check-failure ledger entry** recorded at the retro | does not exist | D18 |
-| 9 | **The `vertical-slice-runner` / `coherence-grill` / `scaffold` / `spike` workflow scripts** + the OUTCOME/GATE_RESULT schemas + `guard()` wrapper | orchestration is v0.1 prose | D4, D5, D16b |
+| 9 | **The `vertical-slice-runner` / `coherence-grill` / `scaffold` / `spike` workflow scripts** + the OUTCOME/GATE_RESULT schemas + `guard()` wrapper | orchestration was main-session prose | D4, D5, D16b |
 | 10 | **New agentTypes:** `grill-adversary`, `intention-writer`, `lane-provisioner`, `journal-writer`, `reconciler` | partial | §20 |
 | 11 | **Trust-staleness set** computed from ledger events by the route-planner | not computed | D13 |
 | 12 | **Inbox BREAKING/ADVISORY classes** + load tripwire | flat inbox | D17 |
@@ -731,37 +696,31 @@ verified to be unbuilt or wrongly-built against the live code.
 
 Items 13–20 are brownfield and are no-ops when `config.brownfield` is unset (§18).
 
-Reusable as-is (verified): `footprint.mjs` (resources + `independent()`), `contract.mjs` (citation graph),
-the enforcement/quarantine/test-path fence rules, `effort.mjs` helpers (`findEffortRoot`, config load,
-`enforcementPaths` incl. `config.json`).
+Foundational modules these build on: `footprint.mjs` (resources + `independent()`), `contract.mjs` (citation
+graph), the enforcement/quarantine/test-path fence rules, `effort.mjs` helpers (`findEffortRoot`, config
+load, `enforcementPaths` incl. `config.json`).
 
-**Release step (last).** When this punch-list is built and the dogfoods pass, bump the version in
-`.claude-plugin/plugin.json` and the `vanillafairy` marketplace entry from `0.1.0` to **`2.0.0`** — the
-version tracks the methodology generation (reasonable 2.0), not the build count. Do this only on
-implementation, not before; today's plugin on disk is still 0.1.0.
+**Versioning.** The plugin version — `.claude-plugin/plugin.json` and the `vanillafairy` marketplace entry —
+tracks the methodology generation, not the build count.
 
 ---
 
-## 22. What changed — from v0.1 and from the prior 2.0 draft
+## 22. Design lineage
 
-- **From v0.1:** the orchestrator stops being prose a stochastic main-session model interprets, and fractures
-  into a *pure script* (orchestration) + *worker-owned ledger* (authoritative durability) + *serialized
-  scribe* (derived index) + *reconcile gate* (recovery). The weakest-built v0.1 layer is replaced by a
-  deterministic engine.
-- **From the prior 2.0 sketch:** "control plane = the engine" → **four planes** with the human keeping the
-  name. "Durability inherited from `resumeFromRunId`" → **resume demoted to pure speed**; durability is
-  reasonable's via git+ledger+reconcile. "The fence fails closed (confirmed)" and "reconcile is a total
-  halting function" → **named as new code**, because they are. The separate-scribe-writes-ledger design →
-  **worker-owned atomic ledger line** (the torn window removed). The entire **intent half** (coherence-grill,
-  the intention oracle, the intent-check defeater) → **given a mechanism** for the first time.
+reasonable's orchestration is a *pure script* (orchestration) + a *worker-owned ledger* (authoritative
+durability) + a *serialized scribe* (derived index) + a *reconcile gate* (recovery). This replaced an
+earlier generation in which the orchestrator was prose a main-session model interpreted by hand — the
+weakest-built layer, now a deterministic engine. Durability is reasonable's own (git + ledger + reconcile),
+not the engine's; the intent half (coherence-grill, the intention oracle, the intent-check defeater) is
+first-class.
 
 ---
 
-## 23. Residual forks for the principal
+## 23. Settled defaults
 
 | Fork | Resolution |
 |---|---|
-| **Adoption commitment** | **DECIDED: commit fully** (§2). The v0.1 orchestrator path is retired; one path. A deliberate override of the default-deny default; the dogfood is the proving ground. |
+| **Orchestration path** | **One path** — the pure vertical-slice script on Dynamic Workflows (§2). |
 | **Cross-vertical-slice parallelism** | **v1 default: one vertical slice in flight** (parallelism spends feedback). Growth path: a thin top-level parent run fanning out concurrent vertical-slice-runs and re-converging at a joint retro — must be launched by the main session (one-level nesting), route-planner-judged. |
 | **Out-of-band contract mutation** | **v1 default: rely on reconcile re-deriving** every run (resume is non-authoritative, so a stale cache is slower-never-wrong). Revisit only if dogfood shows out-of-band edits are frequent enough that wasted re-derivation hurts. |
 | **Reconcile halt threshold** | **v1 default: conservative** — anything not provably RESOLVED/SAFE-DEFAULT halts to the human (a halt is cheap; a wrong auto-resolve is silent rot). Tighten toward permissive only as dogfood proves specific configurations unambiguous. Deliberately *not* coupled to run-mode (recovery correctness must not depend on supervision appetite). |
@@ -773,21 +732,12 @@ implementation, not before; today's plugin on disk is still 0.1.0.
 
 ---
 
-## 24. The mandate
+## 24. Proof is in use
 
-This document is still the product of *prediction* — grilling, adversarial re-derivation, verification
-against code. By the framework's own first principle, that settles whether the construction is *sound*
-(it now is — asserted-but-unbuilt claims have been replaced by named, buildable requirements), but **not**
-whether the foundation *works*. The next real information comes only from **building the punch-list (§21)
-and running the dogfood efforts** — the greenfield exercise that drives the whole loop: intention →
-coherence-grill → scaffold → vertical slices → adversarial verification → breaking discovery → enrich.
-
-**Brownfield adds its own mandate.** The §18 mechanisms — the per-test reverse discriminator, floor
-containment, `behaviorDelta`-ordered pinning, the floor-integrity reconcile pass — are exercised by *none* of
-the greenfield Fireside plan (DESIGN §12). Brownfield is therefore verified by construction only; it needs a
-**real legacy-codebase dogfood** to settle its dogfood-only residuals (risk-set scope, floor granularity,
-ratification threshold, `behaviorDelta` accuracy, floor-integrity accounting). That second dogfood is part of
-the mandate, not optional.
-
-Until then, this architecture is *verified by construction, not by use.* That is the honest status, and the
-mandate.
+By the framework's own first principle, construction settles only whether the design is *sound*, never
+whether it *works* — that is settled in practice, by the dogfood efforts that drive the whole loop:
+intention → coherence-grill → scaffold → vertical slices → adversarial verification → breaking discovery →
+enrich. Brownfield carries its own proof obligation: the §18 mechanisms — the per-test reverse discriminator,
+floor containment, `behaviorDelta`-ordered pinning, the floor-integrity reconcile pass — are exercised only
+by a real legacy-codebase effort. The honest status stays exactly what principles.md says: a design is
+proven by use, which is where it now lives.

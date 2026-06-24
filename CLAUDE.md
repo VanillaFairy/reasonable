@@ -57,8 +57,10 @@ with what inputs, in what order) is code; model judgment lives *inside* nodes, n
   `sanity`, `budget`. Stop/SubagentStop: `stop-commit`. SessionStart: `session-start`.
 - **`workflows/*.workflow.js`** — scripts for the Workflow tool that drive one vertical slice / spike /
   scaffold end-to-end via subagents.
-- **`docs/`** — `DESIGN.md` (root) is the design source of truth; `docs/glossary.md` is the normative
-  vocabulary; `docs/artifacts.md` pins the on-disk format of every `.reasonable/` artifact.
+- **`docs/`** — the full design corpus. `docs/DESIGN.md` is the design source of truth; `docs/principles.md`
+  (the *why*) and `docs/architecture.md` (the *how* — the methodology on the Dynamic Workflows engine) are
+  authoritative on intended behavior; `docs/glossary.md` is the normative vocabulary; `docs/artifacts.md`
+  pins the on-disk format of every `.reasonable/` artifact; `docs/roadmap/` holds post-1.0 problem definitions.
 
 ## Invariants you must not break
 
@@ -101,10 +103,12 @@ flow is `analysis → scaffolding → vertical-slice-execution → retro`, loopi
 slice. **`/init`, doc edits, and other ordinary tasks do not enter a reasonable effort** — only those
 two skills do.
 
-## Built (v0.1) vs in-progress (v2.0)
+## Where the canonical design lives
 
-`README.md` describes v0.1 (greenfield, single repo, single orchestrator). The repo is mid-evolution
-toward **v2.0** (design in `v2.0/`), whose headline addition is first-class **brownfield retrofit**.
-That's why you'll see brownfield machinery already present — `agents/census.md`,
-`agents/characterizer.md`, `lib/baseline.mjs`, and `BF*` citations in `lib/fence.mjs`. When in doubt
-about intended behavior, `DESIGN.md` + `v2.0/architecture.md` are authoritative over the README.
+`reasonable` is at **v1.0**. The full design corpus lives in `docs/`: `DESIGN.md` (methodology source of
+truth), `principles.md` (the foundation — the *why*), `architecture.md` (how the methodology sits on the
+Dynamic Workflows engine — the *how*), `glossary.md` (normative vocabulary), `artifacts.md` (on-disk artifact
+formats), and `roadmap/` (post-1.0 problem definitions). **Brownfield retrofit is first-class** — you'll see
+`agents/census.md`, `agents/characterizer.md`, `lib/baseline.mjs`, and `BF*` citations in `lib/fence.mjs`.
+When in doubt about intended behavior, `docs/DESIGN.md` + `docs/architecture.md` are authoritative over
+`README.md`.

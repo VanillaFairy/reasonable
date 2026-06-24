@@ -51,7 +51,7 @@ auto-pushes or auto-merges to your branch. "Uncommitted == not done": the implem
 commit is mandatory, and no gate / slice / conclude passes over uncommitted work product (enforced
 by `lib/commit-gate.mjs`, the conclude guard, and the Stop/SubagentStop backstop).
 
-## How a gated run is shaped (the 2.0 substrate)
+## How a gated run is shaped (the Workflows substrate)
 
 The orchestration substrate is the **Dynamic Workflows engine**, and it changes how the phases run
 (architecture §7, §4). The vertical-slice loop is no longer main-session prose — it is a pure

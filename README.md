@@ -134,7 +134,7 @@ contract-governed tests), `writing-plans`, `executing-plans`. It **coexists with
 The plugin is registered in `vanillafairy/.claude-plugin/marketplace.json`:
 
 ```json
-{ "name": "reasonable", "source": "./reasonable", "version": "0.1.0" }
+{ "name": "reasonable", "source": "./reasonable", "version": "1.0.0" }
 ```
 
 **Requirements:** Node.js (the engine) and Git (worktrees, discriminator, provenance). On Windows,
@@ -158,11 +158,11 @@ verdict, not a failure.
 
 ## Scope (v1)
 
-**In:** greenfield efforts; single repo; single orchestrator session; intra-vertical-slice parallel lanes; the
-full methodology; Rust + TypeScript bindings. **Deferred:** cross-vertical-slice parallelism via concurrent
-sessions; more stack bindings. (Brownfield retrofit is deferred in the built v0.1 but is first-class in the
-v2 design — see [v2.0/architecture.md](v2.0/architecture.md) §18.)
+**In:** greenfield **and brownfield** efforts; single repo; single orchestrator session; intra-vertical-slice
+parallel lanes; the full methodology; Rust + TypeScript bindings. **Deferred:** cross-vertical-slice
+parallelism via concurrent sessions; more stack bindings. (Brownfield retrofit — contracts characterized
+just-in-time — is first-class; see [docs/architecture.md](docs/architecture.md) §18.)
 
 ---
 
-*Design source of truth: `DESIGN.md`. Normative vocabulary: `docs/glossary.md`. Build status: v0.1.0.*
+*Design source of truth: `docs/DESIGN.md`. Normative vocabulary: `docs/glossary.md`. Version: v1.0.0.*

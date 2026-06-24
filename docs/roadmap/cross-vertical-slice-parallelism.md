@@ -1,14 +1,14 @@
 # Problem: true cross-vertical-slice parallelism (multi-writer journal)
 
 **Status:** TODO — deferred past v1. Opt-in growth path, not a default.
-**Origin:** surfaced stress-testing [architecture.md](architecture.md) (the "does it support multiple
-vertical slices in parallel?" probe). The architecture's §22 growth-path bullet **understates** this; that bullet
+**Origin:** surfaced stress-testing [../architecture.md](../architecture.md) (the "does it support multiple
+vertical slices in parallel?" probe). The architecture's §23 growth-path bullet **understates** this; that bullet
 should be tightened to point here.
 
 ## What is broken
 
 The architecture supports parallelism *within* a vertical slice (footprint-disjoint work-order waves) fully, and
-deliberately runs **one vertical slice at a time** by default. §22 offers cross-vertical-slice parallelism as a growth path —
+deliberately runs **one vertical slice at a time** by default. §23 offers cross-vertical-slice parallelism as a growth path —
 "a thin top-level parent run fanning out concurrent vertical-slice-runs, re-converging at a joint retro" — but that
 bullet glosses over a durability blocker that the source design already flagged as unsolved.
 

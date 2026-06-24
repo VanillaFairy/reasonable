@@ -1,6 +1,6 @@
 // vertical-slice-runner.workflow.js
 //
-// reasonable 2.0 — the pure in-run plane (architecture §18 sketch + §7/§8/§12/§15).
+// reasonable — the pure in-run plane (architecture §18 sketch + §7/§8/§12/§15).
 //
 // ONE Workflow run = exactly ONE vertical slice, driven toward GREEN, ending AT the
 // retro gate, never through it (D4, §7). The run does not block on a human; it returns

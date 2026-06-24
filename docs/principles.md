@@ -1,4 +1,4 @@
-# reasonable 2.0 — foundational principles
+# reasonable — foundational principles
 
 **Status:** foundational. Grilled, stress-tested across 12 perspectives, and adversarially reviewed by
 three independent lenses — **survived with the corrections below.** Consistent by *survival*, not by
@@ -133,11 +133,10 @@ Point the means at the families that matter for a given target; ignore the rest.
   the law (licenses/regulation), the unseen external consumer, life beyond one effort. Deferred *scope*,
   sequenced later, not pretended-away.
 
-## Closing note: the foundation is proven only by use
+## Closing note: the foundation is proven in use
 
 This document is the product of *prediction* — grilling, stress-testing, adversarial review. By the
 framework's own first principle, prediction is weakest exactly where knowledge is least, and no amount of it
-settles whether the foundation works in practice. The next real information comes only from **implementing
-the methodology and using it** — a first dogfood effort that exercises the loop (intention → vertical slices →
-adversarial verification → breaking discovery → enrich). Until then, the foundation is *verified by
-construction, not by use.* That is the honest status, and the mandate.
+settles whether the foundation works in practice. That proof comes only from **using the methodology** — the
+dogfood efforts that exercise the loop (intention → vertical slices → adversarial verification → breaking
+discovery → enrich). A philosophy is validated the one way it can be: by use, which is where it now lives.

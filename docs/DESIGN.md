@@ -1,6 +1,6 @@
 # Reasonable — Design Document
 
-**Status:** Built — v0.1.0. This is the living design reference, kept in step with the plugin as it stands.
+**Status:** Released — v1.0.0. This is the living design reference, kept in step with the plugin as it stands.
 **Design date:** 2026-06-12 · **Last reconciled with build:** 2026-06-15
 **Origin:** A full-day grilling session (grill-me protocol) between VanillaFairy and Claude, walking the complete decision tree of a new development methodology and the plugin that enforces it. Every ruling below was explicitly debated and accepted; rejected alternatives are recorded in §9 because the *reasons* are as load-bearing as the decisions.
 **Audience:** Anyone extending or auditing the plugin. This document is the single source of truth for *why* `reasonable` is shaped the way it is; the normative vocabulary lives in `docs/glossary.md` and the on-disk artifact formats in `docs/artifacts.md`. Where this document and the build disagree, one of them is wrong — reconcile, never ignore.
@@ -9,7 +9,7 @@
 
 ## 0. What this document is
 
-This is the design for **`reasonable`** — a Claude Code plugin (sibling of `vf-superpowers` in the `vanillafairy` marketplace at `c:\work\claude\vanillafairy\`) that enforces an outside-in, contract-governed, adversarially verified development methodology for agentic (LLM-driven) software work. The plugin is built (v0.1.0); this document is kept in step with it.
+This is the design for **`reasonable`** — a Claude Code plugin (sibling of `vf-superpowers` in the `vanillafairy` marketplace at `c:\work\claude\vanillafairy\`) that enforces an outside-in, contract-governed, adversarially verified development methodology for agentic (LLM-driven) software work. The plugin is at v1.0.0; this document is kept in step with it.
 
 It is deliberately rich: it contains not just the rulings but the reasoning chains, the rejected alternatives, the failure modes each mechanism guards against, and the vocabulary. It began as the founding brief a fresh session built the plugin from; it now serves as the standing design reference. Two companion documents carry the load-bearing detail and are the canonical copies of what they cover: `docs/glossary.md` (normative vocabulary) and `docs/artifacts.md` (on-disk artifact formats).
 
@@ -432,7 +432,7 @@ The plugin **supersedes** (and must declare so explicitly in its skill descripti
 
 ### 6.9 Marketplace integration
 
-`c:\work\claude\vanillafairy\.claude-plugin\marketplace.json` registers the plugin — `{ "name": "reasonable", "source": "./reasonable", "version": "0.1.0" }` is present and live alongside `vf-superpowers`. The structural conventions (plugin manifest, skills/agents layout) follow `vf-superpowers/`.
+`c:\work\claude\vanillafairy\.claude-plugin\marketplace.json` registers the plugin — `{ "name": "reasonable", "source": "./reasonable", "version": "1.0.0" }` is present and live alongside `vf-superpowers`. The structural conventions (plugin manifest, skills/agents layout) follow `vf-superpowers/`.
 
 ---
 
@@ -539,4 +539,4 @@ The plugin was built from this document, broadly along the order suggested below
 4. **Rigid vs flexible skills:** pipeline-order skills are written "follow exactly"; judgment-procedure skills are written to adapt. The `analysis` grilling protocol stayed grill-me style — one question at a time, prose with a recommended answer, explore-don't-ask when the codebase can answer.
 5. **README** carries the motto (*every claim reasoned, every reason checked*), the family descriptor (outside-in, contract-governed, adversarially verified), the ancestry table (§3), and the Three Laws (§4), as planned.
 
-**Still pending — the dogfood plan.** The first real effort should be a greenfield widget for the author's Fireside project (a Windows tray-resident plugin shell — multi-hotzone widget wrapper is the long-term vision), exercising gates, contracts, resource claims (tray icon + global hooks are singleton resources), and the full pipeline. This is the methodology's first real test against itself; until it runs, the plugin is verified by construction, not by use.
+**The dogfood.** The methodology's first real test against itself is the author's Fireside project (a Windows tray-resident plugin shell — multi-hotzone widget wrapper is the long-term vision): it exercises gates, contracts, resource claims (tray icon + global hooks are singleton resources), and the full pipeline. A design is proven by use, and that is where it now lives.
