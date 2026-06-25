@@ -36,6 +36,10 @@ answer per question** — never option menus. **Explore the codebase instead of 
 can answer.** Walk the decision tree branch by branch; resolve each before opening the next. (This is
 the grill-me lineage — see the `grill-me` skill if available.)
 
+The **same technique is reused to pre-drain the intention's obvious forks** (step 9a) before the
+fresh-context adversarial grill runs — settle in cheap shared context what you can, so each fork the
+adversary would otherwise surface is a full re-grill round *not* spent.
+
 The vision you are extracting has three parts:
 - **Grilled user stories** — user-visible scenarios, sharp enough to become parked scenario tests.
 - **Topology sketch** — components, names, ownership, relationships, derived *subtractively* from the
@@ -90,9 +94,31 @@ The vision you are extracting has three parts:
      omission.
 8. **Initialize the journal and ledger.** Empty `.reasonable/journal.json` (phase `analysis`) and an
    empty `.reasonable/ledger.jsonl`, empty `.reasonable/inbox.json`.
-9. **Human ratification (blocking).** Present vision, topology, initial route, and the standing
-   artifacts. The human ratifies each — these are one-time ratifications (vision, topology, initial
-   route, scaffold-to-come). **Silence never ratifies.** Nothing proceeds to scaffolding without it.
+9. **Grill the intention into a coherent oracle — the coherence-grill.** The intention
+   (`.reasonable/intention.md`) is the cited **oracle** every downstream fork-resolving agent must
+   reference — a *distinct* artifact from the vision (a decision **policy**, not stories). Produce it in
+   two phases — cheap human attention first, expensive adversary second — to keep the round count low:
+   - **9a. Pre-drain in shared context (cheap; do this *before* spawning any agent).** You already hold
+     live context with the human, so drain the **obvious** forks here using the grilling protocol above
+     (one question at a time, prose, recommended answer; explore-don't-ask). Settle the
+     **approach-level** decisions first — they can dissolve whole layers of detail forks — and fold each
+     answer into the draft policy and its *Resolved forks* trail. Every fork settled here is a full
+     fresh-context grill round **not** spent (the single biggest cost saver).
+   - **9b. Adversarial coherence-grill (the authority — never skipped, both modes).** Launch
+     `coherence-grill.workflow.js` against the strengthened draft. The pre-drain does **not** replace it
+     — Law 3 (external verification): the pre-drain is *you*, the worker, drafting; the fresh-context
+     `grill-adversary` is the independent verifier whose **adversarial** stop (`no-fork-found` from a
+     genuine attack) must still hold. Each `fork-for-human` it returns is a **batch** of mutually-
+     independent forks at the draft's **highest open altitude tier (approach before detail)**, plus a
+     `deferred` note of what it withheld. Put the whole batch to the human (gated) / self-ratify-and-log
+     (autonomous, per the note below), enrich the draft with the resolutions, and **re-launch** against
+     the strengthened draft. Repeat until the workflow returns `intention-persisted` — an
+     `intention-writer` has landed `.reasonable/intention.md` in one atomic commit. Add `intention.md`
+     to `enforcementPaths`.
+10. **Human ratification (blocking).** Present vision, topology, initial route, the **ratified
+   intention** (the oracle), and the standing artifacts. The human ratifies each — these are one-time
+   ratifications (vision, topology, initial route, intention, scaffold-to-come). **Silence never
+   ratifies.** Nothing proceeds to scaffolding without it.
 
 ## Brownfield branch (BF7) — runs only when `config.brownfield = true`
 
@@ -144,7 +170,7 @@ intention is a self-approval hole. Two pieces:
   retro that consumes `intention.md`. The run does not block, but the self-approval is **never silently
   blessed**: it is logged, surfaced, and carried, exactly the always-escalate posture (§5.6 / §5.14F).
 
-These slot in **before** human ratification (step 9): the human ratifies the brownfield artifacts —
+These slot in **before** human ratification (step 10): the human ratifies the brownfield artifacts —
 the census skeletons, `baseline.json`, and `intention.md` — alongside the standing set.
 
 ## Discipline

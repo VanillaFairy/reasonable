@@ -227,10 +227,14 @@ one of the three is probably wrong.
   fixes nothing. An instance of the **verifier/adversary** family (its reference:
   the contract text; its arbiter verdict is downstream-backstopped by the
   test↔contract parity fence and the discriminator).
-- **Grill-adversary** — a fresh-context agent that hunts one fork the draft
-  intention resolves two defensible ways; returns the first such fork, or (when
-  none survives) clears the draft. An instance of the **verifier/adversary**
-  family (its reference: draft coherence against vision + slice spec).
+- **Grill-adversary** — a fresh-context agent that hunts the forks the draft
+  intention leaves open; each pass returns the **independent batch at the draft's
+  highest open altitude tier** (*approach* forks — which can restructure the
+  design — before *detail* forks), or (when a genuine attack survives) clears the
+  draft. Batching + altitude ordering cut the number of grill→answer→re-grill
+  rounds; the adversarial stop is unchanged. An instance of the
+  **verifier/adversary** family (its reference: draft coherence against vision +
+  slice spec).
 - **Progress verdict** — the checkpoint artifact: what was tried, what binds,
   current hypothesis. Emitted when a budget is exhausted.
 - **Effort budget** — a harness-counted cap (attempts/turns/tool-calls) that

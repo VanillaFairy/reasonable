@@ -593,6 +593,12 @@ scope: full        # full | micro
   badge it stale. (grilled R0)
 ```
 
+Each settled fork is one line, oldest first. The **round tag** (`R0`, `R1`, …) may
+**repeat** across several lines: each grill pass returns a *batch* of independent
+forks at the draft's highest open altitude tier (approach before detail), and the
+human settles the whole batch in one round — so a single round commonly resolves
+more than one fork.
+
 `scope` ∈ `full | micro`. **full** is the normal effort-wide oracle. **micro** is
 the low-floor / single-brownfield-change form (§17): just the change sentence,
 its `behaviorDelta`, and the touched seam's pinned behaviour — the scale-free

@@ -97,8 +97,9 @@ Two engine limits govern what this skill launches directly (architecture §15, �
    load tripwire, surface *that* as a meta-signal that the intention is under-specified — route back
    to enrich it, do not suppress.
 5. **Run analysis gated (the intention oracle).** Invoke `reasonable:analysis`. It grills the vision,
-   launches `coherence-grill.workflow.js` (each ambiguous fork returns to *you* to put to the human),
-   ratifies the fence-protected `.reasonable/intention.md`, triages applicability, and emits the
+   pre-drains the obvious intention forks in shared context, then launches `coherence-grill.workflow.js`
+   (each batch of independent forks — approach tier before detail — returns to *you* to put to the
+   human), ratifies the fence-protected `.reasonable/intention.md`, triages applicability, and emits the
    initial route. **STOP at the analysis sign-off, present the artifacts, and wait** for explicit
    human approval. Silence is frozen, never approved.
 6. **Launch the scaffold from the main session.** Invoke `reasonable:scaffolding`, which launches

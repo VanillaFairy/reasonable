@@ -1,66 +1,93 @@
 export const meta = {
   name: 'coherence-grill',
   description:
-    'Adversarial coherence grill for the draft intention (D15): loop a grill-adversary hunting one fork the draft resolves two defensible ways; return the first fork to the human, or — when none is found — persist the ratified intention.md atomically via an intention-writer worker.',
+    'Adversarial coherence grill for the draft intention (D15): loop a grill-adversary that returns the independent batch of forks at the draft\'s highest open altitude tier (approach before detail); return the batch to the human, or — when none is found — persist the ratified intention.md atomically via an intention-writer worker.',
   whenToUse:
     'Launched by reasonable:analysis (main session) to grill the draft intention into a coherent oracle before any vertical slice runs. Re-launched after each human resolution against the strengthened draft.',
   phases: [
-    { title: 'Coherence grill', detail: 'A read-only grill-adversary attacks the draft intention, surfacing one fork per iteration; the loop terminates only on no-fork-found (adversarial stop, never heuristic).' },
+    { title: 'Coherence grill', detail: 'A read-only grill-adversary attacks the draft intention, surfacing one batch of independent same-altitude forks per iteration (approach tier before detail tier); the loop terminates only on no-fork-found (adversarial stop, never heuristic).' },
     { title: 'Persist intention', detail: 'On no-fork-found, a fenced intention-writer transcribes the ratified policy into .reasonable/intention.md in one worker-owned atomic commit.' },
   ],
 }
 
 // ---------------------------------------------------------------------------
 // Inline schema literals (self-contained — no imports). The grill-adversary is
-// FORCED to call StructuredOutput against FORK_OR_NONE; the intention-writer
+// FORCED to call StructuredOutput against FORKS_OR_NONE; the intention-writer
 // against WRITER_REPORT. Schemas mirror agents/grill-adversary.md and
 // agents/intention-writer.md exactly.
 // ---------------------------------------------------------------------------
 
-// The grill-adversary returns exactly one of: a fork it found, or no-fork-found.
-const FORK_OR_NONE = {
+// The grill-adversary returns exactly one of: a BATCH of mutually-independent
+// forks at the draft's highest open altitude tier (approach before detail), or
+// no-fork-found. Batching + altitude ordering cut the NUMBER of grill→answer→
+// re-grill rounds; the adversarial stop is unchanged — the loop still ends ONLY
+// on a from-scratch no-fork-found. The top-level type MUST stay the literal
+// 'object' (the Messages API rejects a top-level array type); the batch rides a
+// nested `forks` array.
+const FORKS_OR_NONE = {
   type: 'object',
   additionalProperties: false,
   required: ['kind'],
   properties: {
-    kind: { type: 'string', enum: ['fork', 'no-fork-found'] },
-    // --- present when kind === 'fork' ---
-    forkType: {
-      type: 'string',
-      enum: ['two-defensible-ways', 'internal-contradiction'],
-      description: 'Which kind of fork: an underdetermined decision, or a self-contradiction in the draft.',
-    },
-    situation: {
-      type: 'string',
-      description: 'The concrete situation, reachable from the stories/topology, where the draft fails to decide.',
-    },
-    readings: {
+    kind: { type: 'string', enum: ['forks', 'no-fork-found'] },
+    // --- present when kind === 'forks' ---
+    forks: {
       type: 'array',
-      minItems: 2,
-      maxItems: 2,
+      minItems: 1,
+      description: 'The mutually-independent forks at the draft\'s highest open altitude tier (approach before detail). Independent = resolving any one does not change whether the others are forks or how they read; coupled or lower-tier forks are withheld for a later pass and summarized in `deferred`. One per iteration was the old shape; a single fork is just a length-1 batch.',
       items: {
         type: 'object',
         additionalProperties: false,
-        required: ['reading', 'defensibleBecause'],
+        required: ['forkType', 'altitude', 'situation', 'whyDraftDoesNotSettle'],
         properties: {
-          reading: { type: 'string', description: 'One defensible resolution of the fork.' },
-          defensibleBecause: {
+          forkType: {
             type: 'string',
-            description: 'Which story / clause / legacy behaviour makes this reading defensible under the current draft.',
+            enum: ['two-defensible-ways', 'internal-contradiction'],
+            description: 'Which kind of fork: an underdetermined decision, or a self-contradiction in the draft.',
+          },
+          altitude: {
+            type: 'string',
+            enum: ['approach', 'detail'],
+            description: 'approach = its resolution can restructure the design/topology/approach (and may dissolve detail forks); detail = a decision within a fixed approach. A batch is single-altitude: every approach fork is surfaced before any detail fork.',
+          },
+          situation: {
+            type: 'string',
+            description: 'The concrete situation, reachable from the stories/topology, where the draft fails to decide.',
+          },
+          readings: {
+            type: 'array',
+            minItems: 2,
+            maxItems: 2,
+            items: {
+              type: 'object',
+              additionalProperties: false,
+              required: ['reading', 'defensibleBecause'],
+              properties: {
+                reading: { type: 'string', description: 'One defensible resolution of the fork.' },
+                defensibleBecause: {
+                  type: 'string',
+                  description: 'Which story / clause / legacy behaviour makes this reading defensible under the current draft.',
+                },
+              },
+            },
+            description: 'For two-defensible-ways: the two readings each genuinely defensible under the draft. (Omit for internal-contradiction; use contradictingClauses instead.)',
+          },
+          contradictingClauses: {
+            type: 'array',
+            minItems: 2,
+            items: { type: 'string' },
+            description: 'For internal-contradiction: the two clauses (or clause vs. story/quality-attribute) that cannot both hold.',
+          },
+          whyDraftDoesNotSettle: {
+            type: 'string',
+            description: 'Why the current draft does not already resolve this — read the whole policy first.',
           },
         },
       },
-      description: 'For two-defensible-ways: the two readings each genuinely defensible under the draft. (Omit for internal-contradiction; use contradictingClauses instead.)',
     },
-    contradictingClauses: {
-      type: 'array',
-      minItems: 2,
-      items: { type: 'string' },
-      description: 'For internal-contradiction: the two clauses (or clause vs. story/quality-attribute) that cannot both hold.',
-    },
-    whyDraftDoesNotSettle: {
+    deferred: {
       type: 'string',
-      description: 'Why the current draft does not already resolve this — read the whole policy first.',
+      description: 'For kind:"forks" ONLY (optional): what was deliberately held back this pass — coupled forks, or lower-altitude forks an approach-tier resolution may dissolve — so the human knows the grill continues after this batch. Omit when this batch is believed exhaustive at the current tier and no lower tier is gated behind it.',
     },
     // --- present when kind === 'no-fork-found' ---
     exercised: {
@@ -140,10 +167,15 @@ phase('Coherence grill')
 
 // D15: the loop's stop condition is adversarial, not heuristic. while(true) —
 // each iteration a FRESH-CONTEXT grill-adversary attacks the current draft and
-// returns the first fork it can defend, or no-fork-found. We return the FIRST
-// fork to the human (the main session settles it, enriches the draft, and
-// re-launches this workflow against the strengthened draft); we break only when
-// the adversary genuinely finds nothing.
+// returns the independent batch of forks at the draft's highest open altitude
+// tier (approach before detail), or no-fork-found. We return the BATCH to the
+// main session (it settles them, enriches the draft, and re-launches this
+// workflow against the strengthened draft); we break only when the adversary
+// genuinely finds nothing. Batching + altitude ordering cut the NUMBER of rounds
+// without weakening the stop: the final re-launch is still a from-scratch attack
+// that must come back no-fork-found. A mis-judged "independent" is self-correcting
+// — a resolution that dissolves a sibling just means the next pass won't resurface
+// it (a possibly-moot human answer, never a corrupt oracle).
 while (true) {
   if (!withinBudget()) {
     return {
@@ -152,36 +184,36 @@ while (true) {
     }
   }
 
-  log('Grilling the draft intention for an open fork…')
+  log('Grilling the draft intention for open forks…')
 
-  const fork = await guard(() =>
+  const attack = await guard(() =>
     agent(grillAdversaryPrompt(a, scope), {
       agentType: 'reasonable:grill-adversary',
       label: 'grill-adversary',
       phase: 'Coherence grill',
-      schema: FORK_OR_NONE,
+      schema: FORKS_OR_NONE,
     })
   )
 
   // Budget-ceiling throw re-tagged by guard() — surface it, do not misread as
   // "no fork" (which would silently end the grill and ship an unattacked oracle).
-  if (fork && fork.kind === 'checkpoint') {
-    return fork
+  if (attack && attack.kind === 'checkpoint') {
+    return attack
   }
 
   // null = user skip or terminal API error after retries: a verification gap.
   // The grill did NOT complete an attack, so we cannot proceed to the writer.
-  if (!fork) {
+  if (!attack) {
     return {
       kind: 'checkpoint',
       reason: 'grill-adversary returned null (user skip or terminal error) — grill did not complete an attack',
     }
   }
 
-  // A fork the human must settle. Return it to the main session; this is the
-  // sanctioned place to spend human attention, up front, on real ambiguity.
-  if (fork.kind === 'fork') {
-    return { kind: 'fork-for-human', fork }
+  // A batch of forks the human must settle. Return them to the main session; this
+  // is the sanctioned place to spend human attention, up front, on real ambiguity.
+  if (attack.kind === 'forks') {
+    return { kind: 'fork-for-human', forks: attack.forks, deferred: attack.deferred }
   }
 
   // kind === 'no-fork-found': a genuine attack turned up nothing. Terminate.
@@ -234,7 +266,7 @@ return { kind: 'intention-persisted', report }
 function grillAdversaryPrompt(a, scope) {
   return [
     'You are the grill-adversary in a reasonable effort (D15). You are the coherence-grill loop\'s',
-    'ADVERSARIAL stop condition. Attack the draft intention below and return the FIRST fork you can',
+    'ADVERSARIAL stop condition. Attack the draft intention below and return the batch of forks you can',
     'defend, or no-fork-found ONLY after a genuine attack turns up nothing. Read your agent definition,',
     'docs/glossary.md, and docs/artifacts.md (the intention.md shape + its Resolved-forks audit trail).',
     '',
@@ -244,6 +276,16 @@ function grillAdversaryPrompt(a, scope) {
     'is defensibility under the current text, not your taste. Reachable forks only. You are READ-ONLY:',
     'you never draft clauses, pick the right reading, or edit the draft.',
     '',
+    'ALTITUDE FIRST, THEN BATCH (this cuts the number of grill→answer→re-grill rounds without weakening',
+    'the stop condition). Tag every fork: "approach" (its resolution can restructure the design/topology/',
+    'approach and may dissolve detail forks) or "detail" (a decision within a fixed approach). Surface only',
+    'the HIGHEST open tier: if any approach fork survives, return the approach batch and WITHHOLD detail',
+    'forks (an approach pivot may delete them — grilling the detail of an approach that may not survive is',
+    'the exact waste this ordering prevents). Within that tier, return ALL forks that are MUTUALLY',
+    'INDEPENDENT — resolving any one does not change whether the others are forks or how they read.',
+    'Withhold coupled forks for a later pass and say what you held back in `deferred`. A wrong independence',
+    'call is self-correcting: the next pass simply won\'t resurface a now-settled fork.',
+    '',
     'Termination is adversarial, NEVER heuristic: no-fork-found means you tried to break the draft and',
     'could not (every story exercised against the policy, the policy checked against itself, the brownfield',
     'corpus mined). It does NOT mean "the next question seems low-value." If you return no-fork-found,',
@@ -251,15 +293,19 @@ function grillAdversaryPrompt(a, scope) {
     '',
     'Oracle scope: ' + scope + '.',
     '',
-    'DRAFT INTENTION (decision policy + already-resolved forks):',
-    asBlock(a.draft),
-    '',
+    // Stable reference FIRST (cache-friendly prefix), volatile draft LAST: the draft
+    // grows each round as resolved forks accrue; the materials do not. (The realistic
+    // token win is modest — one adversary call per launch, cross-launch cache usually
+    // cold — the real round-count saving comes from batching + altitude above.)
     'MATERIALS THE INTENTION MUST COVER (grilled user stories / topology sketch / quality attributes;',
     'brownfield: the characterization corpus to mine for legacy incoherence):',
     asBlock(a.materials),
     '',
-    'Return exactly one StructuredOutput object: {kind:"fork", forkType, situation, readings|contradictingClauses,',
-    'whyDraftDoesNotSettle} OR {kind:"no-fork-found", exercised}.',
+    'DRAFT INTENTION (decision policy + already-resolved forks):',
+    asBlock(a.draft),
+    '',
+    'Return exactly one StructuredOutput object: {kind:"forks", forks:[{forkType, altitude, situation,',
+    'readings|contradictingClauses, whyDraftDoesNotSettle}, …], deferred?} OR {kind:"no-fork-found", exercised}.',
   ].join('\n')
 }
 

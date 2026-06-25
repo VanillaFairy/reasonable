@@ -91,12 +91,16 @@ grilled into existence, adversarially coherence-checked, then used as the **orac
 resolve later forks the way the principal would.
 
 **Mechanism (D15):** a main-session phase skill `reasonable:analysis` runs *before* any vertical slice and produces a
-fence-protected `.reasonable/intention.md`. It wraps a `coherence-grill.workflow.js` whose **stop condition
-is adversarial, not heuristic**: a `grill-adversary` agent loops hunting for a fork the draft intention
-resolves two defensible ways (or an internal contradiction). Each fork it finds returns to the main session
-and is put to the human — *this is the human's attention spent up front, the sanctioned place.* The loop
-terminates only when the adversary returns "no ambiguous fork found" (principles.md's stop condition —
-*not* "the next question seems low-value").
+fence-protected `.reasonable/intention.md`. The main session first **pre-drains** the obvious forks in cheap
+shared context (the worker drafting — Law 3 keeps the verifier separate), then wraps a
+`coherence-grill.workflow.js` whose **stop condition is adversarial, not heuristic**: a `grill-adversary`
+agent loops hunting forks the draft intention leaves open, returning each pass the **independent batch at the
+draft's highest open altitude tier** (*approach* forks — which can restructure the design — before *detail*
+forks). Each batch returns to the main session and is put to the human — *this is the human's attention spent
+up front, the sanctioned place.* Batching + altitude ordering cut the **number** of grill→answer→re-grill
+rounds (the old shape was one fork per pass, quadratic in fork count, and grilled detail an approach pivot
+could delete); the stop is untouched — the loop terminates only when the adversary returns "no ambiguous fork
+found" from a from-scratch attack (principles.md's stop condition — *not* "the next question seems low-value").
 
 The ratified `intention.md` is the cited **oracle** (§9) and a fence-enforced artifact — in the fence's
 `enforcementPaths`, alongside the ledger, journal, supervision, config, and inbox.
@@ -609,8 +613,8 @@ Twelve greenfield components, plus three brownfield ones (gated on `config.brown
 
 | Component | Kind | Responsibility |
 |---|---|---|
-| **`reasonable:analysis`** | main-session skill | grill the vision → intention; launch the coherence-grill; ratify `intention.md`; triage applicability; emit the initial route |
-| **`coherence-grill.workflow.js`** | workflow (adversarial loop) | `while(true){ fork = agent(grill-adversary, FORK_OR_NONE); if(no-fork) break; return fork-to-human }` then an `intention-writer` worker persists `intention.md` atomically |
+| **`reasonable:analysis`** | main-session skill | grill the vision → intention; pre-drain obvious forks; launch the coherence-grill; ratify `intention.md`; triage applicability; emit the initial route |
+| **`coherence-grill.workflow.js`** | workflow (adversarial loop) | `while(true){ a = agent(grill-adversary, FORKS_OR_NONE); if(no-fork) break; return forks-to-human }` (each batch = independent forks at the highest open altitude tier) then an `intention-writer` worker persists `intention.md` atomically |
 | **`scaffold.workflow.js`** | workflow (short pipeline) | walking skeleton + parked scenario suite, real wiring, thin behavior → invariant-verify (read-only) → scribe; ends at scaffold sign-off (main session takes it) |
 | **`vertical-slice-runner.workflow.js`** | workflow (one run per vertical slice) | the pure in-run plane: reconcile prologue → route-planner (footprints + resources + staleness) → `groupDisjoint` → per wave the enrichment `pipeline()` → trap `switch` → scribe the derived index → return a typed `GATE_RESULT` |
 | **enrichment pipeline** | `pipeline()` inside vertical-slice-runner | `pipeline(workOrders, provisionThenImplement, blindTest, adjudicate, audit)` — no barrier; the implementer worker writes its own ledger line in its atomic commit; the adjudicator cites the oracle; each call `guard()`-wrapped |
