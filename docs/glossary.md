@@ -162,6 +162,17 @@ one of the three is probably wrong.
   correct* — there is no reference above the artifact for that (the
   characterizer's bug-pin blind spot), which stays the human three-way
   classification's job. An instance of the **verifier/adversary** family.
+- **Frontier inventory** — the brownfield analysis-time artifact: a thin, prose `## Scenarios`
+  section (zero clauses, zero citations — parser-invisible, footprint-zero) recording the
+  observable top-level scenarios on the effort's frontier (route-intended / integration-risk).
+  Written read-only by `census` via `characterization.workflow.js`. Advisory: it feeds the
+  route-planner and the human birth-ratification gate; it confers no trust and pins no behaviour.
+- **First-touch genesis** — the **only** point a born `characterized` clause (with its parked
+  characterization test + BF2 reverse discriminator + intent-verifier) is created: just-in-time,
+  inside the running vertical-slice-runner, after the implementer declares its `behaviorDelta`.
+  Analysis-time characterization is now a read-only frontier inventory only (no teeth); pinning
+  behaviour eagerly, before a change has decided to touch it, is the prediction disease this defers
+  away from.
 - **Pre-integration verification** — the placement rule for an adversary: it
   judges the worker's *proposed* output *before* that output is integrated into
   the protected state (codebase / floor / cited reference), against a reference
