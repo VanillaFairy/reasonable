@@ -1,5 +1,12 @@
 # The Fireside incident, worked against the hardened methodology
 
+> **Historical note (2026-06-26).** This worked example analyses the **pre-redesign** brownfield
+> characterization design — the eager, tooth-bearing *corpus pass*. That pass was since replaced by a
+> read-only *frontier inventory* pass (see `docs/superpowers/specs/2026-06-26-frontier-scoped-characterization-design.md`),
+> so the `workflows/characterization.workflow.js:NNN` line numbers cited below refer to that earlier
+> version and no longer resolve in the current file. The incident's *lessons* still stand; the line
+> citations are historical.
+
 This is a worked example, not a spec. It takes one real failure — a brownfield
 characterization pass on the Fireside repo that halted on a false alarm — and walks it
 through the hardened `reasonable` snapshot (branch `feat/verification-trio`) to show
