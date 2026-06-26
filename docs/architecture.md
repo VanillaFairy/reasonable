@@ -113,7 +113,7 @@ the intention is too weak an oracle — routing back to enrich it. Without this,
 unfalsifiable, the exact shape the framework forbids.
 
 **In a brownfield effort** the same analysis phase also runs the topology census and partitions the existing
-suite into the regression floor, and the coherence-grill mines the characterization corpus for legacy
+suite into the regression floor, and the coherence-grill mines the frontier scenario inventory for legacy
 incoherence (the *change* still has an intention even when the legacy system embodies none) — see §18.
 
 ---
@@ -560,15 +560,22 @@ fires, `config.brownfield: true`. The phase flow is **one slot swap, not a new t
   surfaces as an `intent-fork`). This answers "there's no vision to grill": the *change* has an intention
   even when the legacy system embodies none.
 - **scaffolding (brownfield mode)** — there is no walking skeleton to build (the system already walks), so
-  the slot's job becomes "characterize the observable top-level scenarios as a parked baseline," via a
-  main-session `characterization.workflow.js` (mirrors `scaffold.workflow.js`; here invariant-verify means
-  **GREEN on HEAD**, the inverse of the discriminator's RED-on-HEAD~).
+  the slot's job becomes a **read-only frontier inventory**: a main-session
+  `characterization.workflow.js` runs `census` (read-only on code) to enumerate **only the frontier**
+  observable scenarios (route-intended / integration-risk — not the whole surface) and record them as
+  a thin prose `## Scenarios` map in the existing skeleton contracts. It writes **no parked test and
+  no born `characterized` clause** — every tooth (born clause + parked test + BF2 reverse
+  discriminator + intent-verifier) is **deferred to first-touch genesis**. This is the cost-asymmetry
+  split made literal: cheap, frontier-scoped observation up front; expensive, demand-driven pins lazy
+  at the seam. The FLOOR (`baseline.json`) is unchanged, so regression protection is identical — only
+  the *timing* of behavioural pins moves from eager to lazy.
 - **vertical slices** — the **identical** runner/pipeline/trap/retro loop, plus a conditional first stage: a
   `characterization-needed` OUTCOME arm that, on first touch of ungoverned code, records the `behaviorDelta`
   and dispatches the characterizer provider-first. **This genesis runs as an in-run agent sequence inside the
   running vertical-slice-runner — not a nested `workflow()`** (the one-level nesting limit forbids it; this
   parallels DESIGN §5.10's "extraction is a ripple with a birth in it"). `characterization.workflow.js` is
-  used only for the analysis-time corpus pass, launched from the main session.
+  used only for the analysis-time frontier inventory pass, launched from the main session — and is **the
+  sole birthplace of a `characterized` clause**.
 
 ### The low floor, brownfield (the worked example, now resolved)
 
@@ -629,7 +636,7 @@ Twelve greenfield components, plus three brownfield ones (gated on `config.brown
 | **`spike.workflow.js`** | workflow (single timeboxed agent) | quarantined falsifiable spike → knowledge artifact; spike-runner path-fenced to quarantine (the quarantine rule in `fence.mjs` `categorical()`); launched by the main session (nesting limit) |
 | **`census`** *(brownfield, §18)* | read-only agent | once at analysis: dep-graph → skeleton topology contracts (zero clauses/citations); partition the existing suite → `baseline.json` (FLOOR, untrusted) |
 | **`characterizer`** *(brownfield, §18)* | fenced mutator agent | read-only on src; pins current behaviour as `characterized` clauses + parked characterization tests, just-in-time at first touch, after the implementer's `behaviorDelta` |
-| **`characterization.workflow.js`** *(brownfield, §18)* | workflow (short pipeline) | analysis-time corpus pass (mirrors `scaffold.workflow.js`); invariant-verify = GREEN on HEAD. First-touch genesis is NOT this — it is an in-run agent sequence inside the vertical-slice-runner (one-level nesting) |
+| **`characterization.workflow.js`** *(brownfield, §18)* | workflow (short pipeline) | analysis-time **frontier inventory** pass — read-only `census` records a prose `## Scenarios` map of the frontier; **no teeth** (deferred to first-touch). First-touch genesis is the in-run agent sequence in the vertical-slice-runner. |
 
 `vertical-slice-runner` sketch (shape, not final code):
 
