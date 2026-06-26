@@ -147,7 +147,7 @@ B1. **Run the census** (dispatch the read-only `census` agent — it must read e
 B2. **The coherence-grill still runs.** There is no system vision to grill, but the *change* has an
     intention even when the legacy system embodies none — so the grill's **oracle is the
     change-intention**. Run it as in the greenfield steps, with one added fork source: the
-    grill-adversary **mines the characterization corpus for legacy incoherence** (e.g. module A rounds
+    grill-adversary **mines the existing legacy behaviour (via the census topology sketch) for incoherence** (e.g. module A rounds
     half-up while module B rounds half-even) and surfaces each contradiction as an **`intent-fork`** to
     the human, exactly like any other ambiguous fork. For a one-line ask, use a **micro-intention**
     (`scope: micro` — the change sentence + `behaviorDelta` + the touched seam's born contracts), which
@@ -162,7 +162,7 @@ intention is a self-approval hole. Two pieces:
 - **Closed by the existing fresh-context adversary.** The coherence-grill's **grill-adversary** is a
   fresh-context, read-only refuter whose stop condition is adversarial, not gated — so it **runs in both
   modes**, autonomous included. The draft's **coherence** (no two-defensible-ways fork, no internal
-  contradiction, brownfield corpus mined) is therefore adversarially verified even with no human present;
+  contradiction, brownfield legacy behaviour mined) is therefore adversarially verified even with no human present;
   the grill is *not* skipped in an autonomous run. This is the cheap correct fix for the coherence axis,
   already wired in `workflows/coherence-grill.workflow.js`.
 - **Scoped out (carried to the human), with rationale.** What the grill **cannot** settle is the
@@ -190,5 +190,4 @@ The ratified `.reasonable/` standing artifacts (vision, topology, route, documen
 resource-lexicon, sanity-invariants, config, supervision, empty journal/ledger/inbox) and a
 go/no-go for scaffolding. **On the brownfield branch, also:** the census skeleton topology contracts,
 `baseline.json` (the FLOOR partition), and the ratified `intention.md` (the change-intention oracle).
-Then invoke the `scaffolding` skill (in brownfield mode it characterizes the top-level scenarios as a
-parked baseline rather than building a walking skeleton).
+Then invoke the `scaffolding` skill (in brownfield mode it builds a thin frontier inventory of the route-intended scenarios (deferring tooth-bearing pins to first-touch genesis) rather than building a walking skeleton).

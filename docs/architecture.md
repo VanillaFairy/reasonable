@@ -113,7 +113,7 @@ the intention is too weak an oracle — routing back to enrich it. Without this,
 unfalsifiable, the exact shape the framework forbids.
 
 **In a brownfield effort** the same analysis phase also runs the topology census and partitions the existing
-suite into the regression floor, and the coherence-grill mines the frontier scenario inventory for legacy
+suite into the regression floor, and the coherence-grill mines the existing legacy behaviour for legacy
 incoherence (the *change* still has an intention even when the legacy system embodies none) — see §18.
 
 ---
@@ -555,7 +555,7 @@ fires, `config.brownfield: true`. The phase flow is **one slot swap, not a new t
 
 - **analysis** — triage → brownfield verdict; the `census` emits the topology census and partitions the
   existing suite into `baseline.json` (FLOOR, untrusted, per-test locus + fileHash). The coherence-grill
-  **still runs** — its oracle is the *change*-intention, and the characterization corpus becomes an extra
+  **still runs** — its oracle is the *change*-intention, and the existing legacy behaviour becomes an extra
   fork source the grill-adversary mines (legacy incoherence — module A rounds half-up, B half-even —
   surfaces as an `intent-fork`). This answers "there's no vision to grill": the *change* has an intention
   even when the legacy system embodies none.

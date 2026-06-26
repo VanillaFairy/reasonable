@@ -92,7 +92,7 @@ const FORKS_OR_NONE = {
     // --- present when kind === 'no-fork-found' ---
     exercised: {
       type: 'string',
-      description: 'For no-fork-found ONLY: what was genuinely attacked (stories vs. policy, policy vs. itself, brownfield corpus) so the absence reads as checked, not unlooked-for.',
+      description: 'For no-fork-found ONLY: what was genuinely attacked (stories vs. policy, policy vs. itself, brownfield legacy behaviour) so the absence reads as checked, not unlooked-for.',
     },
   },
 }
@@ -153,7 +153,7 @@ function withinBudget() {
 //                       already-resolved forks audit trail).
 //   args.materials    — what the intention must cover: vision (grilled stories),
 //                       topology sketch, quality attributes; brownfield: the
-//                       characterization corpus to mine for legacy incoherence.
+//                       existing legacy behaviour (the census topology sketch + the legacy code) to mine for incoherence.
 //   args.scope        — 'full' | 'micro' (default 'full').
 //   args.ratifiedPolicy / args.resolvedForks / args.name / args.lane /
 //   args.ledgerLine   — the materials the intention-writer needs once the grill
@@ -298,7 +298,7 @@ function grillAdversaryPrompt(a, scope) {
     // token win is modest — one adversary call per launch, cross-launch cache usually
     // cold — the real round-count saving comes from batching + altitude above.)
     'MATERIALS THE INTENTION MUST COVER (grilled user stories / topology sketch / quality attributes;',
-    'brownfield: the characterization corpus to mine for legacy incoherence):',
+    'brownfield: the existing legacy behaviour, read via the census topology sketch, to mine for incoherence):',
     asBlock(a.materials),
     '',
     'DRAFT INTENTION (decision policy + already-resolved forks):',

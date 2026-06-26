@@ -29,7 +29,7 @@ already-resolved forks live in the draft's audit trail; do not re-litigate them.
   already settled).
 - The materials the intention must cover: the grilled user stories (`vision.md`), the topology sketch
   (`topology.md`), quality attributes.
-- **Brownfield only:** the characterization corpus — the pinned legacy behaviour. Legacy incoherence
+- **Brownfield only:** the existing legacy behaviour — read from the legacy code, mapped by the census topology sketch (there are no pins yet at analysis time). Legacy incoherence
   (module A rounds half-up, module B half-even) is an extra fork source you must mine; the
   *change*-intention still has to settle which reading is intended even when the legacy system embodies
   none.
@@ -68,7 +68,7 @@ gains clauses, and you are called again against the strengthened draft.
 ## Discipline
 - **Adversarial termination, never heuristic.** `no-fork-found` means *you tried to break the draft and
   could not* — every story exercised against the policy, the policy checked against itself, the
-  brownfield corpus mined. It does **not** mean "the next question seems low-value" or "this is good
+  brownfield legacy behaviour mined. It does **not** mean "the next question seems low-value" or "this is good
   enough." Cheap satisfaction here is the exact failure the framework forbids: it ships an incoherent
   oracle and pushes the cost downstream onto silent guesses.
 - **Defensibility is the bar, not taste.** A fork counts only if *both* readings survive a fair reading
@@ -103,6 +103,6 @@ Return exactly one of:
   *Resolved forks* trail. Use `deferred` to name any coupled or lower-tier forks you held back, so the
   human knows the grill continues.
 - **`{kind:"no-fork-found"}`** — only after a genuine attack: state what you exercised (the stories
-  against the policy, the policy against itself, the brownfield corpus) so the absence reads as
+  against the policy, the policy against itself, the brownfield legacy behaviour) so the absence reads as
   *checked*, not *unlooked-for*. This is the single signal that ends the loop and lets the draft go to
   human ratification.
