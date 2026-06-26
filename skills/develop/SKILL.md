@@ -106,8 +106,10 @@ Two engine limits govern what this skill launches directly (architecture §15, �
    `scaffold.workflow.js` (walking skeleton + parked scenario suite → read-only invariant-verify).
    **This skill launches it — never the runner** (the one-level nesting limit). **STOP at the scaffold
    sign-off and wait** for the human. *(Brownfield: launch `characterization.workflow.js` here instead
-   — the analysis-time corpus pass; first-touch genesis runs in-run inside the runner, not as a nested
-   workflow.)*
+   — the analysis-time **frontier inventory** pass (read-only `census`: records a thin prose
+   `## Scenarios` map of the frontier scenarios; every tooth-bearing pin is deferred to first-touch
+   genesis in the vertical-slice-runner). It mirrors the greenfield scaffold slot but writes no
+   parked tests.)*
 7. **Launch one vertical-slice run per vertical slice, and route its `GATE_RESULT` (D4, §7).** For the
    best-first vertical slice on the route, launch `workflows/vertical-slice-runner.workflow.js` with
    fresh **args** (vertical-slice id, route snapshot, contract paths, per-vertical-slice budget,
