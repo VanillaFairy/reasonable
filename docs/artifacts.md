@@ -324,6 +324,16 @@ Parsing rules (exact):
 - A `- Seam:` line names the fence locus the characterization test captured,
   matching `^[-*]\s+Seam:\s+(.+)$` (the brownfield analog of a declared locus;
   Feathers' seam).
+- A `## Scenarios` section (brownfield, optional) is a **frontier inventory**: a prose,
+  zero-teeth map of the observable top-level scenarios on the effort's frontier, written by
+  `census` at the analysis-time frontier pass (`characterization.workflow.js`). Each bullet is
+  `- <key>: <observable> (seam: \`<glob>\`; floor: <test-ids or —>)`. It is **parser-invisible
+  and footprint-zero by construction**: it contains **zero `### §N` clauses** and **zero
+  `## Citations` bullets**, so `lib/contract.mjs` and the citation closure ignore it entirely
+  (the same property `## Topology` prose has). A bullet **must not begin** with the reserved
+  keywords `Gate:` / `Provenance:` / `Supersession:` / `Seam:` (those are clause-body lines).
+  The inventory is **advisory** — a hint for the route-planner and the human birth-ratification
+  gate; tooth-bearing `characterized` clauses are born **separately**, lazily, at first touch.
 - A `- Supersession:` line (`^[-*]\s+Supersession:\s+(pending|<event>)$`) is
   stamped `pending` by the characterizer when the touching change's
   `behaviorDelta` names this clause — the signal that a grown test is about to
