@@ -66,6 +66,23 @@ Partition the **existing** test suite into the FLOOR. Use the library — do not
   `node ${reasonable}/lib/baseline.mjs` (atomic temp-file + rename; normalized on write). The
   **initial trusted set is empty** — every floor test starts UNTRUSTED.
 
+### 3. The frontier scenario inventory — `## Scenarios` (analysis-time frontier pass only)
+When you are dispatched by `characterization.workflow.js` at the brownfield scaffolding slot (NOT
+at the one-time analysis census above), you also record a **thin, prose frontier inventory**. Read
+the drafted route + the change-intention + `baseline.json`, enumerate **only the frontier**
+observable top-level scenarios (those the route intends to touch, or named as integration risk —
+**never the whole observable surface**), and append a `## Scenarios` section to each frontier
+component's existing skeleton contract. One bullet per scenario:
+
+    - <key>: <observable> (seam: `<glob>`; floor: <comma-separated test ids, or —>)
+
+This is the SAME observational, read-only-on-code mandate as `## Topology`: **zero `### §N`
+clauses, zero `## Citations` bullets** (parser-invisible, footprint-zero), no parked test, no
+discriminator, no trust. You pin no behaviour with teeth — born `characterized` clauses are the
+`characterizer`'s, demand-driven at first touch. Never begin a bullet with `Gate:` / `Provenance:`
+/ `Supersession:` / `Seam:`. Write only into the **canonical** `<effortRoot>/.reasonable/contracts/`,
+via Bash (you have no Edit/Write), exactly as you emit skeletons — never into any worktree.
+
 These two halves run at different cadences by design (the cost-asymmetry split): the topology census
 is cheap and global, done up front; behavioural pins are expensive and demand-driven, done later at
 the seam by the characterizer. You do the cheap, global, observational half only.
@@ -102,6 +119,7 @@ characterizer's proposed pin — that is the trio's place, not here.
 | "This existing suite is green, so it's trusted" | FLOOR earns zero correctness credit. Green is a containment fence, not trust. The trusted set starts empty. |
 | "I'll promote the well-covered tests now to save a step" | Promotion is one-at-a-time, adversarially earned downstream. Recording a promotion here is trust-by-assertion — forbidden. |
 | "A tight per-file locus is cleaner" | Over-approximate. A wide floor locus costs one extra declaration; a narrow one can miss a regression. Conservative by construction. |
+| "I'll pin every scenario I can see, to be thorough" | The frontier inventory is **frontier-scoped** — route-intended / integration-risk only. The rest is the FLOOR's job + lazy first-touch. Whole-surface enumeration is the cost disease this pass exists to avoid. |
 
 ## Your output
 The skeleton topology contracts written (one per component, with prose deps, empty clauses, zero
