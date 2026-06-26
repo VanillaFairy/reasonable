@@ -9,7 +9,7 @@
 // a real registered worktree + a `.reasonable-lane.json` descriptor + a journal record, in
 // that order, so the fence is armed and the born contracts exist ABOVE the floor before they
 // are integrated. The scaffolder is scoped INTO the lane (laneScoped); the read-only verifiers
-// keep the un-narrowed args. This mirrors characterization.workflow.js's provision-then-scope.
+// keep the un-narrowed args. Provision-then-scope is the standard lane-mutator shape.
 //
 // THE TWO VERIFICATIONS, DISTINCT. (1) The STRUCTURAL invariant-verify (existing, read-only
 // auditor): is the suite green, parked tests compiling, the wiring real, no fake in the
@@ -99,7 +99,6 @@ const SCAFFOLD_BUILD = {
 // a real registered worktree carrying a `.reasonable-lane.json` descriptor — never the main checkout,
 // where the floor-containment fence fails open (D7). A null/false ack is a HALT: no armed fence =>
 // no legitimate place to build, and no pre-integration diff for the born-contract adversary to judge.
-// (Matches characterization.workflow.js's PROVISION_ACK shape.)
 const PROVISION_ACK = {
   type: 'object',
   additionalProperties: false,
@@ -159,7 +158,7 @@ const INVARIANT_REPORT = {
 }
 
 // One born-contract adversary verdict on one PROPOSED born contract (the canonical
-// verifier-verdict shape — matches characterization.workflow.js + docs/artifacts.md).
+// verifier-verdict shape — matches docs/artifacts.md).
 // The adversary is read-only by capability and PROPOSES the verdict as DATA (proposed:true);
 // a narrow writer (the orchestrator) performs the ledger append — it never self-executes the
 // act its verdict authorizes (Law 3 corollary). The reference (`oracle`) is TOPOLOGY + VISION,
