@@ -258,6 +258,26 @@ const SCRIBE_ACK = {
   },
 };
 
+// PROVISION_ACK — the lane-provisioner's hand-off (mirrors the other workflows). The runner
+// MUST capture the worktree path so it can direct the CODE-writing roles (implementer,
+// characterizer, blind-test-writer) into the lane — the two-root model: code → worktree
+// (git -C), .reasonable/ state → canonical effort root. A null/false ack, or no worktree, is
+// a refusal to run a fenced worker lane-less (D7).
+const PROVISION_ACK = {
+  type: 'object',
+  additionalProperties: false,
+  required: ['provisioned'],
+  properties: {
+    provisioned: { type: 'boolean', description: 'worktree + .reasonable-lane.json descriptor + journal record all present, in that order (idempotent on re-run).' },
+    worktree: { type: ['string', 'null'], description: 'the lane worktree path (nested under the effort root) — CODE + git -C land here; NEVER the main checkout.' },
+    branch: { type: ['string', 'null'], description: 'the lane branch.' },
+    descriptorWritten: { type: 'boolean', description: 'the .reasonable-lane.json descriptor exists at the worktree root (the fence is armed).' },
+    noOp: { type: 'boolean', description: 'true iff the lane already existed and provisioning was an idempotent no-op.' },
+    kind: { type: ['string', 'null'], description: 'set to "checkpoint" by guard() on a budget ceiling.' },
+    note: { type: ['string', 'null'] },
+  },
+};
+
 // ─────────────────────────────────────────────────────────────────────────────
 // guard() — the budget-throw membrane (architecture §15, D16b).
 //
@@ -458,7 +478,8 @@ function reconcilePrompt(a) {
   return [
     'Run the unconditional, total, halting recovery prologue for this reasonable run.',
     'Re-derive truth from git + the append-only ledger + the contract files; trust no resume/cache state.',
-    `Effort root: ${a.effortRoot}`,
+    `Effort root (canonical .reasonable/): ${a.effortRoot}`,
+    `Pass --root ${a.effortRoot} to every reasonable lib you invoke (reconcile.mjs etc.) so it targets THIS effort, not whichever .reasonable/ happens to sit above your cwd (several efforts may share one repo).`,
     `Target vertical slice: ${a.verticalSliceId}`,
     'Partition every artifact configuration into RESOLVED / SAFE-DEFAULT / AMBIGUOUS.',
     'Read config.runMode; if it is absent/null on a cold restart, HALT (defaulting to a "safer" mode is a forbidden inference).',
@@ -473,7 +494,8 @@ function reconcilePrompt(a) {
 function routePrompt(state, a) {
   return [
     'Plan this vertical slice into work orders with computed footprints.',
-    `Effort root: ${a.effortRoot}`,
+    `Effort root (canonical .reasonable/): ${a.effortRoot}`,
+    `Pass --root ${a.effortRoot} to lib/footprint.mjs (and any reasonable lib) so it targets THIS effort, not whichever .reasonable/ sits above your cwd (several efforts may share one repo).`,
     `Vertical slice: ${a.verticalSliceId}`,
     `Route snapshot: ${j(a.route || null)}`,
     `Reconcile briefing (current state): ${j({ runMode: state.runMode, brownfield: state.brownfield, staleTrusted: state.staleTrusted || [] })}`,
@@ -531,31 +553,47 @@ async function provisionThenImplement(wo, _orig, _idx, ctx) {
   const a = ctx.args;
   const effortRoot = a.effortRoot;
 
-  // 1) Provision the lane BEFORE the fenced worker — closes the descriptor-less
-  //    window (D7): worktree + .reasonable-lane.json + journal record, in that order.
-  const provision = await guard(wo.id, () => ctx.agent(
+  // 1) Provision the lane BEFORE the fenced worker — closes the descriptor-less window (D7)
+  //    AND capture the worktree (PROVISION_ACK, not OUTCOME) so we can direct the CODE-writing
+  //    roles into it. Two-root model: code → the worktree (git -C); .reasonable/ state → the
+  //    canonical effort root. The worktree is nested under the effort root so findEffortRoot
+  //    resolves the canonical .reasonable/ from inside it.
+  const ack = await guard(wo.id, () => ctx.agent(
     [
-      'Provision the lane for this work order, idempotently, BEFORE any fenced worker edits code.',
-      `Effort root: ${effortRoot}`,
+      'Provision the lane for this work order, idempotently, BEFORE any fenced worker writes code.',
+      `Effort root (canonical .reasonable/ — the descriptor back-pointer target): ${effortRoot}`,
       `Work order: ${wo.id} (role: ${wo.role || 'implementer'})`,
-      'Do exactly three things in order: git worktree add; write .reasonable-lane.json (with effortRoot back-pointer + narrowed locus/role/floorImpact/contractBirth); record the lane in the journal via the scribe.',
-      'Ensure a checkpoint-only lane carries a trailered commit so reconcile can re-claim it.',
+      `Do exactly three things in order: (1) git -C ${effortRoot} worktree add ${effortRoot}/.worktrees/${wo.id} -b lane/${wo.id} (a real registered worktree NESTED UNDER the effort root, NOT an engine throwaway);`,
+      '(2) write the one .reasonable-lane.json descriptor at the worktree root (effortRoot back-pointer + narrowed locus/role/floorImpact/contractBirth); (3) record the lane in the journal via the scribe.',
+      'Do NOT seed .reasonable/ into the worktree — effort state stays canonical (gitignored), reached via the back-pointer. Ensure a checkpoint-only lane carries a trailered commit so reconcile can re-claim it.',
+      'Return the PROVISION_ACK: the worktree path + confirmation the descriptor is written.',
     ].join('\n'),
-    { label: `provision:${wo.id}`, phase: 'Enrich', agentType: 'reasonable:lane-provisioner', schema: OUTCOME },
+    { label: `provision:${wo.id}`, phase: 'Enrich', agentType: 'reasonable:lane-provisioner', schema: PROVISION_ACK },
   ));
-  if (provision && provision.kind === 'checkpoint') return provision;
+  if (ack && ack.kind === 'checkpoint') return ack;
+  if (!ack || ack.provisioned !== true || ack.descriptorWritten !== true || !ack.worktree) {
+    // No armed worktree to direct the worker into → refuse to run a fenced worker lane-less (D7).
+    return { kind: 'other', workOrder: wo.id, note: 'lane not provisioned (null / provisioned:false / descriptor absent / no worktree path) — refusing to run a fenced worker without a lane (D7).' };
+  }
+  const worktree = ack.worktree;
+  ctx.worktrees = ctx.worktrees || {};
+  ctx.worktrees[wo.id] = worktree; // so blindTest / adjudicate / audit can target the lane worktree
 
-  // 2) Conditional brownfield genesis (BF7): record behaviorDelta, then characterize
-  //    the seam provider-first — an in-run agent sequence, never a nested workflow().
+  // 2) Conditional brownfield genesis (BF7): record behaviorDelta, then characterize the seam
+  //    provider-first — an in-run agent sequence, never a nested workflow(). Two roots: the born
+  //    clause + the ledger line → CANONICAL effort root (absolute); the parked test → the
+  //    worktree, committed with git -C; the reverse discriminator reads config from --root and
+  //    the code under test from --tree.
   if (a.brownfield && wo.characterizationNeeded) {
     const characterization = await guard(wo.id, () => ctx.agent(
       [
         'Brownfield first-touch genesis for ungoverned code (BF7). This is an in-run sequence, NOT a nested workflow.',
-        `Effort root: ${effortRoot}`,
+        `Effort root (canonical .reasonable/ — born clause + ledger here, absolute): ${effortRoot}`,
+        `Lane worktree (parked test here; cwd for git): ${worktree}`,
         `Work order: ${wo.id}; seam first touched by this slice.`,
         `Declared behaviorDelta (the observable behaviours this change INTENDS to move): ${j(wo.behaviorDelta || [])}`,
-        'Pin current behaviour as born `characterized` clauses (FLOOR, untrusted), provider-first, in the fixed atomic order contract → ledger event → test.',
-        'Stamp `Supersession: pending` on any clause the behaviorDelta names. Admit each pin only if it survives the BF2 reverse discriminator (RED under one locus-scoped mutant, run alone).',
+        `Pin current behaviour as born \`characterized\` clauses (FLOOR, untrusted), provider-first, in the fixed atomic order: the born clause + the {type:"characterization"} ledger line to ${effortRoot}/.reasonable/ (canonical, absolute); the parked test under ${worktree}, committed with git -C ${worktree}.`,
+        `Stamp \`Supersession: pending\` on any clause the behaviorDelta names. Admit each pin only if it survives the BF2 reverse discriminator (config from --root, code from --tree): node ${a.reasonableRoot || '$CLAUDE_PLUGIN_ROOT'}/lib/discriminator.mjs --reverse --test <name> --locus <glob> --root ${effortRoot} --tree ${worktree} --json.`,
         'Return kind:"characterized" with the component/clauses/seam, or kind:"not-needed".',
       ].join('\n'),
       { label: `characterize:${wo.id}`, phase: 'Enrich', agentType: 'reasonable:characterizer', schema: CHARACTERIZATION },
@@ -565,20 +603,22 @@ async function provisionThenImplement(wo, _orig, _idx, ctx) {
     // governed; fall through to implementation either way.
   }
 
-  // 3) Implement on the active path: thin-real only; enrich own contract; the worker
-  //    writes its OWN ledger line in its ONE atomic commit (D3a). Emits an OUTCOME.
+  // 3) Implement on the active path: thin-real only; CODE → the worktree (git -C); the OWN
+  //    contract enrichment + the ledger line → the CANONICAL effort root (on-disk append
+  //    content-referencing the commit SHA, D3a/D5 — the ledger is gitignored, never in the commit).
   return guard(wo.id, () => ctx.agent(
     [
       'Implement this work order on the active vertical-slice path (thin-real only; loud stubs off-path).',
-      `Effort root: ${effortRoot}`,
+      `Effort root (canonical .reasonable/ — contracts + ledger here, absolute): ${effortRoot}`,
+      `Lane worktree (CODE here; cwd for git): ${worktree}`,
       `Work order: ${wo.id}`,
       `Vertical slice: ${wo.verticalSlice || a.verticalSliceId}`,
-      'Stay within your declared locus; request scope expansion from the orchestrator (a cheap logged message) rather than editing out of locus.',
-      'Enrich your OWN contract with newly-learned musts and log the contract diff to the ledger.',
+      `TWO ROOTS, by DOMAIN: write code under the worktree (${worktree}) and stay within your declared locus (request scope expansion from the orchestrator rather than editing out of locus). Write \`.reasonable/\` state to the CANONICAL effort root by ABSOLUTE path — never into the worktree (gitignored, lost, fence-denied). Your process cwd is the effort root; use absolute paths + git -C.`,
+      `Enrich your OWN contract (${effortRoot}/.reasonable/contracts/<component>.md) with newly-learned musts, and append the {type:"enrichment"} line to ${effortRoot}/.reasonable/ledger.jsonl.`,
       'Report your enrichment in the OUTCOME detail as detail.enrichment = { enriched, clauses:[ids you added], touchesSharedContract (true iff a new Citations bullet to a neighbour) } so the contract-enrichment adversary can risk-gate and judge the PROPOSED diff against the vision + slice spec BEFORE tests derive from it.',
-      'Collapse your terminal effects into ONE atomic commit: work product + your own ledger/verdict line + a Work-Order trailer (D3a).',
+      `Land your terminal effects as ONE logical step (D3a/D5): the work-product CODE in a single \`git -C ${worktree}\` commit carrying a \`Work-Order: ${wo.id}\` trailer; your ledger line as an on-disk append to ${effortRoot}/.reasonable/ledger.jsonl that content-references that commit SHA — the ledger is gitignored, NEVER part of the git commit.`,
       'If you hit a wall, emit the matching OUTCOME kind (scope-expansion / ripple / jurisdiction / spike-needed / infeasible / intent-fork / other) — never thrash toward green.',
-      'Cite .reasonable/intention.md when a fork turns on a scope/priority choice; an unsettleable fork is intent-fork (BREAKING), never a silent guess.',
+      `Cite ${effortRoot}/.reasonable/intention.md when a fork turns on a scope/priority choice; an unsettleable fork is intent-fork (BREAKING), never a silent guess.`,
       'Return the OUTCOME.',
     ].join('\n'),
     { label: `implement:${wo.id}`, phase: 'Enrich', agentType: 'reasonable:implementer', schema: OUTCOME },
@@ -678,13 +718,15 @@ async function intentVerify(prev, wo, _idx, ctx) {
 async function blindTest(prev, wo, _idx, ctx) {
   if (!prev || prev.kind !== 'green') return prev; // trapped lane: carry the trap forward
   const a = ctx.args;
+  const worktree = (ctx.worktrees && ctx.worktrees[wo.id]) || a.effortRoot;
   return guard(wo.id, () => ctx.agent(
     [
       'Blind test-writer: you receive ONLY the old and new contract text for this work order — never the implementation diff.',
-      `Effort root: ${a.effortRoot}`,
-      `Work order: ${wo.id} (read the contract delta from the ledger entry + the contract files; do NOT read src).`,
-      'Translate the contract delta into test changes (tests track contracts 1:1). Every new must enters as a RED assertion first.',
-      'You do not run tests (no Bash). Formalize expectations blind.',
+      `Effort root (canonical .reasonable/ — read the contract here): ${a.effortRoot}`,
+      `Lane worktree (write the TEST files here, by absolute path — tests are CODE): ${worktree}`,
+      `Work order: ${wo.id} (read the contract delta from the canonical ${a.effortRoot}/.reasonable/ledger.jsonl entry + the contract files; do NOT read src).`,
+      'Translate the contract delta into test changes UNDER THE WORKTREE (tests track contracts 1:1). Every new must enters as a RED assertion first.',
+      'You do not run tests (no Bash). Formalize expectations blind. Your process cwd is the effort root, so write tests by absolute path under the worktree — never into the worktree .reasonable/.',
       'Return the OUTCOME (kind:"green" if you produced the test delta cleanly; otherwise the matching trap kind).',
     ].join('\n'),
     { label: `blind-test:${wo.id}`, phase: 'Enrich', agentType: 'reasonable:blind-test-writer', schema: OUTCOME },
@@ -697,13 +739,16 @@ async function blindTest(prev, wo, _idx, ctx) {
 async function adjudicate(prev, wo, _idx, ctx) {
   if (!prev || prev.kind !== 'green') return prev;
   const a = ctx.args;
+  const worktree = (ctx.worktrees && ctx.worktrees[wo.id]) || a.effortRoot;
   return guard(wo.id, () => ctx.agent(
     [
       'Adjudicator (read-only): run the tests for this work order and judge every red with the CONTRACT TEXT as the sole arbiter.',
-      `Effort root: ${a.effortRoot}`,
+      `Effort root (canonical .reasonable/ — read the contract here): ${a.effortRoot}`,
+      `Lane worktree (RUN the tests here — the code + tests live on the lane branch): ${worktree}`,
       `Work order: ${wo.id}`,
+      `Run the suite in the worktree (cwd ${worktree}), NOT the main checkout. Read the contract from ${a.effortRoot}/.reasonable/contracts/.`,
       'Implementation violates contract → verdict fix-implementation (test untouched). Test mistranslates a clause → verdict fix-test, citing the clause. Green-ness is never the goal state of test-editing.',
-      'A scope/priority/jurisdiction fork must cite .reasonable/intention.md; an unsettleable fork is intent-fork (BREAKING).',
+      `A scope/priority/jurisdiction fork must cite ${a.effortRoot}/.reasonable/intention.md; an unsettleable fork is intent-fork (BREAKING).`,
       'Return the OUTCOME (kind:"green" only when adjudication leaves the lane consistent with its contract).',
     ].join('\n'),
     { label: `adjudicate:${wo.id}`, phase: 'Enrich', agentType: 'reasonable:adjudicator', schema: OUTCOME },
@@ -719,21 +764,27 @@ async function adjudicate(prev, wo, _idx, ctx) {
 async function audit(prev, wo, _idx, ctx) {
   if (!prev || prev.kind !== 'green') return prev;
   const a = ctx.args;
+  const worktree = (ctx.worktrees && ctx.worktrees[wo.id]) || a.effortRoot;
+  const plug = a.reasonableRoot || '$CLAUDE_PLUGIN_ROOT';
   const checks = a.lowFloor
     ? ['discriminator'] // §17: the floor case collapses to a single discriminator check
     : ['discriminator', 'bidirectional-mapping', 'mutation-sample', 'reverse-discriminator'];
 
   // Read-only escalating checks run TOGETHER (parallel barrier); gate = AND over all.
+  // TWO ROOTS: every lib reads CONFIG from the effort root (--root) but runs against the CODE
+  // in the lane worktree (--tree) — the code + tests are on the lane branch, not the main checkout.
   const reports = await parallel(checks.map((check) => () =>
     guard(wo.id, () => ctx.agent(
       [
         `Auditor mechanical check: ${check} (read-only; never simulate what a script computes — invoke lib/${check === 'bidirectional-mapping' ? 'citation-resolve' : check === 'reverse-discriminator' ? 'discriminator' : check.replace('-sample', '-sample')}.mjs).`,
-        `Effort root: ${a.effortRoot}`,
+        `Effort root (canonical .reasonable/ — config/contracts/floor): ${a.effortRoot}`,
+        `Lane worktree (code + tests under test): ${worktree}`,
         `Work order: ${wo.id}`,
-        check === 'discriminator' ? 'Every new/changed test must FAIL on the pre-task commit (HEAD~ in a worktree). A test that passes on both old and new impls verifies nothing.' : '',
-        check === 'bidirectional-mapping' ? 'Every new assertion cites a contract clause; every new clause has at least one assertion.' : '',
-        check === 'mutation-sample' ? 'Mutate the implementation k times; surviving mutants expose vacuous tests.' : '',
-        check === 'reverse-discriminator' ? 'Characterization clauses only: mutate the cited clause locus at HEAD, overlay and run ONLY that one characterization test, require RED (the dual of HEAD~). Do NOT delegate to mutation-sample.' : '',
+        'EVERY lib invocation passes config from the effort root and code from the worktree: append `--root ' + a.effortRoot + ' --tree ' + worktree + '` (citation-resolve takes only --root, it reads canonical contracts).',
+        check === 'discriminator' ? `Every new/changed test must FAIL on the pre-task commit: \`node ${plug}/lib/discriminator.mjs --base <pre-task> --root ${a.effortRoot} --tree ${worktree} --json\`. A test that passes on both old and new impls verifies nothing.` : '',
+        check === 'bidirectional-mapping' ? `Every new assertion cites a contract clause; every new clause has at least one assertion: \`node ${plug}/lib/citation-resolve.mjs --root ${a.effortRoot} --json\`.` : '',
+        check === 'mutation-sample' ? `Mutate the implementation k times; surviving mutants expose vacuous tests: \`node ${plug}/lib/mutation-sample.mjs --root ${a.effortRoot} --tree ${worktree} --json\`.` : '',
+        check === 'reverse-discriminator' ? `Characterization clauses only: \`node ${plug}/lib/discriminator.mjs --reverse --test <name> --locus <glob> --root ${a.effortRoot} --tree ${worktree} --json\` — require RED under a locus mutant (the dual of HEAD~). Do NOT delegate to mutation-sample.` : '',
         'Also report: floorGreen, trustedGreen, any floorBreak {broke, floorTests, loci}, and the loci of new GROWN (RED-at-HEAD~) tests for the planned-supersession classifier.',
         'Return the OUTCOME (kind:"green" iff this check passed); attach evidence.',
       ].filter(Boolean).join('\n'),

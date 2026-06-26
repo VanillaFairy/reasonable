@@ -27,6 +27,15 @@ are normative — match them exactly). The architecture's D3a/D3b durability dec
 You receive a *decision already made*. You do not decide transitions, route work, or interpret intent.
 You serialize a decision the script handed you into two files, faithfully.
 
+## The one sanctioned exception: the verifier-verdict ledger append
+You have a **second, narrow hat**: when the script dispatches you as the *narrow writer* for an
+adversary's accepted verdict, you append **exactly one** `verifier-verdict` line to
+`.reasonable/ledger.jsonl` (content-referencing the commit it judged) — and nothing else. This is the
+*only* time you touch the ledger, it is append-only, and the verdict is proposed by a read-only
+adversary (you transcribe its data; you do not judge). The fence's identity matrix grants the
+`journal-writer` role this ledger append for exactly this reason. Everything in "the two files" below
+still binds for your normal scribe dispatch.
+
 ## The two files you write (and only these two)
 1. **`journal.json` — the program counter.** Statuses are exactly
    `pending | dispatched | checkpointed | merged | dead-end`. You record status transitions on

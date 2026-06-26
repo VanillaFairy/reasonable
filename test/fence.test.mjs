@@ -44,7 +44,28 @@ function runFence(cwd, payload) {
   };
 }
 const edit = (root, rel) => ({ tool_name: 'Edit', tool_input: { file_path: join(root, rel) } });
+const editAbs = (abs) => ({ tool_name: 'Edit', tool_input: { file_path: abs } });
 const bash = (command) => ({ tool_name: 'Bash', tool_input: { command } });
+// Stamp a payload with the harness agent-role (the identity the fence governs
+// canonical .reasonable/ writes by). A reasonable:<role> mirrors a workflow agent()
+// dispatch; absent => main session (trusted control plane).
+const as = (payload, role) => ({ ...payload, agent_type: role });
+
+/**
+ * A realistic TWO-ROOT effort: `.reasonable/` at the effort root, and a lane
+ * worktree nested at `<root>/.worktrees/wo1/` carrying its own descriptor whose
+ * `effortRoot` back-points at the root. The root has NO descriptor (so a canonical
+ * `.reasonable/` write resolves to the no-lane identity path, exactly as in
+ * production where a subagent's cwd is the effort root). Returns { root, wt }.
+ */
+function newTwoRoot({ role = 'implementer', contracts = ['graph-canvas'], contractBirth = false, locus = ['src/**'], testEditsAllowed = false } = {}) {
+  const root = mkdtempSync(join(tmpdir(), 'fence-2r-')); tmps.push(root);
+  write(root, '.reasonable/config.json', JSON.stringify({ effort: 'demo' }) + '\n');
+  const wtRel = join('.worktrees', 'wo1');
+  write(root, join(wtRel, '.reasonable-lane.json'),
+    JSON.stringify({ effortRoot: root, workOrder: 'WO-1', role, locus, contracts, contractBirth, testEditsAllowed }) + '\n');
+  return { root, wt: join(root, wtRel) };
+}
 
 let passed = 0;
 function check(name, fn) {
@@ -105,9 +126,92 @@ check('no-lane Bash to ledger → allow (census/orchestrator path)', () => {
   const root = newEffort(); // effort, but NO lane descriptor
   assert.equal(runFence(root, bash('echo x >> .reasonable/ledger.jsonl')).denied, false);
 });
-check('no-lane Edit inside effort → deny (D7b fail-closed, unchanged)', () => {
+// Identity model: the MAIN SESSION (no agent_type) is the trusted control plane and
+// is not fenced; a SUBAGENT (agent_type set) is governed. This replaces the old blanket
+// "no-lane structured edit inside an effort → deny": the discriminator is now WHO acts.
+check('main-session Edit to .reasonable/ → allow (trusted control plane)', () => {
   const root = newEffort();
-  assert.ok(runFence(root, edit(root, '.reasonable/ledger.jsonl')).denied);
+  assert.equal(runFence(root, edit(root, '.reasonable/ledger.jsonl')).denied, false);
+});
+check('subagent (non-owner) Edit to .reasonable/ → deny (identity-governed)', () => {
+  const root = newEffort();
+  const r = runFence(root, as(edit(root, '.reasonable/ledger.jsonl'), 'reasonable:auditor'));
+  assert.ok(r.denied, 'an auditor may not write the ledger');
+  assert.match(r.reason, /Identity-governed/);
+});
+check('subagent code edit outside any lane → deny (presumed hostile)', () => {
+  const root = newEffort();
+  assert.ok(runFence(root, as(edit(root, 'src/main.rs'), 'reasonable:implementer')).denied);
+});
+
+// ── Two-root layout (the lane-root fix) + identity governance of canonical writes ──
+check('two-root: in-locus code write in the worktree → allow', () => {
+  const { root, wt } = newTwoRoot();
+  assert.equal(runFence(root, as(editAbs(join(wt, 'src/main.rs')), 'reasonable:implementer')).denied, false);
+});
+check('two-root: worktree-local .reasonable/ write → deny (§3b parallel-bootstrap guard)', () => {
+  const { root, wt } = newTwoRoot();
+  const r = runFence(root, as(editAbs(join(wt, '.reasonable/contracts/graph-canvas.md')), 'reasonable:implementer'));
+  assert.ok(r.denied, 'a worktree-local .reasonable/ write must be denied');
+  assert.match(r.reason, /effort root/);
+});
+check('two-root: canonical contract write by implementer → allow', () => {
+  const { root } = newTwoRoot();
+  assert.equal(
+    runFence(root, as(edit(root, '.reasonable/contracts/graph-canvas.md'), 'reasonable:implementer')).denied,
+    false,
+  );
+});
+check('two-root: canonical contract write by a read-only role → deny', () => {
+  const { root } = newTwoRoot();
+  assert.ok(runFence(root, as(edit(root, '.reasonable/contracts/graph-canvas.md'), 'reasonable:auditor')).denied);
+});
+check('two-root: journal.json by journal-writer → allow; by implementer → deny', () => {
+  const { root } = newTwoRoot();
+  assert.equal(runFence(root, as(edit(root, '.reasonable/journal.json'), 'reasonable:journal-writer')).denied, false);
+  assert.ok(runFence(root, as(edit(root, '.reasonable/journal.json'), 'reasonable:implementer')).denied);
+});
+check('two-root: ledger append by a contract-writer or the scribe → allow; by a read-only role → deny', () => {
+  const { root } = newTwoRoot();
+  assert.equal(runFence(root, as(edit(root, '.reasonable/ledger.jsonl'), 'reasonable:journal-writer')).denied, false);
+  assert.equal(runFence(root, as(edit(root, '.reasonable/ledger.jsonl'), 'reasonable:characterizer')).denied, false);
+  assert.ok(runFence(root, as(edit(root, '.reasonable/ledger.jsonl'), 'reasonable:auditor')).denied);
+});
+check('two-root: baseline.json by census → allow; config.json by any subagent → deny', () => {
+  const { root } = newTwoRoot();
+  assert.equal(runFence(root, as(edit(root, '.reasonable/baseline.json'), 'reasonable:census')).denied, false);
+  assert.ok(runFence(root, as(edit(root, '.reasonable/config.json'), 'reasonable:census')).denied);
+});
+check('two-root: census skeleton contract via Bash (no lane at cwd) → allow', () => {
+  const { root } = newTwoRoot();
+  assert.equal(runFence(root, as(bash('cat /tmp/x > .reasonable/contracts/graph-canvas.md'), 'reasonable:census')).denied, false);
+});
+check('two-root: read-only role Bash forge of ledger from effort root → deny (backstop closed)', () => {
+  const { root } = newTwoRoot();
+  const r = runFence(root, as(bash('echo forged >> .reasonable/ledger.jsonl'), 'reasonable:auditor'));
+  assert.ok(r.denied, 'a read-only role may not Bash-forge the ledger');
+  // ...but a stray subagent writing config via Bash is still denied (the real forge surface):
+  assert.ok(runFence(root, as(bash('echo x >> .reasonable/config.json'), 'reasonable:implementer')).denied);
+});
+// The bug-report regression: provision a lane in a gitignored two-root repo; the
+// characterizer must NOT be able to emit a worktree-local skeleton (forcing canonical),
+// and a canonical born contract by the characterizer is allowed.
+check('regression: characterizer cannot write a worktree-local skeleton (no parallel .reasonable/)', () => {
+  const { root, wt } = newTwoRoot({ role: 'characterizer', contractBirth: true, testEditsAllowed: true });
+  assert.ok(runFence(root, as(editAbs(join(wt, '.reasonable/contracts/graph-canvas.md')), 'reasonable:characterizer')).denied);
+  assert.equal(runFence(root, as(edit(root, '.reasonable/contracts/graph-canvas.md'), 'reasonable:characterizer')).denied, false);
+});
+check('two-root: unknown/unprefixed subagent role → deny on .reasonable/ (governed, not trusted)', () => {
+  const { root } = newTwoRoot();
+  assert.ok(runFence(root, as(edit(root, '.reasonable/ledger.jsonl'), 'workflow-subagent')).denied);
+  assert.ok(runFence(root, as(edit(root, '.reasonable/contracts/graph-canvas.md'), 'general-purpose')).denied);
+});
+check('two-root: canonical write with cwd=worktree → identity-governed, not denied (isUnder gate)', () => {
+  const { root, wt } = newTwoRoot();
+  // cwd is the worktree (the rare non-default case): findLane(cwd) resolves the lane, but the
+  // canonical target is NOT under the worktree, so the fence must take the identity path, not the
+  // code path (which would mis-judge it out-of-locus and deny). Regresses the cwd-fallback edge.
+  assert.equal(runFence(wt, as(edit(root, '.reasonable/contracts/graph-canvas.md'), 'reasonable:implementer')).denied, false);
 });
 
 // ── spike quarantine also applies to Bash (escape-via-shell closed) ─────────────

@@ -224,15 +224,18 @@ function modeOf(a) {
   return m === 'gated' || m === 'autonomous' ? m : null
 }
 
-// After provisioning, the FENCED MUTATOR (the scaffolder) must operate INSIDE the lane
-// worktree, where `.reasonable-lane.json` arms the floor-containment fence and a pre-integration
-// diff exists — NEVER in the main checkout, where the fence fails open (D7). Narrow a copy of
-// args so a.effortRoot resolves to the worktree for the scaffolder's write paths. Read-only roles
-// (the structural verifier, the born-contract adversary, the scribe) keep the un-narrowed args.
-// Mirrors characterization.workflow.js's laneScoped. (Matches the no-narrow no-op when there is
-// no worktree, so the run degrades safely.)
+// THE TWO-ROOT MODEL (the lane-root fix). effortRoot (canonical, STAYS PUT) owns ALL
+// `.reasonable/` state — the thin contracts, the contract-birth ledger lines — read AND written
+// there (gitignored, durable on disk). laneRoot (the provisioned worktree) holds CODE (the
+// skeleton + the parked suite) and is the cwd for `git -C`. laneScoped ADDS laneRoot; it must
+// NEVER overwrite effortRoot — overwriting it pointed the scaffolder at the gitignored, EMPTY
+// worktree `.reasonable/` (the incident). EMPIRICALLY VERIFIED: a workflow subagent's cwd is
+// always the effort root (never the worktree), so the scaffolder writes code by absolute path
+// under laneDir(a) and commits with `git -C laneDir(a)`; it writes `.reasonable/` at the absolute
+// effortRoot. Read-only roles read the canonical `.reasonable/` (effortRoot is unchanged for them).
+function laneDir(a) { return (a && a.laneRoot) || (a && a.effortRoot) || '(the lane worktree)' }
 function laneScoped(a, worktree) {
-  return worktree ? { ...a, effortRoot: worktree } : a
+  return worktree ? { ...a, laneRoot: worktree } : a
 }
 
 // The born-contract adversary risk-gate (pure — D7). The supervision dial may ONLY let a PRESENT
@@ -254,42 +257,48 @@ function contractTouchesProtectedState(c) {
 function lanePrompt(a) {
   return [
     'You are the lane-provisioner. Provision the lane for the greenfield scaffolding phase, idempotently,',
-    'BEFORE the scaffolder (a fenced mutator) births any contract or skeleton code. The scaffolder writes',
-    'thin contracts + ledger lines + skeleton code: run in the main checkout it has NO lane descriptor, so',
-    'the floor-containment fence FAILS OPEN and there is no pre-integration diff for the born-contract',
-    'adversary to judge. So this lane MUST be a real registered worktree, NEVER the main checkout.',
-    'Effort root: ' + (a.effortRoot || '(the target project root holding .reasonable/)') + '. reasonable plugin root: ' + (a.reasonableRoot || '$CLAUDE_PLUGIN_ROOT') + '.',
-    'Do exactly three things in order (the ordering is the safety property): (1) git worktree add a real',
-    'registered worktree on a lane branch (NOT an engine-isolated throwaway); (2) write the one',
-    '.reasonable-lane.json descriptor at the new worktree root, narrowed for the scaffolder role',
-    '(contractBirth:true, the scaffold locus), with the effortRoot back-pointer; (3) record the lane in',
-    'the journal via the scribe — all before the scaffolder is dispatched. Idempotent: an existing',
-    'registered worktree + present correct descriptor + recorded journal lane is a no-op success.',
-    'Return the PROVISION_ACK: the worktree path the scaffolder must cwd into, and confirmation the',
-    'descriptor is written (the fence is armed). A false/absent descriptor is a HALT — never build lane-less.',
+    'BEFORE the scaffolder (a fenced mutator) writes any CODE. The lane gives the scaffolder a real registered',
+    'worktree on a lane branch (so the skeleton lands as a pre-integration diff the born-contract adversary can',
+    'judge) plus a `.reasonable-lane.json` descriptor (so the fence governs its code edits).',
+    'Effort root (canonical .reasonable/ — the descriptor back-pointer target): ' + (a.effortRoot || '(the target project root holding .reasonable/)') + '. reasonable plugin root: ' + (a.reasonableRoot || '$CLAUDE_PLUGIN_ROOT') + '.',
+    'Do exactly three things in order (the ordering is the safety property): (1) `git -C ' + (a.effortRoot || '.') + ' worktree',
+    'add ' + (a.effortRoot || '.') + '/.worktrees/<wo-id> -b <lane-branch>` — a real registered worktree NESTED UNDER the',
+    'effort root (so findEffortRoot resolves the canonical .reasonable/ from inside it), NOT an engine throwaway;',
+    '(2) write the one `.reasonable-lane.json` descriptor at the new worktree root, narrowed for the scaffolder',
+    'role (contractBirth:true, the scaffold locus), with the `effortRoot` back-pointer = ' + (a.effortRoot || '.') + ';',
+    '(3) record the lane in the journal via the scribe — all before the scaffolder is dispatched. Idempotent: an',
+    'existing registered worktree + present correct descriptor + recorded journal lane is a no-op success.',
+    'TWO-ROOT SPLIT: the worktree holds CODE only; do NOT seed `.reasonable/` into it — effort state stays',
+    'canonical at the effort root (gitignored), reached from the worktree via the descriptor back-pointer.',
+    'Return the PROVISION_ACK: the worktree path (the scaffolder writes code there via `git -C` + absolute paths),',
+    'and confirmation the descriptor is written. A false/absent descriptor is a HALT — never build lane-less.',
   ].join('\n')
 }
 
 function scaffolderPrompt(a) {
   return [
     'Build the walking skeleton for this reasonable effort.',
-    'Effort root: ' + (a.effortRoot || '(the target project root holding .reasonable/)') + '.',
-    'You operate INSIDE the provisioned lane worktree (the effort root above): cwd there, where the',
-    '`.reasonable-lane.json` descriptor arms the floor-containment fence and your born contracts exist as a',
-    'pre-integration diff for the born-contract adversary to judge. Every write below lands under THIS root —',
-    'never the main checkout, where the fence fails open.',
+    'Effort root (canonical .reasonable/ — read AND write here, by absolute path): ' + (a.effortRoot || '(the target project root holding .reasonable/)') + '.',
+    'Lane worktree (CODE lives here; cwd for git): ' + laneDir(a) + '.',
+    'TWO ROOTS, by DOMAIN. The skeleton + parked suite are CODE: write them under the worktree and commit with',
+    '`git -C ' + laneDir(a) + '`. The thin contracts + the contract-birth ledger lines are `.reasonable/` state:',
+    'write them to the CANONICAL effort root by ABSOLUTE path — NOT into the worktree (its `.reasonable/` is',
+    'gitignored, lost at teardown, and fence-denied). Your process cwd is the effort root; use absolute paths',
+    'for both and `git -C` for every git command.',
     'reasonable plugin root: ' + (a.reasonableRoot || '$CLAUDE_PLUGIN_ROOT') + '.',
     'Read first: docs/glossary.md, the gate-mechanics skill (PARK / LOUD-STUB primitives + the stack binding table for stack "' + (a.stack || 'see config.json') + '"), and component-contract.',
-    'Context manifest:',
-    '- Topology sketch: ' + (a.topologyPath || '.reasonable/topology.md') + '.',
-    '- Vision user stories (for the scenario suite): ' + (a.visionPath || '.reasonable/vision.md') + '.',
-    '- Stack binding from ' + (a.configPath || '.reasonable/config.json') + ' (test command, park primitive, loud-stub primitive).',
-    'Build, in your own ONE atomic commit (work product + your own contract-birth ledger lines + a trailer, together — git and the ledger never diverge):',
+    'Context manifest (all canonical, under the effort root):',
+    '- Topology sketch: ' + (a.topologyPath || (a.effortRoot || '.') + '/.reasonable/topology.md') + '.',
+    '- Vision user stories (for the scenario suite): ' + (a.visionPath || (a.effortRoot || '.') + '/.reasonable/vision.md') + '.',
+    '- Stack binding from ' + (a.configPath || (a.effortRoot || '.') + '/.reasonable/config.json') + ' (test command, park primitive, loud-stub primitive).',
+    'Land your work as ONE logical step (D3a/D5): the CODE in a single `git -C ' + laneDir(a) + '` commit carrying a',
+    '`Work-Order:` trailer; the contract-birth ledger lines as on-disk appends to the CANONICAL ledger that',
+    'content-reference that commit SHA — the ledger is gitignored, NEVER part of the git commit:',
     '1. The walking skeleton — real wiring end-to-end (genuine function calls across real module boundaries, a real composition root), behavior trivial. This is the chosen direction and it SHIPS; it is NOT a spike.',
     '2. The parked top-level scenario suite — user-visible phrasing, ignore-marked "pending: vertical-slice N, <what>", and it MUST still compile / import-check (a parked test that does not compile pins nothing).',
     '3. Loud stubs everywhere off the skeleton path (panic/throw), NEVER canned data.',
-    '4. Thin contracts — each component a contract file whose clauses state ONLY what the skeleton makes real (topology + the trivial behavior). Add NO behavioral musts beyond what the skeleton wires; behavior accrues later from gates.',
-    'Append the contract births to the ledger inside the same atomic commit (authoritative state is your commit, not a downstream scribe).',
+    '4. Thin contracts — each component a CANONICAL `' + (a.effortRoot || '.') + '/.reasonable/contracts/<component>.md` whose clauses state ONLY what the skeleton makes real (topology + the trivial behavior). Add NO behavioral musts beyond what the skeleton wires; behavior accrues later from gates.',
+    'Append the contract births to the CANONICAL `' + (a.effortRoot || '.') + '/.reasonable/ledger.jsonl` on disk, each content-referencing the skeleton commit SHA (D5) — NOT inside the git commit (the ledger is gitignored).',
     'The suite is green at every commit: the one promoted scenario the skeleton satisfies (if any) is green; the rest are parked, never failing.',
     'Report each born contract in `bornContracts` (component, path, clause ids) AND its two D7 risk-gate',
     'signals — `citationsAdded` (the contract added a `## Citations` bullet, i.e. it enriches/depends on a',
@@ -303,13 +312,13 @@ function scaffolderPrompt(a) {
 function verifyPrompt(a, build) {
   return [
     'Verify the walking skeleton\'s invariants for this reasonable effort. You are READ-ONLY: report findings, fix nothing. Do NOT take the scaffolder\'s word — re-check with commands.',
-    'Effort root: ' + (a.effortRoot || '(the target project root)') + '. reasonable plugin root: ' + (a.reasonableRoot || '$CLAUDE_PLUGIN_ROOT') + '.',
+    'Effort root (canonical .reasonable/): ' + (a.effortRoot || '(the target project root)') + '. Lane worktree (where the skeleton code lives): ' + laneDir(a) + '. reasonable plugin root: ' + (a.reasonableRoot || '$CLAUDE_PLUGIN_ROOT') + '.',
     'The scaffolder reports skeleton commit ' + (build.commit || '(unknown)') + ', promoted scenario "' + (build.promotedScenario || 'none') + '", and parked scenarios: ' + JSON.stringify(build.parkedScenarios || []) + '.',
-    'Run and report, one check each with the exact command + its verbatim output:',
-    '- suite-green-at-every-commit: run the test command from config.json; the promoted scenario(s) are GREEN, the rest PARKED (not failing). Run `node <reasonableRoot>/lib/burndown.mjs` for the parked count + loud-stub count.',
-    '- parked-tests-compile: confirm the suite BUILDS with the parked tests present (a parked test that does not compile pins nothing).',
+    'The skeleton CODE is on the lane branch in the worktree — run all code/test commands there (cwd `' + laneDir(a) + '`), NOT the main checkout. Run and report, one check each with the exact command + its verbatim output:',
+    '- suite-green-at-every-commit: run the test command from config.json IN THE WORKTREE; the promoted scenario(s) are GREEN, the rest PARKED (not failing). Run `node ' + (a.reasonableRoot || '$CLAUDE_PLUGIN_ROOT') + '/lib/burndown.mjs --root ' + (a.effortRoot || '.') + '` for the parked count + loud-stub count.',
+    '- parked-tests-compile: confirm the suite BUILDS in the worktree with the parked tests present (a parked test that does not compile pins nothing).',
     '- real-wiring-thin-behavior: spot-check that seams are genuine cross-module function calls through a real composition root, not stubs calling stubs.',
-    '- no-canned-data-off-path: off-skeleton paths are loud stubs (panic/throw), never plausible fakes. Run `node <reasonableRoot>/lib/citation-resolve.mjs` to confirm the thin contracts\' citations resolve.',
+    '- no-canned-data-off-path: off-skeleton paths are loud stubs (panic/throw), never plausible fakes. Run `node ' + (a.reasonableRoot || '$CLAUDE_PLUGIN_ROOT') + '/lib/citation-resolve.mjs --root ' + (a.effortRoot || '.') + '` to confirm the thin contracts\' citations resolve.',
     '- no-fake-in-production-composition-root: no fake is reachable from main\'s object graph (a wiring check, not a visibility check) — a parity violation even if tests pass.',
     'Set allGreen true ONLY if every check passed and no finding stands. Any red non-parked test, non-compiling parked test, stub-calling-stub, off-path canned data, or fake in the composition root is a finding that must be routed before sign-off.',
   ].join('\n')
@@ -356,8 +365,8 @@ function verdictWriterPrompt(a, verdict, contract, build) {
     'never integrates its own verdict (Law 3 corollary). You perform the one resulting act: append ONE',
     'verifier-verdict event to the append-only ledger, content-referencing the born contract it judged.',
     'Effort root: ' + (a.effortRoot || '(the target project root)') + '. reasonable plugin root: ' + (a.reasonableRoot || '$CLAUDE_PLUGIN_ROOT') + '.',
-    'Append exactly this event to `.reasonable/ledger.jsonl` (one JSON line; on-disk append, NOT a git commit',
-    'of orchestration state — verdict durability is the atomic on-disk append, D5):',
+    'Append exactly this event to the CANONICAL `' + (a.effortRoot || '.') + '/.reasonable/ledger.jsonl` (one JSON line;',
+    'on-disk append, NOT a git commit of orchestration state — verdict durability is the atomic on-disk append, D5):',
     '  ' + JSON.stringify({
       type: 'verifier-verdict',
       component: contract.component,
@@ -462,7 +471,9 @@ log('Skeleton built at ' + (build.commit || '(commit unknown)') + '. Verifying i
 
 phase('Verify invariants')
 const report = await guard(() =>
-  agent(verifyPrompt(a, build), {
+  // laneArgs (not a): the skeleton code is on the lane branch in the worktree, so the
+  // structural verifier must run the suite there (laneDir(a)); it reads the floor canonically.
+  agent(verifyPrompt(laneArgs, build), {
     label: 'invariant-verify',
     phase: 'Verify invariants',
     agentType: 'reasonable:auditor',

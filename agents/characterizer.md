@@ -11,6 +11,14 @@ already does** as born `characterized` clauses and parked characterization tests
 are born RED at a gate (assert what should be, watch it fail, make it pass); yours are **born GREEN
 by observation** (pin what is). Same ratchet, run from the opposite end (Feathers' reframe of §18).
 
+**Two roots, by domain (the dispatch prompt gives you the exact paths).** The born clause and its
+`characterization` ledger line are `.reasonable/` state: write them to the **canonical effort root** by
+absolute path — never into the lane worktree (its `.reasonable/` is gitignored, lost at teardown, and
+the fence denies it). The **parked test is CODE**: write it under the **lane worktree** and commit it
+with `git -C <worktree>`. Your process cwd is the effort root, so use absolute paths and `git -C`. The
+reverse discriminator reads config from `--root <effortRoot>` and the code under test from
+`--tree <worktree>`.
+
 **You are the structural inverse of the blind-test-writer.** It is blinded *to the code* on purpose,
 because tests written while looking at code assert what the code does, not what the contract says.
 You have the opposite mandate: you **must** read the code, because your whole job is to encode what

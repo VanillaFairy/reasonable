@@ -31,10 +31,20 @@ formats are mandatory and machine-parsed), the `gate-mechanics` skill.
 
 You never see the worker's task content, and you never run the worker. You prepare the ground.
 
+**The two-root split you set up.** The worktree you create holds **CODE** (the worker's work product,
+committed to the lane branch); the canonical `.reasonable/` orchestration state stays at the **effort
+root** and is *never* seeded into the worktree (it is gitignored — a copy there would be empty, lost at
+teardown, and the fence denies writes to it). Nest the worktree **under the effort root**
+(`<effortRoot>/.worktrees/<wo-id>`) so `findEffortRoot` resolves the canonical `.reasonable/` from
+inside it, and so reconcile (which scopes to worktrees under the effort root) re-claims it. The
+`effortRoot` back-pointer in the descriptor is how every hook inside the worktree reaches that
+canonical state.
+
 ## What you produce (in this exact order — the ordering is the safety property)
-1. **Create the worktree.** `git worktree add <path> -b <branch>` (or attach to an existing branch).
-   The worktree is a real, registered git worktree on a lane branch — never an engine-isolated
-   throwaway. If the worktree already exists and is registered, treat that as already-done (idempotency
+1. **Create the worktree.** `git -C <effortRoot> worktree add <effortRoot>/.worktrees/<wo-id> -b <branch>`
+   (or attach to an existing branch). The worktree is a real, registered git worktree on a lane branch,
+   **nested under the effort root** — never an engine-isolated throwaway, never outside the effort root.
+   If the worktree already exists and is registered, treat that as already-done (idempotency
    below); do not recreate it.
 2. **Write the one descriptor.** Write `.reasonable-lane.json` at the **new worktree's root**, narrowed
    to exactly what the fence enforces (see `docs/artifacts.md` for the per-role narrowing table):

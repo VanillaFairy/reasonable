@@ -89,15 +89,25 @@ order, so the fence is armed and a pre-integration diff exists above the floor
 (`workflows/characterization.workflow.js:614` is the Provision step; `:87` is the phase
 description).
 
-If the lane does not come up, the workflow **HALTs rather than pin lane-less** — the
-explicit refusal is at `workflows/characterization.workflow.js:622`, with the message
-"Refusing to pin lane-less (D7)." The characterizer is then scoped *into* the worktree:
-`laneScoped(args, lane.worktree)` at `:639` narrows the effort root so every write lands
-under the armed root, never the main checkout.
+If the lane does not come up, the workflow **HALTs rather than pin lane-less** (the
+`lanePrompt`/`PROVISION_ACK` refusal in `characterization.workflow.js`, "Refusing to pin
+lane-less (D7)").
 
-With the lane in place, the fence's floor-containment rule (BF8) is live: a src edit that
-intersects the floor without the lane declaring `floorImpact` is denied as a presumed
-regression (`lib/fence.mjs:242`). The fail-open window the incident drove through is shut.
+**The two-root correction (the lane-root fix).** An earlier snapshot scoped the characterizer
+into the worktree by *narrowing the effort root onto it* — `laneScoped` overwriting `effortRoot`.
+That was itself a second bug: the worktree's `.reasonable/` is gitignored and empty, so the fenced
+worker bootstrapped a divergent parallel `.reasonable/`. The corrected model is **two roots, by
+domain**: `laneScoped` now only *adds* a `laneRoot` and **never** touches `effortRoot`. The
+characterizer writes its born clause + ledger line to the **canonical effort root** by absolute path,
+and its parked test (code) under the **worktree**, committed with `git -C <worktree>`. Because a
+canonical `.reasonable/` write's target is not under the lane descriptor, the fence governs it by the
+worker's harness role (`roleOf(agent_type)` → the `governReasonable` matrix), not by an unreachable
+descriptor; a *worktree-local* `.reasonable/` write is denied at the source (the §3b guard in
+`fence.mjs`). See `docs/artifacts.md` (the two-root / identity-governance section).
+
+With the lane in place, the fence's floor-containment rule (BF8) is live: a src edit that intersects
+the floor without the lane declaring `floorImpact` is denied as a presumed regression (the BF8
+floor-containment check in `fence.mjs`). The fail-open window the incident drove through is shut.
 
 ### Fix 2 — The adversary is risk-gated, and a floor touch always trips it
 

@@ -168,16 +168,18 @@ export default async function run() {
 
   const provisionPrompt = [
     `Provision a QUARANTINE lane for a spike (DESIGN §5.7, architecture §13/D7).`,
-    `Effort root (main checkout, where shared .reasonable/ lives): ${a.effortRoot}`,
-    `Worktree path: ${quarantine.worktreePath}`,
+    `Effort root (canonical .reasonable/ — the descriptor back-pointer target): ${a.effortRoot}`,
+    `Worktree path (must be NESTED under the effort root, e.g. ${a.effortRoot}/.worktrees/${spike.id || '<spike-id>'}): ${quarantine.worktreePath}`,
     `Branch: ${quarantine.branch}`,
     `Quarantine root the spike-runner is path-fenced to: ${quarantine.quarantineRoot}`,
     `This is a LAW-FREE quarantine, so the descriptor you write MUST set`,
     `quarantineOnly:true and quarantineRoot to the path above (fence.mjs §2). role: "spike-runner".`,
     `No locus/contracts apply — the quarantine is extraterritorial; the fence allows any write UNDER`,
     `quarantineRoot and denies every write outside it.`,
-    `Order is the safety property: git worktree add -> write the single .reasonable-lane.json (with the`,
-    `effortRoot back-pointer) -> record the lane via the scribe at status:'dispatched'. All BEFORE any`,
+    `Order is the safety property: \`git -C ${a.effortRoot} worktree add <worktree-path> -b ${quarantine.branch}\``,
+    `(the worktree NESTED under the effort root, so findEffortRoot resolves the canonical .reasonable/ from`,
+    `inside it and reconcile's effort-scoped scan re-claims it) -> write the single .reasonable-lane.json (with`,
+    `the effortRoot back-pointer) -> record the lane via the scribe at status:'dispatched'. All BEFORE any`,
     `spike-runner runs. Idempotent on re-run after a crash: a present matching descriptor is a no-op.`,
   ].join('\n')
 

@@ -80,9 +80,13 @@ The vision you are extracting has three parts:
    write a profile if none is set, falling back to `standard`.** Default budgets — start **tight**,
    retros loosen with data.
    - **Plant the gitignore entries (idempotent).** Ensure the target repo's `.gitignore` contains
-     both `/.reasonable/` and `/.reasonable.done-*/`. Read the existing `.gitignore` (create it if
-     missing); append each line only if an equivalent entry is **absent** (don't duplicate), preserving
-     everything already there. **Why orchestration state is gitignored, not tracked:** the methodology
+     `.reasonable/`, `.reasonable.done-*/`, `.reasonable-lane.json`, and `.worktrees/` — **unanchored**
+     (no leading `/`), so they match the effort root whether it sits at the repo root or at a
+     configurable subdir location (several efforts may share one repo), and so they also cover the
+     per-lane `.reasonable-lane.json` descriptors and the nested `.worktrees/` lane checkouts. Read the
+     existing `.gitignore` (create it if missing); append each line only if an equivalent entry is
+     **absent** (don't duplicate), preserving everything already there. **Why orchestration state is
+     gitignored, not tracked:** the methodology
      **never relies on `.reasonable/` being in git.** Orchestration state — ledger, journal, contracts,
      baseline, verdicts, lane descriptors — is durable because it is **append-only on disk**, and
      reconcile reads it straight from disk (`readJsonl` → `readFileSync`), not from the git tree. The

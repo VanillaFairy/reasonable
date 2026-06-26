@@ -325,40 +325,42 @@ matching SHA as a live checkpoint, not pending.
 **The fence does not bind inside an engine-spawned worktree — and today it does not bind inside *any*
 descriptor-less location, because it fails OPEN.** This is the headline correction.
 
-Verified: [fence.mjs:70-71](../lib/fence.mjs#L70-L71) is
+The structured-edit path in `fence.mjs` resolves the governing lane with
+`findLane(tgt) || findLane(input.cwd)`. When a lane IS found — a code write whose ancestor carries the
+descriptor — the existing locus / floor / test-path rules bind. When NO lane is found, the fence does
+**not** fail open unconditionally; it branches (D7b + the identity model — citing functions, not line
+numbers, so the references survive edits):
 
-```js
-const lane = findLane(tgt) || findLane(input.cwd || process.cwd());
-if (!lane) process.exit(0); // not in a lane — main checkout / no effort — allow
-```
+- a **canonical `.reasonable/` write** is governed by the worker's harness role (`roleOf(input.agent_type)`)
+  against the role×artifact matrix (`governReasonable`) — the control-surface law, detailed in the two-root /
+  identity section of `docs/artifacts.md`. This is the mechanism that makes the canonical write governable at
+  all: a subagent's cwd is the effort root and the descriptor lives in a sibling worktree, so neither
+  `findLane(tgt)` nor `findLane(cwd)` can reach it — the unforgeable `agent_type` stamp can;
+- a **subagent code edit outside any lane** is **denied** ("presumed hostile"): `findEffortRoot` is
+  reachable, so the edit is inside an active effort with no governing descriptor;
+- the **main session** (no `agent_type`) is the trusted control plane and is allowed;
+- only when **no effort is reachable at all** (a plain repo / external checkout) is everything allowed.
 
-— unconditional fail-**open**, with no branch distinguishing "effort reachable but no lane descriptor" from
-"no effort at all." This is the gap D7b closes (below).
-
-**The mechanism (D7b).** In `fence.mjs`, when `findLane` is
-null, call `findEffortRoot` (already exported, [effort.mjs:85](../lib/effort.mjs#L85)); if an effort root is
-reachable, **deny** ("presumed hostile: effort worktree with no lane descriptor"); only if no effort is
-reachable at all, `process.exit(0)`. The fence then fails **closed** inside an effort and open only in a
-plain repo / the main checkout.
+So the fence fails **closed** for an ungoverned subagent inside an effort, and open only outside one.
 
 **reasonable owns lane lifecycle, not the engine (D7).** A privileged `lane-provisioner` agent runs
-`git worktree add`, writes `.reasonable-lane.json` (with the `effortRoot` back-pointer so hooks reach the
-shared `.reasonable/`), and records the lane in the journal **before** the fenced worker is dispatched — as
-a plain `agent()` cwd'd into that worktree, **without** `isolation:'worktree'`. This ordering closes the
-descriptor-less window: the worker's first edit always finds a descriptor, so the fail-closed rule blocks
-exactly the descriptor-less window and engine-spawned worktrees, never a legitimately provisioned worker.
+`git worktree add` (nesting the worktree at `<effortRoot>/.worktrees/<wo>`), writes `.reasonable-lane.json`
+(with the `effortRoot` back-pointer so hooks inside the worktree reach the canonical `.reasonable/`), and
+records the lane in the journal **before** the fenced worker is dispatched, **without** `isolation:'worktree'`.
+Because a subagent's cwd is the effort root (not the worktree), the worker writes code by absolute path under
+the worktree and runs git with `git -C <worktree>`; the descriptor it finds via `findLane(target)` governs
+those code edits. This ordering closes the descriptor-less window: the fail-closed rule blocks exactly the
+descriptor-less window and engine-spawned worktrees, never a legitimately provisioned worker.
 
 `agent({isolation:'worktree'})` is reserved **only** for ephemeral read-only throwaway work (e.g.
 discriminator tests at `HEAD~`) that produces no merged commits. Using it for a lane is forbidden: "auto-
 removed if unchanged" would sweep a checkpoint-only lane.
 
 **Locus authority is the immutable main-checkout work-order file**, fence-protected categorically — not the
-`.reasonable-lane.json` descriptor (which a desperate worker could otherwise forge). Verified retained
-facts: a lane cannot self-seed its descriptor (`.reasonable-lane.json` is in `ENFORCEMENT_BUILTINS`,
-[fence.mjs:27-28](../lib/fence.mjs#L27-L28); the self-write is actively denied at
-[fence.mjs:78-82](../lib/fence.mjs#L78-L82)); the spike quarantine fence
-([fence.mjs:85-93](../lib/fence.mjs#L85-L93)) and the per-role test-path rules
-([fence.mjs:111-132](../lib/fence.mjs#L111-L132)) bind as described.
+`.reasonable-lane.json` descriptor (which a desperate worker could otherwise forge). Retained facts: a lane
+cannot self-seed its descriptor (`.reasonable-lane.json` is in `ENFORCEMENT_BUILTINS`, and a write to it by
+any role other than the `lane-provisioner` is denied); the spike quarantine fence and the per-role test-path
+rules — both in `categorical()` — bind as described.
 
 **The script holds zero enforcement authority** and is designed as hostile. The script cannot refuse to emit
 an `agent()` lacking an agentType — the substrate gives it no validation hook over its own calls, so that is
@@ -414,7 +416,7 @@ principles.md: trust is earned, persistent, **event-invalidated** — re-verify 
 its behavior is extended or its governing clause is amended; no re-checking churn. (D13)
 
 Mechanism: the append-only ledger **is** the event log; every enrichment/amendment entry names its component
-(verified: [fence.mjs:61-62](../lib/fence.mjs#L61-L62) and `contract.mjs` citation parsing). The
+(verified: `isContractPath`/`contractName` in `lib/fence.mjs` and `contract.mjs` citation parsing). The
 route-planner/reconciler computes, from the ledger event stream, the set of trusted-green tests whose
 governing clause was amended/extended since their last verification, and marks **exactly those** for
 re-verification in the next vertical slice's work orders. The assertion↔clause mapping is the contract's citation,
@@ -624,7 +626,7 @@ Twelve greenfield components, plus three brownfield ones (gated on `config.brown
 | **`journal-writer` (scribe)** | the script's single derived-index hand | writes only `journal.json` + `inbox.json`; serial, awaited; null return → HALT (§6) |
 | **reconcile** | agent wrapping rewritten `lib/reconcile.mjs` + SessionStart hook | the unconditional, total, halting recovery prologue (§12); reads `config.runMode`; computes the trust-staleness set |
 | **main-session orchestrator** | entry/phase skills (the human decision plane) | `reasonable:develop` / `:develop-autonomously` / `:retro`: write `config.runMode`, run reconcile, present the briefing (BREAKING first), block for the human in gated mode, apply route re-sort + amendment batch + intent-check records at the retro, then re-launch the next vertical slice; launch spike/scaffold (never inline) |
-| **`spike.workflow.js`** | workflow (single timeboxed agent) | quarantined falsifiable spike → knowledge artifact; spike-runner path-fenced to quarantine ([fence.mjs:85-93](../lib/fence.mjs#L85-L93)); launched by the main session (nesting limit) |
+| **`spike.workflow.js`** | workflow (single timeboxed agent) | quarantined falsifiable spike → knowledge artifact; spike-runner path-fenced to quarantine (the quarantine rule in `fence.mjs` `categorical()`); launched by the main session (nesting limit) |
 | **`census`** *(brownfield, §18)* | read-only agent | once at analysis: dep-graph → skeleton topology contracts (zero clauses/citations); partition the existing suite → `baseline.json` (FLOOR, untrusted) |
 | **`characterizer`** *(brownfield, §18)* | fenced mutator agent | read-only on src; pins current behaviour as `characterized` clauses + parked characterization tests, just-in-time at first touch, after the implementer's `behaviorDelta` |
 | **`characterization.workflow.js`** *(brownfield, §18)* | workflow (short pipeline) | analysis-time corpus pass (mirrors `scaffold.workflow.js`); invariant-verify = GREEN on HEAD. First-touch genesis is NOT this — it is an in-run agent sequence inside the vertical-slice-runner (one-level nesting) |
@@ -677,7 +679,7 @@ Each mechanism, the gap it closes, and the decision that governs it.
 
 | # | Mechanism | Gap it closes | Decision |
 |---|---|---|---|
-| 1 | **Fence fails closed inside an effort** — `findLane` null → `findEffortRoot`; deny if reachable | fail-open ([fence.mjs:70-71](../lib/fence.mjs#L70-L71)) | D7b |
+| 1 | **Fence fails closed inside an effort** — `findLane` null → `findEffortRoot`; deny an ungoverned subagent, govern a `.reasonable/` write by `agent_type`, allow the main session (the no-lane branch in `fence.mjs`) | was unconditional fail-open | D7b |
 | 2 | **reconcile = total halting function** (RESOLVED / SAFE-DEFAULT / AMBIGUOUS→halt) | never halts ([reconcile.mjs](../lib/reconcile.mjs)) | D8b |
 | 3 | **Checkpoint-only lane persists a trailered commit**; reconcile anchors on it | harvest keys on `ahead>0`, loses 0-commit checkpoints | D8b |
 | 4 | **Worker writes its own ledger line in its atomic commit**; scribe writes only the derived index | orchestrator writes both via lib | D3 |

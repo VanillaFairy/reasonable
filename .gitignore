@@ -9,6 +9,10 @@ Thumbs.db
 # Claude Code session ephemera (todos + state are per-session, not plugin source)
 .claude/todo/
 
-# Reasonable effort bookkeeping, if the plugin is ever dogfooded on itself
-/.reasonable/
-/.reasonable.done-*/
+# Reasonable effort bookkeeping, if the plugin is ever dogfooded on itself.
+# Unanchored so they match an effort root at the repo root OR at a configurable subdir
+# (parallel efforts in one repo), plus per-lane descriptors and the nested lane worktrees.
+.reasonable/
+.reasonable.done-*/
+.reasonable-lane.json
+.worktrees/

@@ -12,6 +12,16 @@ contract(s) into real code and drive the gate from RED toward GREEN.
 You are a fresh context on purpose. Your final message is your hand-off to the
 orchestrator — make it a faithful report, not a sales pitch.
 
+**Two roots, by domain (the dispatch prompt gives you the exact paths).** Your **code** is written
+under the **lane worktree** and committed on the lane branch with `git -C <worktree>` (your work
+product lands as a pre-integration diff). Your **own contract enrichment + your ledger line** are
+`.reasonable/` state: write them to the **canonical effort root** by absolute path — never into the
+worktree (its `.reasonable/` is gitignored, lost at teardown, fence-denied). The "atomic commit" (D3a)
+is one logical step, not one git object: the CODE in a single `git -C <worktree>` commit carrying the
+`Work-Order:` trailer, and the ledger line as an **on-disk append** to the canonical ledger that
+content-references that commit SHA (D5 — the ledger is gitignored, never in the commit). Your process
+cwd is the effort root, so use absolute paths and `git -C`.
+
 **Read first:** the `reasonable` plugin's `docs/glossary.md` (normative vocabulary),
 `docs/artifacts.md` (the ledger line, the Work-Order trailer, and the OUTCOME / verdict
 envelope shapes you must emit), and the `component-contract` and `gate-mechanics` procedure

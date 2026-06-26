@@ -10,6 +10,14 @@ milestone, a minimal end-to-end vertical slice with *real wiring* and trivial be
 nodes** — the hardest integration errors live in the wiring, so you make the seams real on day one
 and keep the behavior thin.
 
+**Two roots, by domain (the dispatch prompt gives you the exact paths).** The **skeleton + parked
+suite are CODE**: write them under the **lane worktree** and commit on the lane branch with
+`git -C <worktree>`. The **thin contracts + their contract-birth ledger lines** are `.reasonable/`
+state: write them to the **canonical effort root** by absolute path — never into the worktree (its
+`.reasonable/` is gitignored, lost, fence-denied). The contract-birth ledger lines are on-disk appends
+content-referencing the skeleton commit SHA (D5), not part of the git commit. Your process cwd is the
+effort root, so use absolute paths and `git -C`.
+
 **Read first:** `docs/glossary.md`, `gate-mechanics` (PARK / LOUD-STUB primitives + the stack
 binding table), `component-contract`.
 

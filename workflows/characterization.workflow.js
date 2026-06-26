@@ -328,18 +328,23 @@ function pinTouchesProtectedState(pin, scenario) {
 // args, so agents can run the libs and read the shared .reasonable/ artifacts.
 // ─────────────────────────────────────────────────────────────────────────────
 
-function root(a) { return (a && a.effortRoot) || '.'; }
+function root(a) { return (a && a.effortRoot) || '.'; }            // canonical .reasonable/ root — read AND write
+function laneDir(a) { return (a && a.laneRoot) || (a && a.effortRoot) || '.'; } // the lane worktree — code + cwd for git -C
 function plugin(a) { return (a && a.reasonableRoot) || '${reasonable}'; }
 
-// After provisioning, the FENCED MUTATOR (characterizer + the census-skeleton emit) must
-// operate INSIDE the lane worktree, where `.reasonable-lane.json` arms the floor-containment
-// fence and a pre-integration diff exists — NEVER in the main checkout (args.effortRoot),
-// where the fence fails open (D7, the lane-less hazard this pass exists to close). Narrow a
-// copy of args so root(a) resolves to the worktree for every in-lane write path
-// (contract -> ledger -> parked test, in that atomic order). Read-only roles (probe,
-// invariant, scribe, reconcile) keep the un-narrowed args. plugin root is unchanged.
+// THE TWO-ROOT MODEL (the lane-root fix). A fenced worker has two roots, split by DOMAIN:
+//   • effortRoot (canonical, STAYS PUT) owns ALL `.reasonable/` state — contracts, ledger,
+//     baseline, journal — read AND written there. It is gitignored, durable on disk.
+//   • laneRoot (the provisioned worktree) holds CODE (the parked test) and is the cwd for
+//     `git -C`, so commits land on the lane branch as a pre-integration diff.
+// laneScoped ADDS laneRoot; it must NEVER overwrite effortRoot. Overwriting it was the
+// incident: it pointed the fenced worker at the gitignored, EMPTY worktree `.reasonable/`,
+// so census re-bootstrapped a divergent parallel `.reasonable/`. Now every prompt reads &
+// writes `.reasonable/` at the absolute ${root(a)} and writes code + commits at ${laneDir(a)}.
+// EMPIRICALLY VERIFIED: a workflow subagent's cwd is always the effort root (never the
+// worktree), so the worker uses ABSOLUTE paths for code and `git -C ${laneDir(a)}` for git.
 function laneScoped(a, worktree) {
-  return worktree ? { ...a, effortRoot: worktree } : a;
+  return worktree ? { ...a, laneRoot: worktree } : a;
 }
 
 function reconcilePrompt(a) {
@@ -347,8 +352,8 @@ function reconcilePrompt(a) {
     'You are the reconcile prologue for the brownfield characterization corpus pass.',
     `Effort root: ${root(a)}. Plugin root: ${plugin(a)}.`,
     'Run UNCONDITIONALLY. Re-derive truth from git + the append-only ledger + the contract files;',
-    'the resume cache has zero authority. Run `node ' + plugin(a) + '/lib/reconcile.mjs` and read its',
-    'exact output. Partition every artifact configuration into RESOLVED / SAFE-DEFAULT / AMBIGUOUS.',
+    'the resume cache has zero authority. Run `node ' + plugin(a) + '/lib/reconcile.mjs --root ' + root(a) + '` and read',
+    'its exact output. Partition every artifact configuration into RESOLVED / SAFE-DEFAULT / AMBIGUOUS.',
     'An AMBIGUOUS configuration is a blocking halt — set halt:true with haltReason + evidence; never guess.',
     'CLASSIFY every halt via haltClass. The four FIRST-LINE halt classes stay HALTs: sha-custody (custody',
     'reclaim), ledger-without-commit (torn window), runmode-absent, two-lanes-one-wo. But a floor-integrity',
@@ -370,19 +375,21 @@ function reconcilePrompt(a) {
 function lanePrompt(a) {
   return [
     'You are the lane-provisioner. Provision the lane for the brownfield characterization corpus pass,',
-    'idempotently, BEFORE any fenced worker (the characterizer) edits code. The corpus pass is a FENCED',
-    'MUTATOR: run in the main checkout it has NO lane descriptor, so the floor-containment fence FAILS',
-    'OPEN — there would be no armed fence and no pre-integration diff to judge. So this lane MUST be a',
-    'real registered worktree, NEVER the main checkout.',
-    `Effort root: ${root(a)}. Plugin root: ${plugin(a)}.`,
-    'Do exactly three things in order (the ordering is the safety property): (1) git worktree add a real',
-    'registered worktree on a lane branch (NOT an engine-isolated throwaway); (2) write the one',
-    '.reasonable-lane.json descriptor at the new worktree root, narrowed for the characterizer role',
-    '(contractBirth:true, floorImpact, the corpus locus), with the effortRoot back-pointer; (3) record the',
-    'lane in the journal via the scribe — all before the worker is dispatched. Idempotent: an existing',
-    'registered worktree + present correct descriptor + recorded journal lane is a no-op success.',
-    'Return the PROVISION_ACK: the worktree path the characterizer must cwd into, and confirmation the',
-    'descriptor is written (the fence is armed). A false/absent descriptor is a HALT — never pin lane-less.',
+    'idempotently, BEFORE the characterizer (a fenced mutator) writes any CODE. The lane gives the worker a',
+    'real registered worktree on a lane branch (so its parked test lands as a pre-integration diff) plus a',
+    '`.reasonable-lane.json` descriptor (so the fence governs its code edits).',
+    `Effort root (canonical .reasonable/ — the descriptor back-pointer target): ${root(a)}. Plugin root: ${plugin(a)}.`,
+    'Do exactly three things in order (the ordering is the safety property): (1) `git -C ' + root(a) + ' worktree',
+    'add ' + root(a) + '/.worktrees/<wo-id> -b <lane-branch>` — a real registered worktree NESTED UNDER the effort',
+    'root (so findEffortRoot resolves the canonical .reasonable/ from inside it), NOT an engine throwaway;',
+    '(2) write the one `.reasonable-lane.json` descriptor at the new worktree root, narrowed for the characterizer',
+    'role (contractBirth:true, floorImpact, the corpus locus), with the `effortRoot` back-pointer = ' + root(a) + ';',
+    '(3) record the lane in the journal via the scribe — all before the worker is dispatched. Idempotent: an',
+    'existing registered worktree + present correct descriptor + recorded journal lane is a no-op success.',
+    'TWO-ROOT SPLIT: the worktree holds CODE only; do NOT seed `.reasonable/` into it — effort state stays',
+    'canonical at the effort root (gitignored), reached from the worktree via the descriptor back-pointer.',
+    'Return the PROVISION_ACK: the worktree path (the characterizer writes code there via `git -C` + absolute',
+    'paths), and confirmation the descriptor is written. A false/absent descriptor is a HALT — never pin lane-less.',
   ].join('\n');
 }
 
@@ -407,14 +414,15 @@ function censusCheckPrompt(a, s) {
   return [
     'You are the census (brownfield read-only) confirming the skeleton topology contract exists for one',
     'component before its behaviour is pinned at the seam.',
-    `Effort root: ${root(a)}. Plugin root: ${plugin(a)}.`,
+    `Effort root (canonical .reasonable/): ${root(a)}. Plugin root: ${plugin(a)}.`,
     `Component: ${s.component}. Seam: ${s.seam}.`,
-    'Confirm `.reasonable/contracts/' + s.component + '.md` exists with a `## Topology` section (prose',
-    '`- Depends on:` lines), an EMPTY `## Clauses` section, and ZERO `## Citations` bullets — exactly the',
-    'skeleton census writes at analysis. If it is missing, emit the skeleton now (prose deps, empty clauses,',
-    'zero citations) so the characterizer has a contract file to add a born clause to. Write NO clause and',
-    'NO citation yourself — behaviour is born by the characterizer, demand-driven, at the seam. Confirm the',
-    'baseline.json floor partition (via `node ' + plugin(a) + '/lib/baseline.mjs`) round-trips.',
+    'Confirm the CANONICAL `' + root(a) + '/.reasonable/contracts/' + s.component + '.md` exists with a `## Topology`',
+    'section (prose `- Depends on:` lines), an EMPTY `## Clauses` section, and ZERO `## Citations` bullets — exactly',
+    'the skeleton census writes at analysis. If it is missing, emit the skeleton now (prose deps, empty clauses,',
+    'zero citations) at that CANONICAL path via Bash (your role has no Edit/Write). NEVER emit it into a worktree',
+    '`.reasonable/` (gitignored, lost at teardown, fence-denied). Write NO clause and NO citation yourself —',
+    'behaviour is born by the characterizer, demand-driven, at the seam. Confirm the baseline.json floor partition',
+    'round-trips: `node ' + plugin(a) + '/lib/baseline.mjs --root ' + root(a) + '`.',
     'Return a one-line confirmation that the skeleton is present (or was emitted) for ' + s.component + '.',
   ].join('\n');
 }
@@ -423,21 +431,26 @@ function characterizePrompt(a, s) {
   return [
     'You are the characterizer (brownfield fenced mutator, contractBirth:true) pinning ONE observable',
     'top-level behaviour as a born `characterized` clause + a PARKED characterization test.',
-    `Effort root: ${root(a)}. Plugin root: ${plugin(a)}.`,
-    'You operate INSIDE the provisioned lane worktree (the effort root above): cwd there, where the',
-    '`.reasonable-lane.json` descriptor arms the floor-containment fence. Every write below (contract,',
-    'ledger, parked test) lands under THIS root — never the main checkout, where the fence fails open.',
-    `Scenario key: ${s.key}. Component: ${s.component}. Seam (read-only src): ${s.seam}.`,
+    `Effort root (canonical .reasonable/ — read AND write here, by absolute path): ${root(a)}. Plugin root: ${plugin(a)}.`,
+    `Lane worktree (CODE lives here; cwd for git): ${laneDir(a)}.`,
+    'TWO ROOTS, by DOMAIN (do not conflate). The `.reasonable/` state (the born clause, the ledger line) is',
+    'written to the CANONICAL effort root by ABSOLUTE path. Do NOT write `.reasonable/` into the worktree: its',
+    '`.reasonable/` is gitignored + empty, the write is lost at teardown, and the fence DENIES it. The PARKED',
+    'TEST is CODE: write it under the worktree and commit it with `git -C ' + laneDir(a) + '`. Your process cwd is',
+    'the effort root, so use absolute paths for both and `git -C` for every git command.',
+    `Scenario key: ${s.key}. Component: ${s.component}. Seam (read-only src, under the worktree): ${s.seam}.`,
     `Observable behaviour to pin (pin what IS, never what should be): ${s.observable}`,
     'This is the ANALYSIS-TIME corpus pass: no behaviorDelta / no change is in flight yet, so pins are born',
     'PLAIN (do not stamp `Supersession: pending` — there is no declared change to supersede). Write in the',
-    'FIXED ATOMIC ORDER, never reordered: (1) born `### §N` clause in',
-    '`.reasonable/contracts/' + s.component + '.md` with `- Provenance: characterized (test: <name>, seam: ' + s.seam + ')`',
+    'FIXED ATOMIC ORDER, never reordered: (1) the born `### §N` clause in the CANONICAL',
+    '`' + root(a) + '/.reasonable/contracts/' + s.component + '.md` with `- Provenance: characterized (test: <name>, seam: ' + s.seam + ')`',
     'and a `- Seam:` line, adding a `## Citations` bullet ONLY for a neighbour this scenario actually consumes;',
-    '(2) one `{"type":"characterization", ...}` line appended to `.reasonable/ledger.jsonl`;',
-    '(3) the PARKED characterization test (ignore-marked with a reason; it MUST compile/import; cite the clause).',
-    'Admit the pin with the BF2 REVERSE discriminator (the inverse of greenfield RED-on-HEAD~):',
-    '`node ' + plugin(a) + '/lib/discriminator.mjs --reverse --test <name> --locus ' + JSON.stringify(s.seam) + ' --json`.',
+    '(2) one `{"type":"characterization", ...}` line appended to the CANONICAL `' + root(a) + '/.reasonable/ledger.jsonl`;',
+    '(3) the PARKED characterization test under the worktree `' + laneDir(a) + '` (ignore-marked with a reason; it',
+    'MUST compile/import; cite the clause), committed with `git -C ' + laneDir(a) + '` (so it is on the lane branch).',
+    'Admit the pin with the BF2 REVERSE discriminator (the inverse of greenfield RED-on-HEAD~) — config from the',
+    'effort root (--root), code under test from the WORKTREE (--tree):',
+    '`node ' + plugin(a) + '/lib/discriminator.mjs --reverse --test <name> --locus ' + JSON.stringify(s.seam) + ' --root ' + root(a) + ' --tree ' + laneDir(a) + ' --json`.',
     'A pin is admissible ONLY IF it (a) PASSES on unmutated HEAD and (b) goes RED under a locus-scoped mutant.',
     'Do NOT use mutation-sample.mjs (whole-suite — passes vacuously per characterization test).',
     'You never edit production src; you pin, you never fix. If the behaviour looks like a bug, pin it AS-IS and',
@@ -484,9 +497,9 @@ function verdictWriterPrompt(a, verdict, pin) {
     'You are a NARROW WRITER. The intent-verifier ADVERSARY proposed a verdict as data; it is read-only and',
     'never integrates its own verdict (Law 3 corollary). You perform the one resulting act: append ONE',
     'verifier-verdict event to the append-only ledger, content-referencing the pin it judged. Nothing else.',
-    `Effort root: ${root(a)}. Plugin root: ${plugin(a)}.`,
-    'Append exactly this event to `.reasonable/ledger.jsonl` (one JSON line; on-disk append, NOT a git commit',
-    'of orchestration state — verdict durability is the atomic on-disk append, D5):',
+    `Effort root (canonical): ${root(a)}. Plugin root: ${plugin(a)}.`,
+    'Append exactly this event to the CANONICAL `' + root(a) + '/.reasonable/ledger.jsonl` (one JSON line; on-disk',
+    'append, NOT a git commit of orchestration state — verdict durability is the atomic on-disk append, D5):',
     '  ' + JSON.stringify({
       type: 'verifier-verdict',
       component: pin.component,
@@ -508,17 +521,17 @@ function invariantPrompt(a, pins) {
   const tests = pins.filter((p) => p && p.test).map((p) => p.test);
   return [
     'You are a READ-ONLY auditor verifying the characterization-corpus INVARIANT.',
-    `Effort root: ${root(a)}. Plugin root: ${plugin(a)}.`,
+    `Effort root (canonical .reasonable/): ${root(a)}. Lane worktree (where the parked tests were committed): ${laneDir(a)}. Plugin root: ${plugin(a)}.`,
     'THE INVERSION: a characterization corpus is born GREEN-by-observation, so its invariant is the INVERSE',
     'of the greenfield discriminator. Greenfield asks "RED on HEAD~"; here you confirm GREEN ON HEAD:',
-    '  1. greenOnHead — EVERY parked characterization test PASSES on unmutated HEAD (run each alone). A pin',
-    '     already red on HEAD pins nothing real and is a corpus failure.',
-    '  2. parkedCompile — the parked characterization tests compile / import (a parked test that does not',
-    '     compile pins nothing).',
-    '  3. floorGreen — the FLOOR (baseline.json) is green; the containment fence holds.',
+    '  1. greenOnHead — EVERY parked characterization test PASSES on unmutated HEAD, run in the LANE worktree',
+    '     (run the test command with cwd `' + laneDir(a) + '`, or `git -C ' + laneDir(a) + '`), since that is where the',
+    '     pins were committed — NOT the main checkout, which does not carry them. A pin red on HEAD pins nothing.',
+    '  2. parkedCompile — the parked characterization tests compile / import (checked in the worktree).',
+    '  3. floorGreen — the FLOOR (the canonical `' + root(a) + '/.reasonable/baseline.json`) is green; the fence holds.',
     'The corpus passes iff greenOnHead && parkedCompile && floorGreen.',
     'Parked characterization tests to verify: ' + JSON.stringify(tests) + '.',
-    'Report the burndown: `node ' + plugin(a) + '/lib/burndown.mjs` (parked count + loud-stub count).',
+    'Report the burndown: `node ' + plugin(a) + '/lib/burndown.mjs --root ' + root(a) + '` (parked count + loud-stub count).',
     'Do NOT take the characterizer\'s word — run the commands yourself. List any failure by name.',
     'Return the INVARIANT_REPORT with the commands you ran and their output.',
   ].join('\n');
@@ -803,7 +816,9 @@ log('Intent-verify: ' + verdicts.length + ' pin(s) accepted (verdict recorded); 
 phase('Invariant-verify');
 log('Invariant-verify: confirming every parked characterization test is GREEN on HEAD (the inverse of RED-on-HEAD~), parked tests compile, the floor is green.');
 const invariant = await guard(
-  () => agent(invariantPrompt(args, pinned), { agentType: 'reasonable:auditor', label: 'invariant-verify', schema: INVARIANT_REPORT }),
+  // laneArgs (not args): the parked tests live in the lane worktree, so the auditor must
+  // run GREEN-on-HEAD there (laneDir(a)); it reads the floor from the canonical effort root.
+  () => agent(invariantPrompt(laneArgs, pinned), { agentType: 'reasonable:auditor', label: 'invariant-verify', schema: INVARIANT_REPORT }),
 );
 if (isCheckpoint(invariant)) {
   return { kind: 'checkpoint', reason: 'invariant-verify: ' + invariant.reason, pinned, inadmissible, suspectedBugs };

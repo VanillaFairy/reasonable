@@ -33,6 +33,49 @@ append that **content-references** that commit (pinning its hash, just as
 history it governs, which is why keeping it out of git is the design, not an
 omission.
 
+**The two-root model (and why a lane never carries `.reasonable/`).** A fenced worker
+operates against **two roots, split by domain**:
+
+- the **effort root** owns the canonical `.reasonable/` (contracts, ledger, baseline,
+  journal, intention, …) — read **and** written there, by absolute path;
+- the **lane root** (the worktree) holds **code** (src, tests) and is the cwd for
+  `git -C`, so commits land on the lane branch as a pre-integration diff.
+
+A workflow subagent's process cwd is **always the effort root**, never its worktree
+(a verified runtime fact: `cd` does not persist for a subagent), so workers write code
+by **absolute path** under the worktree and run git with **`git -C <worktree>`**; they
+write `.reasonable/` by absolute path under the effort root. The lane worktree's own
+`.reasonable/` is gitignored and **never seeded** — a worker that writes effort state
+into the worktree would lose it at teardown, so the fence denies that write. (The earlier
+"lane-root incident" was exactly this conflation: a workflow narrowed the effort root onto
+the worktree, so the fenced worker bootstrapped a divergent parallel `.reasonable/`.)
+The lane descriptor's `effortRoot` back-pointer is how every hook **inside** the worktree
+reaches the canonical state, and the worktree is nested at `<effortRoot>/.worktrees/<wo>`
+so `findEffortRoot` resolves the canonical `.reasonable/` from within it.
+
+**The effort root is configurable** (a workflow input), so several efforts can share one
+repo — each with its own effort-root directory and its own nested `.worktrees/`. The libs
+take an explicit `--root <effortRoot>` (and the code-operating libs `--tree <laneRoot>`)
+rather than guessing the effort from cwd; the hooks resolve the effort from the **target
+path** (`findEffortRoot(target)`), so a write into a specific effort's `.reasonable/` is
+governed by that effort regardless of cwd. Non-overlap across parallel efforts is the
+operator's responsibility.
+
+**Identity-governed `.reasonable/` writes (the fence's control surface).** Because a
+canonical `.reasonable/` write's target sits under the effort root (not under the lane
+descriptor), and a subagent's cwd is the effort root, the fence cannot resolve the lane
+for such a write by path. It governs them instead by the **harness agent-role stamp**
+(`agent_type`, present on every subagent tool call; absent for the main session). The
+role×artifact matrix (in `lib/fence.mjs`): contract-writers (implementer, characterizer,
+scaffolder, census) write `contracts/`; contract-writers + the journal-writer append the
+ledger; the journal-writer writes the `journal.json`/`inbox.json` index; census writes
+`baseline.json`; the intention-writer writes `intention.md`; the lane-provisioner writes
+`.reasonable-lane.json`; everything else (config, supervision, vision, route,
+work-orders/, verdicts/, knowledge/, …) is **orchestrator-only**. The **main session**
+(no `agent_type`) is the trusted control plane and may write `.reasonable/` freely.
+**Code** writes stay governed the old way — by the worktree descriptor reached via
+`findLane(target)` (locus / floor / test-path).
+
 ```
 .reasonable/
   config.json *            # stack bindings, test/build commands, test globs, run/brownfield mode
