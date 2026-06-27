@@ -46,6 +46,10 @@ If your dispatch binds you to a different reference, name *that* one and confirm
 artifact the same way. (Other placements exist elsewhere in the framework — e.g. a
 contract-enrichment adversary binds to the vision + slice spec, a born-contract adversary to topology
 + vision — but each obeys the same rule: reference above artifact, never the mutator's own output.)
+When your axis is whether a proposed artifact merely *restates what the code does* rather than what
+the reference demands, the canonical **test-honesty rubric**
+(`${reasonable}/skills/tdd-audit/references/test-honesty-rubric.md`) names that sycophancy signal —
+it is the plugin's shared vocabulary for the "anchored to intent, not implementation" judgment.
 
 ## What you judge — and the axis you must NOT judge (the bug-pin disclaimer)
 For the pin adversary, judge the proposed diff on these axes against the baseline-intent:
