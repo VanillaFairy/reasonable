@@ -396,9 +396,10 @@ Parsing rules (exact):
 
 ## ledger.jsonl *
 
-Append-only. One JSON object per line. Written by the orchestrator and by the
-`contract-amendment` ceremony; the redispatch guard and test-parity fence read
-it. `seq` is monotonic; `ts` is an ISO-8601 timestamp.
+Append-only. One JSON object per line. Written by the orchestrator, by each worker
+(its own enrichment/verdict line), by the `contract-amendment` ceremony, and by the
+**commit-record** hook (a lane commit's `commit` custody line, D20); the redispatch
+guard and test-parity fence read it. `seq` is monotonic; `ts` is an ISO-8601 timestamp.
 
 ```jsonl
 {"seq":1,"ts":"2026-06-12T10:00:00Z","type":"enrichment","component":"parser","clauses":["§3"],"workOrder":"WO-12","verticalSlice":"expr-eval","note":"learned precedence needs a clause"}
@@ -414,13 +415,14 @@ it. `seq` is monotonic; `ts` is an ISO-8601 timestamp.
 {"seq":11,"ts":"...","type":"ratification","gate":"analysis","runMode":"autonomous","approvedBy":"autonomous"}
 {"seq":12,"ts":"...","type":"intent-check-failure","verticalSlice":"confirm-delete","correctedChoice":"used spinner instead of stale-badge","shouldHavePinged":true,"retro":"R4"}
 {"seq":13,"ts":"...","type":"verifier-verdict","component":"store","diffRef":"src/store/delete.rs","verdict":"accept","oracle":"baseline-intent","by":"intent-verifier","proposed":true,"commit":"sha256:…"}
+{"seq":14,"ts":"...","type":"commit","workOrder":"WO-12","commit":"sha256:…","role":"implementer","by":"commit-record"}
 ```
 
 Event `type` values: `enrichment`, `amendment`, `verdict`, `scope-expansion`,
 `budget-extension`, `dead-end`, and the brownfield / run-mode additions
 `characterization`, `characterization-promotion`, `change-characterized`,
 `change-characterized-planned`, `ratification`, `intent-check-failure`,
-`verifier-verdict`. The
+`verifier-verdict`, `commit`. The
 ratchet's invariant: an `amendment` with `direction:"weaken"` requires
 `approvedBy:"human"` (or `"retro"`) — the engine flags any weakening lacking it.
 
@@ -467,6 +469,18 @@ The additions:
   classes (a fifth disposition queued BREAKING). A missing or half-written verdict
   can therefore only cause **more** human surfacing, never less — the failure
   direction is toward scrutiny.
+
+- `commit` — a lane work-product commit, recorded the instant it lands by the
+  **synchronous** `PostToolUse(Bash)` **commit-record** hook
+  ([lib/commit-record.mjs](../lib/commit-record.mjs), D20). The worker's own atomic
+  step is a git commit *then* a separate ledger append; a session-limit stop between
+  them strands the commit as **unaccounted custody** (the dual of "a ledger entry with
+  no commit") → reconcile HALTs AMBIGUOUS. This hook closes that window by appending
+  the custody line itself, keyed to the lane **descriptor** (not the forgeable
+  trailer), so reconcile **reclaims** the commit instead of halting. Fields:
+  `workOrder`, `commit` (the SHA), `role`, `by:"commit-record"`. It is a **custody
+  anchor, not a verdict** — it accounts the commit for recovery and claims nothing
+  about green-ness. Idempotent (one line per SHA); fail-open.
 
 ---
 

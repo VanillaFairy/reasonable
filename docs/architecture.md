@@ -329,6 +329,21 @@ and **loses the checkpoint**. Fix: a checkpoint-only lane must persist at least 
 commit so `commitsAhead > 0` holds; reconcile treats a registered lane with a checkpoint commit and a
 matching SHA as a live checkpoint, not pending.
 
+**The commit-custody-window fix (D20).** Point 1's atomic-commit discipline ("work product + ledger line +
+trailer in one step") is a *fiction at one instant*: the ledger is gitignored, so it cannot live **inside**
+the commit — it is a git commit *then* a separate on-disk append, and a session-limit stop landing between
+them strands a real, trailered lane commit with **no** ledger line. reconcile correctly reads that as
+unaccounted custody → AMBIGUOUS → HALT (the dual of "a ledger entry with no commit"). Observed in the wild
+(sofia-plays graph-editor, 2026-06-27): a fully-committed slice froze a resume behind a halt, and the
+natural recovery (re-dispatch) would re-run the whole pipeline — ~20 min of work redone. Fix — *capability
+beats discipline*: a **synchronous** `PostToolUse(Bash)` hook ([commit-record.mjs](../lib/commit-record.mjs))
+fires the instant a lane commit lands and appends the `{type:"commit"}` custody line **itself**, keyed to the
+lane **descriptor** (not the forgeable trailer), idempotent, fail-open. The commit→ledger window shrinks from
+minutes (until the agent logs it, or the next wave's journal write) to the hook's own execution and no longer
+depends on the agent; reconcile then **reclaims** the commit instead of halting. This is the recovery dual of
+the D19 progress mirror: D19's heartbeat is an ephemeral presentation *pointer*; the D20 custody line is a
+durable recovery *anchor* — one observed write, two readers.
+
 ---
 
 ## 13. Capability law and worktrees
