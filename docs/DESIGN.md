@@ -404,6 +404,7 @@ The pile splits two ways:
 - `fence` (PreToolUse on edits) — blast-radius locus, enforcement-layer block, per-role test-path rule, no-foreign-contracts, test/contract 1:1. Reads the lane's `.reasonable-lane.json` to bind the law to the governed.
 - `sanity` (PreToolUse on edits) — the lintable sanity-invariant subset.
 - `budget` (PreToolUse on edits + Bash) — effort-budget counter → forced checkpoint.
+- `commit-record` (PostToolUse on Bash) — records a lane commit's `{type:"commit"}` custody line into the ledger the instant it lands, so a session-limit stop between the commit and the worker's own ledger append cannot strand it as unaccounted custody → reconcile **reclaims** instead of HALTing AMBIGUOUS (D20). Synchronous; keyed to the lane `.reasonable-lane.json` descriptor (not the forgeable trailer); idempotent; fail-open.
 
 **Skill-invoked scripts** (`lib/*.mjs`, called by the orchestrator/skills, not by harness events): `footprint` (the computed DAG), `discriminator`, `mutation-sample`, `citation-resolve`, `burndown`, `redispatch-guard`, `commit-accounting`, `reconcile` — plus the shared parsers (`contract`, `effort`) the rest build on.
 
@@ -417,7 +418,7 @@ Each rule below is independently enforceable; whatever a dumb script can check, 
 - Effort-budget counting + forced checkpoint.
 - Identical work-order re-dispatch block (keyed on work-order hash vs ledger verdicts).
 - Discriminator check runner (new tests fail on `HEAD~` in a worktree).
-- Commit accounting support: work-order trailers stamped on agent commits; journal SHA recording.
+- Commit accounting support: work-order trailers stamped on agent commits; journal SHA recording; the commit-record hook seals each lane commit's custody line at landing (D20).
 - Lintable sanity invariants.
 - Path fences: spike-runner → quarantine; blind-test-writer → test paths; implementer → no test files.
 

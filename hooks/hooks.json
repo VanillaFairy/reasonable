@@ -60,6 +60,15 @@
             "command": "\"${CLAUDE_PLUGIN_ROOT}/hooks/run-hook.cmd\" progress"
           }
         ]
+      },
+      {
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "\"${CLAUDE_PLUGIN_ROOT}/hooks/run-hook.cmd\" commit-record"
+          }
+        ]
       }
     ],
     "Stop": [

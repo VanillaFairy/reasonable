@@ -1,0 +1,9 @@
+#!/usr/bin/env bash
+# Bridge: PostToolUse (every subagent Bash call) -> lib/commit-record.mjs --hook.
+# Records a lane HEAD commit into the ledger the instant it lands (closes the
+# commit->ledger custody window, D20), so reconcile RECLAIMS it instead of HALTing
+# AMBIGUOUS on a session-limit stop. SYNCHRONOUS on purpose: the accounting line must
+# be durable before the agent proceeds. Fails open if node is absent.
+DIR="$(cd "$(dirname "${BASH_SOURCE[0]:-$0}")" && pwd)"
+command -v node >/dev/null 2>&1 || exit 0
+exec node "${DIR}/../lib/commit-record.mjs" --hook "$@"
