@@ -445,6 +445,7 @@ The program counter. Single writer: the orchestrator. Statuses:
   },
   "lanes": { ".worktrees/WO-12": "WO-12" },
   "inbox": [],
+  "cost": { "agentsDispatched": 21, "tokensSpent": 840000, "updatedAt": "2026-06-12T09:54:00Z" },
   "lastReconciled": "2026-06-12T09:55:00Z"
 }
 ```
@@ -452,7 +453,34 @@ The program counter. Single writer: the orchestrator. Statuses:
 `commits` is the orchestrator's accounting (SHAs it has merged / lanes have
 reported) — the basis for provenance partitioning (§5.14B). `lanes` maps each
 live worktree path to its work order; reconciliation checks this against the
-actual worktrees on disk (orphan accounting).
+actual worktrees on disk (orphan accounting). `cost` is **descriptive run
+telemetry** (the runner's agent tally + the engine's token spend) for the
+deterministic progress mirror (D19) — best-effort, **never a gate input**, and
+**not** reconcile-rebuildable (like `lastReconciled`, it resets from the next wave
+on a cold rebuild).
+
+---
+
+## progress.json / progress.md  (derived mirror, D19)
+
+The **progress mirror** — a *pure projection* of the canonical truth
+(`work-orders/` ∪ `journal.json` ∪ `ledger.jsonl` ∪ `inbox.json`) into a nested tree:
+effort → vertical slice → work order → atomic action. It carries **no `*`**: nothing
+parses it back as authoritative input. It is written **only** by the deterministic
+regenerator (`lib/progress.mjs`, no model in the loop), triggered by a `PostToolUse`
+hook whenever the journal/ledger/inbox is written. Read by no enforcement logic;
+rebuildable from canonical state at any instant; safe to delete.
+
+- `progress.json` — the **structured** tree (for graphical rendering later): each node is
+  `{ kind: effort|slice|work-order|action, id, status, title, children, … }` plus
+  effort-level `cost` and `counts`.
+- `progress.md` — the **pinnable** rendered tree. The orchestrator tells the human once to
+  pin it (`.reasonable/progress.md`) to follow a long run live; it updates each wave with no
+  token cost.
+
+The canonical index (`journal.json` / `inbox.json`) stays the lone serialized scribe's
+(D3b); the mirror is a *separate* presentation artifact with a *single* deterministic writer,
+so no concurrent-writer hazard is introduced.
 
 ---
 
