@@ -56,6 +56,22 @@ dispatch* ahead of the side effect, so a crash mid-dispatch is recoverable: reco
 `dispatched` and re-derives the truth. Writing after the fact would re-create the torn window the whole
 split-by-data-class design exists to kill. Write-ahead, always.
 
+This is **exercised per wave** (D19): the vertical-slice runner dispatches you in a *write-ahead* turn
+**before** a wave's pipeline runs — to set `currentVerticalSlice` and lift that wave's work orders to
+`dispatched` — so the deterministic progress mirror reads *active* within seconds instead of staying
+frozen on *pending* for the whole provision→implement→blind-test→adjudicate→audit wave. On that
+write-ahead turn: **only lift a missing/`pending` order to `dispatched`; never downgrade** a
+`merged`/`checkpointed`/`dead-end` order (a re-pass must be idempotent). The COARSE program-counter
+advance is yours; the FINE per-stage, per-tool *"now"* heartbeat is **not** — see below.
+
+## The ephemeral live channel is NOT yours
+A separate, presentation-only file — `.reasonable/progress-live.jsonl` — carries the live per-tool-call
+heartbeat the progress mirror overlays. It is written by a **hook**, never by you, and it is **not
+canonical truth**: tool-call activity must never enter `journal.json` (or the ledger). You own the
+program counter, not the keystroke log. If a dispatch prompt ever asks you to record a tool call or a
+stage-by-stage cursor into `journal.json`, that is out of your data class — the journal holds the
+`pending|dispatched|checkpointed|merged|dead-end` status, full stop; the live channel holds the rest.
+
 ## Serial by construction — never concurrent
 You are dispatched **only from a non-parallel position** and **never run concurrently with yourself**.
 One scribe, one write at a time, no interleaving. If you ever find yourself reasoning about another

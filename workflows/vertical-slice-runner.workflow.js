@@ -41,8 +41,14 @@
 //        NOT a behaviorDelta-completeness verifier - that is a FALSE TRIO (D12): an
 //        undeclared move surfaces mechanically as an unaccounted floor break, a padded
 //        delta is caught by the existing two-oracle collision classifier.
+//        a serial WRITE-AHEAD journalWriteAhead BEFORE the pipeline flips the slice +
+//        this wave's work orders to `dispatched` so the progress mirror reads `active`
+//        within seconds, not after the wave lands (D19); fail-soft (the post-wave write
+//        is authoritative)
 //     trap router: switch over OUTCOME.kind -> its pre-written membrane crossing (S8)
-//     serial journalWrite (the script's only derived-index write); null -> HALT (S6, D3b)
+//     serial AUTHORITATIVE journalWrite (the wave's derived-index write); null -> HALT
+//        (S6, D3b). Both scribe dispatches run from this non-parallel position via the
+//        SAME lone serialized scribe, awaited, never concurrent - D3b is preserved.
 //   computeGreen = floorGreen && trustedGreen (BF3)
 //   return toGateResult(...) -> green | budget-exhausted | blocked | halt (S7, BF9)
 //
@@ -932,11 +938,44 @@ function route(outcome, state, mode) {
   return s;
 }
 
-// journalWrite - the script's ONE derived-index write, via the lone serialized scribe
-// (D3b). Serial and awaited; runs only from this non-parallel position. A null return
+// journalWriteAhead - the WRITE-AHEAD half of the derived-index write (D3b/D19), via the
+// same lone serialized scribe, dispatched from this non-parallel position BEFORE the wave's
+// pipeline runs. It records INTENT TO DISPATCH: it sets currentVerticalSlice and flips this
+// wave's work orders to `dispatched` so the deterministic progress mirror flips from
+// `pending` to `active` within seconds - not after the whole provision->implement->
+// blind-test->adjudicate->audit pipeline lands (the frozen-wave problem, D19). It writes the
+// COARSE program-counter advance only; the FINE per-stage + per-tool "now" view comes from
+// the ephemeral live channel (a hook, never the scribe), so this stays ONE write per wave,
+// never one per stage. Fail-SOFT by design: a non-persist here is an optimistic-advance miss
+// for the mirror, not a truth loss - the live channel still narrates the wave and the
+// post-wave authoritative journalWrite below still records the real transitions (and HALTs on
+// its own failure). The scribe never downgrades a merged/green order (it only lifts
+// missing/pending -> dispatched), so re-passes are idempotent.
+async function journalWriteAhead(freshWorkOrders, a) {
+  const wos = freshWorkOrders.map((wo) => ({
+    id: wo.id,
+    role: wo.role || 'implementer',
+    verticalSlice: wo.verticalSlice || a.verticalSliceId,
+    status: 'dispatched',
+  }));
+  return agent(
+    [
+      'Write-ahead the derived index (journal.json) - and nothing else (D3b). This is the BEFORE-the-worker program-counter advance the progress mirror projects (write-ahead dispatched, your charter).',
+      `Set journal.currentVerticalSlice = ${j(a.verticalSliceId)}.`,
+      `For EACH of these work orders, UPSERT journal.workOrders[id] (READ journal.json first, MERGE - never drop a sibling work order, never invent fields): set status:"dispatched", role, and verticalSlice. ${j(wos)}`,
+      'DO NOT DOWNGRADE: only lift a work order to "dispatched" when its current status is absent or "pending". Leave any "merged"/"checkpointed"/"dead-end" order exactly as it is (a re-pass must be idempotent).',
+      'Do NOT touch inbox.json, the ledger, contracts, or any work order not listed here. Do NOT mark anything merged/green - that is the after-the-wave transition, not this write.',
+      'Return the SCRIBE_ACK: persisted:true once journal.json is durably written faithfully against its schema; persisted:false otherwise (the script logs it and proceeds - the post-wave write is authoritative).',
+    ].join('\n'),
+    { label: 'scribe:write-ahead', phase: 'Enrich', agentType: 'reasonable:journal-writer', schema: SCRIBE_ACK },
+  );
+}
+
+// journalWrite - the script's ONE AUTHORITATIVE derived-index write, via the lone serialized
+// scribe (D3b). Serial and awaited; runs only from this non-parallel position. A null return
 // is a HALT upstream (the script must not proceed believing a transition persisted) -
 // but loses no truth, since reconcile rebuilds the index from git+ledger.
-async function journalWrite(state) {
+async function journalWrite(state, a) {
   // Descriptive run telemetry for the deterministic progress mirror (D19): the script's
   // own agent tally + the engine's token spend. Best-effort, NOT a gate input and NOT
   // reconcile-rebuildable (like journal.lastReconciled) - it resets from the next wave on
@@ -949,6 +988,7 @@ async function journalWrite(state) {
     [
       'Write the derived index (journal.json + inbox.json) - and nothing else (D3b).',
       'Record the program-counter transitions write-ahead, and append the pending inbox items with their BREAKING/ADVISORY class.',
+      `Set journal.currentVerticalSlice = ${j(a && a.verticalSliceId)} (keep the slice marked active in the program counter even if the per-wave write-ahead missed).`,
       `Also persist this descriptive cost block into journal.json as "cost" (add an updatedAt ISO timestamp): ${j(cost)}. It feeds the deterministic progress mirror (D19) - descriptive telemetry, never a gate input.`,
       `Transitions: ${j({ greenWorkOrders: state.greenWorkOrders || [], checkpoints: (state.checkpoints || []).length, blocked: (state.blocked || []).length })}`,
       `Pending inbox: ${j(state.pendingInbox || [])}`,
@@ -1058,6 +1098,20 @@ while (!verticalSliceGreen && withinBudget(a, budget) && withinAgentCap(state)) 
     log(`dispatching wave of ${wave.workOrders.length} work order(s).`);
     state.agentsDispatched += wave.workOrders.length * 7; // rough per-WO agent tally (provision+[characterize]+implement+intent-verify+blind+adjudicate+audit-leaf)
 
+    // WRITE-AHEAD (D19 tier-1): flip the slice + this wave's not-yet-green work orders to
+    // `dispatched` in the journal BEFORE the pipeline runs, so the progress mirror reads
+    // `active` within seconds instead of staying frozen on `pending` for the whole wave.
+    // Skip work orders already green (a re-pass), and fail SOFT - the post-wave write below
+    // is authoritative and HALTs on its own failure.
+    const freshWorkOrders = wave.workOrders.filter((wo) => !state.greenWorkOrders.includes(wo.id));
+    if (freshWorkOrders.length > 0) {
+      state.agentsDispatched += 1; // the write-ahead scribe call
+      const waAck = await journalWriteAhead(freshWorkOrders, a);
+      if (!waAck || waAck.kind === 'checkpoint' || waAck.persisted !== true) {
+        log('write-ahead journal write did not persist - the progress mirror will lag this wave; continuing (the live channel still narrates it; the post-wave write is authoritative).');
+      }
+    }
+
     // The enrichment pipeline (S5.6) - NO barrier between stages (S8): a fast-trapping
     // lane is triaged the instant ITS chain returns, not after the slowest lane. Each
     // stage callback receives (prevResult, originalItem, index); we close over ctx.
@@ -1076,8 +1130,8 @@ while (!verticalSliceGreen && withinBudget(a, budget) && withinAgentCap(state)) 
     // Trap router - map every OUTCOME to its pre-written membrane crossing (S8).
     for (const o of outcomes.filter(Boolean)) state = route(o, state, mode);
 
-    // The script's ONLY derived-index write - serial, awaited; null -> HALT (S6, D3b).
-    const ack = await journalWrite(state);
+    // The wave's AUTHORITATIVE derived-index write - serial, awaited; null -> HALT (S6, D3b).
+    const ack = await journalWrite(state, a);
     if (ack === null || ack.kind === 'checkpoint' || ack.persisted !== true) {
       return { kind: 'halt', reason: 'scribe did not persist the derived index (null / checkpoint / persisted:false) - index not written; reconcile rebuilds it from git+ledger on the next run.' };
     }
