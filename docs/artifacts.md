@@ -91,6 +91,8 @@ work-orders/, verdicts/, knowledge/, …) is **orchestrator-only**. The **main s
   resource-lexicon.json *  # declarable runtime resources
   documentation-policy.md  # how contracts relate to host docs
   inbox.json *             # approval inbox (also mirrored in journal for convenience)
+  progress.json            # derived progress tree, effort-scoped (for graphing; D19; no parser)
+  progress.md              # derived progress tree, the pinnable live view (D19; no parser)
   contracts/<component>.md *   # one per component, provider-owned clauses
   vertical-slices/<vertical-slice-id>.md   # vertical-slice specs (prose + a machine-readable gate block)
   work-orders/<wo-id>.json *   # work-order definitions
@@ -470,6 +472,13 @@ parses it back as authoritative input. It is written **only** by the determinist
 regenerator (`lib/progress.mjs`, no model in the loop), triggered by a `PostToolUse`
 hook whenever the journal/ledger/inbox is written. Read by no enforcement logic;
 rebuildable from canonical state at any instant; safe to delete.
+
+It is **effort-scoped**: it lives in *this* effort's `.reasonable/`, and the regenerator
+resolves the effort from the **changed artifact's path** (`findEffortRoot` on the written
+`journal.json`/`ledger.jsonl`/`inbox.json`), *never* from cwd. So in a repo hosting several
+efforts — each its own `.reasonable/`, non-overlap being the operator's responsibility — a
+write to one effort's journal regenerates only that effort's mirror; the scribe's cwd (which
+may belong to a different effort) is never consulted.
 
 - `progress.json` — the **structured** tree (for graphical rendering later): each node is
   `{ kind: effort|slice|work-order|action, id, status, title, children, … }` plus
