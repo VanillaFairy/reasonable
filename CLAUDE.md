@@ -50,7 +50,11 @@ with what inputs, in what order) is code; model judgment lives *inside* nodes, n
   `gate-mechanics`, `contract-amendment`, `adversarial-audit`, `shared-context-session`) are the
   shared type system cited by ≥2 roles. `using-reasonable` is the shared methodology reference,
   loaded on demand by the model and cited by both entries and several agents — it carries
-  `user-invocable: false` (not a slash command, never an entry point).
+  `user-invocable: false` (not a slash command, never an entry point). A new category —
+  **diagnostic skills** (`tdd-audit`) — is user-invocable and standalone: it audits a target repo's
+  existing test suite (coverage / quality / honesty, with per-test reverse-discriminator teeth
+  confirmation) and, like `/init`, does **not** enter an effort or write `.reasonable/` state. It
+  supersedes the external `tdd-audit` command (now retired in favor of this in-plugin copy).
 - **`hooks/` + `lib/`** — the law. Dispatch chain (understand this before debugging a hook that
   "won't fire"): `hooks/hooks.json` → `hooks/run-hook.cmd` (polyglot Windows/Unix wrapper) →
   extensionless bash shim (e.g. `hooks/fence`) → `node lib/<name>.mjs`. PreToolUse hooks: `fence`,
