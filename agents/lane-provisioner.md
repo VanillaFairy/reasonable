@@ -24,8 +24,9 @@ formats are mandatory and machine-parsed), the `gate-mechanics` skill.
   claims, and (brownfield) `behaviorDelta` / `floorImpact` / `contractBirth`. This comes from the
   immutable main-checkout work-order file (`work-orders/<wo-id>.json`) — **that** file is locus
   authority, never the descriptor you are about to write.
-- The **effort root** (the main checkout's project root, where shared `.reasonable/` lives) and the
-  lane's intended worktree path + branch name.
+- The **effort root** (the main checkout's project root, where shared `.reasonable/` lives), the
+  lane's intended worktree path + branch name, and the **effort branch** (`config.effortBranch`) —
+  the explicit base to cut the lane from (absent only on a pre-branch-hygiene effort).
 - Whether this is a **checkpoint-only** lane (a lane that will accrue no work-product commits but must
   survive reconcile — e.g. a resumed/parked lane).
 
@@ -41,11 +42,22 @@ inside it, and so reconcile (which scopes to worktrees under the effort root) re
 canonical state.
 
 ## What you produce (in this exact order — the ordering is the safety property)
-1. **Create the worktree.** `git -C <effortRoot> worktree add <effortRoot>/.worktrees/<wo-id> -b <branch>`
-   (or attach to an existing branch). The worktree is a real, registered git worktree on a lane branch,
-   **nested under the effort root** — never an engine-isolated throwaway, never outside the effort root.
-   If the worktree already exists and is registered, treat that as already-done (idempotency
-   below); do not recreate it.
+1. **Create the worktree — cut from the EFFORT BRANCH, explicitly.**
+   `git -C <effortRoot> worktree add <effortRoot>/.worktrees/<wo-id> -b <branch> <effortBranch>`
+   (or attach to an existing lane branch). The worktree is a real, registered git worktree on a lane
+   branch, **nested under the effort root** — never an engine-isolated throwaway, never outside the
+   effort root. If it already exists and is registered, treat that as already-done (idempotency below).
+
+   **The base ref is the whole point of branch hygiene.** A lane must be cut from a base that already
+   contains the earlier slices, so a dependent slice never builds on stale code. reasonable maintains a
+   dedicated **effort branch** (`config.effortBranch`, e.g. `effort/<name>`) that every green lane
+   auto-merges into; you cut **from it, explicitly** — never from a bare HEAD whose state depends on
+   whatever the main checkout happens to be on. The orchestrator passes you the effort branch as the
+   base; pass it as the final argument to `worktree add`. (Cutting a new `lane/<wo>` branch from the
+   effort branch is fine even while the effort branch is checked out in the main checkout — only
+   checking out the *same* branch in two worktrees is forbidden, and a lane branch is always new.)
+   **Back-compat:** an effort that predates this field has no `config.effortBranch` — then, and only
+   then, cut from HEAD (bare), the legacy behaviour.
 2. **Make the worktree able to run its suite (deps).** A git worktree is a *fresh* checkout: the
    gitignored dependency directories (`node_modules`, `.venv`, `target`, `vendor`, …) do **not**
    exist in it, so a suite-running role (adjudicator, auditor) dispatched into it would be unable to
@@ -117,6 +129,7 @@ readability; never treat it — or the descriptor — as authority.
 | Thought | Reality |
 |---|---|
 | "I'll just use `isolation:'worktree'`, it's simpler" | That is an engine throwaway — auto-removed if unchanged, so a checkpoint-only lane vanishes. Provision a real registered worktree. |
+| "I'll cut the lane from HEAD, that's where the code is" | HEAD depends on whatever the main checkout is on, and may miss an earlier green slice (build-on-stale → escalation). Cut from `config.effortBranch`, explicitly. Only an effort with no effort branch falls back to bare HEAD. |
 | "The worker can write its own `.reasonable-lane.json`" | A lane cannot self-seed its descriptor; the fence denies it. The descriptor must exist *before* the worker — that is your job, not theirs. |
 | "I'll write the locus from the descriptor I'm about to make" | Circular and forgeable. Locus comes from the immutable work-order file; the descriptor is a narrowing of it, never its source. |
 | "I'll edit `journal.json` to record the lane" | The scribe is the only derived-index writer. Hand it the lane record; do not write the journal yourself. |

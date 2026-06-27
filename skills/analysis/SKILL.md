@@ -79,6 +79,21 @@ The vision you are extracting has three parts:
    **preserve the supervision `profile` the entry skill (`develop`/`develop-autonomously`) already set; only
    write a profile if none is set, falling back to `standard`.** Default budgets — start **tight**,
    retros loosen with data.
+7a. **Establish the effort branch (multi-slice branch hygiene).** A later slice's lane must be cut
+   from a base that already contains the earlier slices — so reasonable maintains a dedicated
+   **integration branch** instead of cutting lanes from a moving HEAD. Do this once, at effort start:
+   - Record the **base branch** the effort is starting from: `git rev-parse --abbrev-ref HEAD` (e.g.
+     `master`). The base branch is **never written to during the effort**.
+   - Compute the effort branch name `effort/<effort-name>` (`node ${reasonable}/lib/branch.mjs` exports
+     `effortBranchName`) and **create or adopt** it off the base ref: `git branch <effortBranch> <base>`
+     if absent; if it already exists, **adopt it as-is** (never reset it — it carries the slices merged
+     so far). Then **check it out in the main checkout** (`git checkout <effortBranch>`) so the whole
+     effort runs on it and the base branch stays untouched; lane worktrees are separate `lane/<wo>`
+     branches, so this never conflicts.
+   - Record both in `config.json`: `"baseBranch": "<base>"`, `"effortBranch": "effort/<name>"` (see
+     `docs/artifacts.md § config.json`). The lane-provisioner cuts every lane from `effortBranch`; green
+     lanes auto-merge into it at each slice gate; only the **final `effortBranch → baseBranch` merge**
+     (at effort end) touches the base — the single deliberate human review gate, never a per-slice one.
 7b. **Test conventions.** Emit `.reasonable/test-conventions.md`: the stack's test-harness conventions
    — **module system** (ESM `import` vs CJS `require`), **runner**, **render lib**, **import/export
    shape**, **setup**, and a pointer to one **existing example test** to mirror (see
@@ -197,6 +212,7 @@ the census skeletons, `baseline.json`, and `intention.md` — alongside the stan
 
 The ratified `.reasonable/` standing artifacts (vision, topology, route, documentation-policy,
 resource-lexicon, sanity-invariants, config, supervision, test-conventions, empty
-journal/ledger/inbox) and a go/no-go for scaffolding. **On the brownfield branch, also:** the census skeleton topology contracts,
+journal/ledger/inbox), the **effort branch** established and checked out (`effort/<name>` off the
+recorded `baseBranch`), and a go/no-go for scaffolding. **On the brownfield branch, also:** the census skeleton topology contracts,
 `baseline.json` (the FLOOR partition), and the ratified `intention.md` (the change-intention oracle).
 Then invoke the `scaffolding` skill (in brownfield mode it builds a thin frontier inventory of the route-intended scenarios (deferring tooth-bearing pins to first-touch genesis) rather than building a walking skeleton).

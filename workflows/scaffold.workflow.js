@@ -260,9 +260,12 @@ function lanePrompt(a) {
     'worktree on a lane branch (so the skeleton lands as a pre-integration diff the born-contract adversary can',
     'judge) plus a `.reasonable-lane.json` descriptor (so the fence governs its code edits).',
     'Effort root (canonical .reasonable/ - the descriptor back-pointer target): ' + (a.effortRoot || '(the target project root holding .reasonable/)') + '. reasonable plugin root: ' + (a.reasonableRoot || '$CLAUDE_PLUGIN_ROOT') + '.',
+    (a.effortBranch
+      ? 'Cut the lane from the EFFORT BRANCH `' + a.effortBranch + '` as an EXPLICIT base (analysis established + checked it out; lanes are cut from it, green lanes merge into it). Pass it as the final arg to `worktree add`.'
+      : 'No effort branch configured (pre-branch-hygiene effort) - cut the lane from HEAD (bare, legacy).'),
     'Do exactly three things in order (the ordering is the safety property): (1) `git -C ' + (a.effortRoot || '.') + ' worktree',
-    'add ' + (a.effortRoot || '.') + '/.worktrees/<wo-id> -b <lane-branch>` - a real registered worktree NESTED UNDER the',
-    'effort root (so findEffortRoot resolves the canonical .reasonable/ from inside it), NOT an engine throwaway;',
+    'add ' + (a.effortRoot || '.') + '/.worktrees/<wo-id> -b <lane-branch>' + (a.effortBranch ? ' ' + a.effortBranch : '') + '` - a real registered worktree NESTED UNDER the',
+    'effort root (so findEffortRoot resolves the canonical .reasonable/ from inside it), cut from the effort branch when one is given, NOT an engine throwaway;',
     '(2) write the one `.reasonable-lane.json` descriptor at the new worktree root, narrowed for the scaffolder',
     'role (contractBirth:true, the scaffold locus), with the `effortRoot` back-pointer = ' + (a.effortRoot || '.') + ';',
     '(3) record the lane in the journal via the scribe - all before the scaffolder is dispatched. Idempotent: an',
