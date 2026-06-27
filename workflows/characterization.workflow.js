@@ -1,19 +1,19 @@
-// characterization.workflow.js — the brownfield analysis-time FRONTIER INVENTORY pass.
+// characterization.workflow.js - the brownfield analysis-time FRONTIER INVENTORY pass.
 //
 // REDESIGN (frontier-scoped + defer the teeth, 2026-06-26). The brownfield twin of the scaffolding
 // slot is NO LONGER a tooth-bearing corpus pass over the whole observable surface. census.md already
-// states the cost-asymmetry split — "the topology census is cheap and global, done up front;
+// states the cost-asymmetry split - "the topology census is cheap and global, done up front;
 // behavioural pins are expensive and demand-driven, done later at the seam by the characterizer."
 // This workflow now OBEYS that split: it is a READ-ONLY, FRONTIER-SCOPED observation that records a
 // thin prose `## Scenarios` inventory, and DEFERS every tooth (born `characterized` clause + parked
 // test + BF2 reverse discriminator + intent-verifier) to first-touch genesis inside the
 // vertical-slice-runner, which already runs them in full and is now the SOLE birthplace of a
-// `characterized` clause. (architecture §18; spec docs/superpowers/specs/2026-06-26-...)
+// `characterized` clause. (architecture S18; spec docs/superpowers/specs/2026-06-26-...)
 //
 // WHY THE OLD APPARATUS IS GONE. Lane provisioning, the two-root fenced-mutator dance, the
 // per-scenario census-check, the characterizer, the intent-verifier trio + verdict-writer, and the
 // GREEN-on-HEAD invariant ALL existed to safely land a parked TEST (code) onto floor-tracked files.
-// This pass writes no test and no code — only a prose `## Scenarios` section into census's own
+// This pass writes no test and no code - only a prose `## Scenarios` section into census's own
 // skeleton contracts, exactly as census writes `## Topology` at analysis, read-only on production
 // code. No code write => no floor touch => no fence to arm => no lane, no adversary, no invariant.
 //
@@ -27,14 +27,14 @@
 // becomes a structured checkpoint.
 //
 // RETURN. A typed result for the human birth-ratification gate (the engine cannot block on a human).
-// Kinds: ratify | no-op | halt | checkpoint. There is no `escalate`/`invariant-failed` here — with
+// Kinds: ratify | no-op | halt | checkpoint. There is no `escalate`/`invariant-failed` here - with
 // no pins there is no adversary verdict and no suspectedBug to surface; both live at first touch.
 // Silence never ratifies.
 
 export const meta = {
   name: 'characterization',
   description: 'Brownfield analysis-time FRONTIER pass: enumerate ONLY the frontier observable scenarios (route-intended / integration-risk) and record a thin prose `## Scenarios` inventory in census\'s skeleton contracts; defer every tooth-bearing pin to first-touch genesis. Read-only on code. Returns a typed result to the human birth-ratification gate.',
-  whenToUse: 'Launched from the main session at the brownfield scaffolding slot (config.brownfield true), AFTER census has written baseline.json + skeleton contracts and analysis has drafted the route + change-intention. NOT the tooth-bearing pin path — that is first-touch genesis inside vertical-slice-runner.',
+  whenToUse: 'Launched from the main session at the brownfield scaffolding slot (config.brownfield true), AFTER census has written baseline.json + skeleton contracts and analysis has drafted the route + change-intention. NOT the tooth-bearing pin path - that is first-touch genesis inside vertical-slice-runner.',
   phases: [
     { title: 'Reconcile', detail: 'Unconditional recovery prologue: re-derive truth from git+ledger+contracts; read runMode; halt on AMBIGUOUS / runmode-absent. A floor-integrity diff is a non-blocking ADVISORY notice here (this pass mutates no floor state).' },
     { title: 'Inventory', detail: 'One read-only census agent: read the drafted route + change-intention + baseline.json; enumerate ONLY frontier scenarios; append a prose `## Scenarios` section (zero clauses, zero citations) to each frontier component\'s skeleton contract at the canonical root.' },
@@ -42,7 +42,7 @@ export const meta = {
   ],
 };
 
-// ── Inlined schemas (JSON Schema literals; the engine forces + validates them) ──
+// -- Inlined schemas (JSON Schema literals; the engine forces + validates them) --
 
 const BRIEFING = {
   type: 'object',
@@ -59,7 +59,7 @@ const BRIEFING = {
     evidence: { type: ['string', 'null'] },
     runMode: { type: ['string', 'null'], enum: ['gated', 'autonomous', null], description: 'Read from config.json, never inferred. Absent -> halt.' },
     brownfield: { type: 'boolean', description: 'Must be true for this pass to do work; false -> no-op.' },
-    floorNotice: { type: ['string', 'null'], description: 'A surfaced floor-integrity diff, carried as ADVISORY only — it never blocks this pass.' },
+    floorNotice: { type: ['string', 'null'], description: 'A surfaced floor-integrity diff, carried as ADVISORY only - it never blocks this pass.' },
     note: { type: ['string', 'null'] },
   },
 };
@@ -82,7 +82,7 @@ const FRONTIER_INVENTORY = {
           observable: { type: 'string', description: 'The user-visible behaviour, in observable terms (pin what IS).' },
           seam: { type: 'string', description: 'The seam / declared locus (a file glob) the eventual first-touch pin will capture.' },
           floorTests: { type: 'array', items: { type: 'string' }, description: 'FLOOR test ids already touching this seam, if any.' },
-          reason: { type: ['string', 'null'], description: 'Why it is ON the frontier — a drafted-route node, or named integration risk.' },
+          reason: { type: ['string', 'null'], description: 'Why it is ON the frontier - a drafted-route node, or named integration risk.' },
         },
       },
     },
@@ -103,7 +103,7 @@ const SCRIBE_ACK = {
   },
 };
 
-// ── Inlined helpers (pure — no fs, no Date.now/random) ─────────────────────────
+// -- Inlined helpers (pure - no fs, no Date.now/random) -------------------------
 
 async function guard(thunk) {
   try {
@@ -121,7 +121,7 @@ function isCheckpoint(x) {
 function root(a) { return (a && a.effortRoot) || '.'; }
 function plugin(a) { return (a && a.reasonableRoot) || '${reasonable}'; }
 
-// ── Prompt builders (pure string functions) ────────────────────────────────────
+// -- Prompt builders (pure string functions) ------------------------------------
 
 function reconcilePrompt(a) {
   return [
@@ -130,10 +130,10 @@ function reconcilePrompt(a) {
     'Run UNCONDITIONALLY. Re-derive truth from git + the append-only ledger + the contract files;',
     'the resume cache has zero authority. Run `node ' + plugin(a) + '/lib/reconcile.mjs --root ' + root(a) + '` and read',
     'its exact output. Partition every artifact configuration into RESOLVED / SAFE-DEFAULT / AMBIGUOUS.',
-    'An AMBIGUOUS configuration is a blocking halt — set halt:true with haltReason + evidence + haltClass; never guess.',
+    'An AMBIGUOUS configuration is a blocking halt - set halt:true with haltReason + evidence + haltClass; never guess.',
     'The first-line HALT classes stay HALTs: sha-custody, ledger-without-commit, runmode-absent, two-lanes-one-wo.',
     'A floor-integrity mismatch is DIFFERENT here: this pass writes NO code and NO test and mutates NO floor state,',
-    'so a floor-integrity diff is a NON-BLOCKING ADVISORY notice — set floorNotice with the evidence, do NOT halt on it.',
+    'so a floor-integrity diff is a NON-BLOCKING ADVISORY notice - set floorNotice with the evidence, do NOT halt on it.',
     'Read config.runMode (gated|autonomous); if absent/null on a cold restart, HALT (inferring mode is forbidden).',
     'Confirm config.brownfield: this pass only does work when it is true. If false, set brownfield:false (no-op).',
     'Return the BRIEFING. Evidence before assertions: name the command you ran and quote its output.',
@@ -143,27 +143,27 @@ function reconcilePrompt(a) {
 function inventoryPrompt(a) {
   return [
     'You are the census (brownfield, READ-ONLY on production code) building the FRONTIER scenario inventory.',
-    `Effort root (canonical .reasonable/ — read AND write here, by absolute path): ${root(a)}. Plugin root: ${plugin(a)}.`,
+    `Effort root (canonical .reasonable/ - read AND write here, by absolute path): ${root(a)}. Plugin root: ${plugin(a)}.`,
     'This is the analysis-time FRONTIER pass. You do NOT pin behaviour with teeth: no born `characterized`',
     'clause, no parked test, no reverse discriminator. Those are first-touch genesis (vertical-slice-runner),',
     'demand-driven, after an implementer declares a behaviorDelta. Here you record a THIN, observational map.',
     '',
-    'STEP 1 — scope to the FRONTIER. Read the drafted route and the change-intention from `' + root(a) + '/.reasonable/`',
-    '(find them via Read/Grep/Glob — the route backlog + the change-intention the analysis phase emitted) and',
+    'STEP 1 - scope to the FRONTIER. Read the drafted route and the change-intention from `' + root(a) + '/.reasonable/`',
+    '(find them via Read/Grep/Glob - the route backlog + the change-intention the analysis phase emitted) and',
     '`' + root(a) + '/.reasonable/baseline.json` (the FLOOR). Enumerate ONLY the observable top-level scenarios that',
     'are ON THE FRONTIER: a scenario the drafted route intends to touch, OR one named as integration risk. Do NOT',
-    'enumerate the whole observable surface — a scenario orthogonal to the route is left to the FLOOR and to lazy',
+    'enumerate the whole observable surface - a scenario orthogonal to the route is left to the FLOOR and to lazy',
     'first-touch genesis if a later slice ever reaches it. For each frontier scenario name: a stable `key`, the',
     'owning `component` (its skeleton contract was born by census), the `observable` behaviour in user-visible terms',
     '(pin what IS, not what should be), the `seam` (file glob the eventual pin will capture), any FLOOR test ids',
     'touching that seam, and the `reason` it is on the frontier.',
     '',
-    'STEP 2 — write the THIN inventory (prose, zero teeth). For each frontier component, APPEND a `## Scenarios`',
+    'STEP 2 - write the THIN inventory (prose, zero teeth). For each frontier component, APPEND a `## Scenarios`',
     'section to its EXISTING skeleton contract `' + root(a) + '/.reasonable/contracts/<component>.md` via Bash (your',
     'role has no Edit/Write; emit via a heredoc append, exactly as you emit `## Topology`). One bullet per frontier',
     'scenario, in this prose shape (NEVER begin a bullet with the reserved keywords Gate:/Provenance:/Supersession:/Seam:):',
-    '    - <key>: <observable> (seam: `<glob>`; floor: <comma-separated test ids, or —>)',
-    'The `## Scenarios` section MUST contain ZERO `### §N` clauses and ZERO `## Citations` bullets — it is an',
+    '    - <key>: <observable> (seam: `<glob>`; floor: <comma-separated test ids, or ->)',
+    'The `## Scenarios` section MUST contain ZERO `### SN` clauses and ZERO `## Citations` bullets - it is an',
     'advisory map, parser-invisible and footprint-zero, exactly like `## Topology`. Do NOT add a Citations bullet,',
     'do NOT birth a clause, do NOT confer trust. NEVER write into a worktree `.reasonable/` (there is no lane here).',
     '',
@@ -177,19 +177,19 @@ function scribePrompt(a, inv) {
   const recorded = (inv.scenarios || []).map((s) => ({ key: s.key, component: s.component, seam: s.seam }));
   return [
     'You are the journal-writer (the lone serialized scribe). Persist the derived index for the brownfield',
-    'FRONTIER characterization pass. Write ONLY journal.json + inbox.json — never the ledger, contracts, or code.',
+    'FRONTIER characterization pass. Write ONLY journal.json + inbox.json - never the ledger, contracts, or code.',
     'Read both files before editing; match docs/artifacts.md field-for-field; invent no fields.',
     `Effort root: ${root(a)}.`,
     'Record the transition: phase -> the frontier scenario inventory is built and recorded; record the frontier',
     'scenarios (key + component + seam) so the retro / birth-ratification gate can see the frontier arrived as',
     'expected: ' + JSON.stringify(recorded) + '.',
     'inventoryWritten: ' + JSON.stringify(inv.inventoryWritten === true) + '; componentsTouched: ' + JSON.stringify(inv.componentsTouched || []) + '.',
-    'If you cannot complete a clean, faithful write, return persisted:false (the script reads that as HALT — never a',
+    'If you cannot complete a clean, faithful write, return persisted:false (the script reads that as HALT - never a',
     'swallow; the derived index is rebuildable from git+ledger so halting loses no truth). Return the SCRIBE_ACK.',
   ].join('\n');
 }
 
-// ── The run (fixed control-flow shape; three agents, no fan-out) ───────────────
+// -- The run (fixed control-flow shape; three agents, no fan-out) ---------------
 
 // 1. Reconcile prologue (unconditional; halt is authoritative; floor-integrity is advisory here).
 phase('Reconcile');
@@ -201,7 +201,7 @@ if (isCheckpoint(state)) {
   return { kind: 'checkpoint', reason: 'reconcile: ' + state.reason };
 }
 if (state === null) {
-  return { kind: 'halt', reason: 'reconcile returned null — recovery prologue did not complete; frontier inventory not attempted.' };
+  return { kind: 'halt', reason: 'reconcile returned null - recovery prologue did not complete; frontier inventory not attempted.' };
 }
 if (state.halt && state.haltClass !== 'floor-integrity') {
   // The four first-line halt classes still HALT: sha-custody, ledger-without-commit, runmode-absent, two-lanes-one-wo.
@@ -213,11 +213,11 @@ const floorNotice = state.floorNotice
     ? (state.haltReason || 'floor-integrity diff surfaced (advisory; this pass mutates no floor state).')
     : null);
 if (floorNotice) {
-  log('Reconcile: floor-integrity diff surfaced as an ADVISORY notice — logged for the human; it does not block this read-only pass.');
+  log('Reconcile: floor-integrity diff surfaced as an ADVISORY notice - logged for the human; it does not block this read-only pass.');
 }
 if (state.brownfield !== true) {
   // Brownfield is one provenance, not a second methodology; absent it, this pass is a no-op.
-  return { kind: 'no-op', reason: 'config.brownfield is not set — the frontier characterization pass is a no-op (greenfield path untouched).' };
+  return { kind: 'no-op', reason: 'config.brownfield is not set - the frontier characterization pass is a no-op (greenfield path untouched).' };
 }
 
 // 2. Build + write the frontier inventory (one read-only census agent; no fan-out, no lane).
@@ -230,7 +230,7 @@ if (isCheckpoint(inv)) {
   return { kind: 'checkpoint', reason: 'inventory: ' + inv.reason, floorNotice };
 }
 if (inv === null) {
-  return { kind: 'halt', reason: 'frontier inventory returned null — no scenario map produced; pass not completed.', floorNotice };
+  return { kind: 'halt', reason: 'frontier inventory returned null - no scenario map produced; pass not completed.', floorNotice };
 }
 const scenarios = inv.scenarios || [];
 log('Inventory: ' + scenarios.length + ' frontier scenario(s) recorded across ' + ((inv.componentsTouched || []).length) + ' component(s).');
@@ -257,7 +257,7 @@ const ack = await guard(
 if (ack === null || isCheckpoint(ack) || ack.persisted !== true) {
   return {
     kind: 'halt',
-    reason: 'scribe did not persist the derived index (null / checkpoint / persisted:false) — index not written; reconcile rebuilds from git+ledger on the next run.',
+    reason: 'scribe did not persist the derived index (null / checkpoint / persisted:false) - index not written; reconcile rebuilds from git+ledger on the next run.',
     floorNotice,
   };
 }
@@ -270,6 +270,6 @@ return {
   inventoryWritten: inv.inventoryWritten === true,
   componentsTouched: inv.componentsTouched || [],
   floorNotice,
-  note: 'Frontier scenario inventory built and recorded: ' + scenarios.length + ' route-intended / integration-risk scenario(s) mapped as a thin prose `## Scenarios` baseline (zero clauses, zero citations — parser-invisible, footprint-zero). NO tooth-bearing pins were created; every born `characterized` clause + parked test + reverse discriminator + intent-verifier is deferred to first-touch genesis (vertical-slice-runner), with the FLOOR (baseline.json) unchanged as the regression containment fence. Present to the human birth-ratification gate; silence never ratifies.'
+  note: 'Frontier scenario inventory built and recorded: ' + scenarios.length + ' route-intended / integration-risk scenario(s) mapped as a thin prose `## Scenarios` baseline (zero clauses, zero citations - parser-invisible, footprint-zero). NO tooth-bearing pins were created; every born `characterized` clause + parked test + reverse discriminator + intent-verifier is deferred to first-touch genesis (vertical-slice-runner), with the FLOOR (baseline.json) unchanged as the regression containment fence. Present to the human birth-ratification gate; silence never ratifies.'
     + (floorNotice ? ' A floor-integrity diff was surfaced as an advisory notice (does not block).' : ''),
 };

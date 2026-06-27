@@ -78,6 +78,27 @@ check('no effort → silent no-op', () => {
   assert.equal(out.trim(), '', 'no output in a non-effort repo');
 });
 
+// 4 — fallback (effort, NO work-orders): a tracked main-checkout change is SURFACED,
+// never swept onto the branch (the stray-.gitignore-onto-master incident).
+check('fallback tracked change → surfaced, NOT auto-committed', () => {
+  const root = mkdtempSync(join(tmpdir(), 'stop-fb-')); tmps.push(root);
+  git(root, 'init', '-q');
+  const hooks = join(root, '.nohooks'); mkdirSync(hooks, { recursive: true });
+  git(root, 'config', 'core.hooksPath', hooks);
+  git(root, 'config', 'user.email', 'test@example.com');
+  git(root, 'config', 'user.name', 'Stop Test');
+  git(root, 'config', 'commit.gpgsign', 'false');
+  write(root, 'README.md', 'base\n');
+  write(root, '.reasonable/config.json', JSON.stringify({ effort: 'demo', runMode: 'gated' }) + '\n'); // effort, NO work-orders → fallback
+  git(root, 'add', '-A'); git(root, 'commit', '-q', '-m', 'init');
+
+  writeFileSync(join(root, 'README.md'), 'base\nstray main-tree edit\n'); // tracked, unprovable provenance
+  const out = runStop(root, { cwd: root, hook_event_name: 'Stop' });
+  assert.ok(status(root).includes('README.md'), 'unscoped tracked change must NOT be committed');
+  const msg = JSON.parse(out || '{}');
+  assert.match(msg.systemMessage || '', /UNCOMMITTED/, 'must surface the unswept change');
+});
+
 for (const t of tmps) { try { rmSync(t, { recursive: true, force: true }); } catch { /* best effort */ } }
 
 if (process.exitCode) console.error(`\nstop-commit: FAILURES above (${passed} passed).`);

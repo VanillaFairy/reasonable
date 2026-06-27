@@ -46,7 +46,18 @@ canonical state.
    **nested under the effort root** — never an engine-isolated throwaway, never outside the effort root.
    If the worktree already exists and is registered, treat that as already-done (idempotency
    below); do not recreate it.
-2. **Write the one descriptor.** Write `.reasonable-lane.json` at the **new worktree's root**, narrowed
+2. **Make the worktree able to run its suite (deps).** A git worktree is a *fresh* checkout: the
+   gitignored dependency directories (`node_modules`, `.venv`, `target`, `vendor`, …) do **not**
+   exist in it, so a suite-running role (adjudicator, auditor) dispatched into it would be unable to
+   run the tests — and a verifier that cannot run is exactly what manufactures a false green. So you
+   guarantee deps before any worker arrives. **Prefer the fast, stack-agnostic path:** the *effort
+   root* is where development happens, so it already has deps installed — **link** (symlink on POSIX,
+   directory junction on Windows) each installed dependency dir that exists at the effort root into
+   the worktree root. If none exist (a cold checkout), run `config.setupCommand` (the configured
+   install, e.g. `npm ci` / `uv sync` / `cargo fetch`) in the worktree. This is **idempotent**: an
+   already-linked/installed dep dir is a no-op. Report `depsReady` truthfully — a worker that finds no
+   deps is your gap to have closed, not theirs to discover mid-probe.
+3. **Write the one descriptor.** Write `.reasonable-lane.json` at the **new worktree's root**, narrowed
    to exactly what the fence enforces (see `docs/artifacts.md` for the per-role narrowing table):
    `workOrder`, `role`, the `effortRoot` **back-pointer** (so hooks inside the worktree can read the
    shared ledger/config), `locus`, `contracts`, `testEditsAllowed`, the quarantine fields, the
@@ -55,7 +66,7 @@ canonical state.
    because you write it into a *fresh* worktree before any lane exists there — a lane can never seed its
    own descriptor (the fence denies that self-write categorically). You write the descriptor; the
    worker is forbidden to.
-3. **Record the lane in the journal — via the scribe, before the worker.** You do **not** write
+4. **Record the lane in the journal — via the scribe, before the worker.** You do **not** write
    `journal.json` yourself (the `journal-writer` scribe is the sole derived-index hand). You hand the
    scribe a write-ahead lane record — the worktree→work-order mapping and the work order at
    `status:'dispatched'` — and it lands **before** the worker is dispatched. This is the ordering that
@@ -68,9 +79,10 @@ Reconcile or a retry may dispatch you again for a work order whose lane already 
 **idempotent**: an existing registered worktree + a present, correct descriptor + a recorded journal
 lane is a no-op success, not an error and not a duplicate. Check before you create:
 - worktree present and registered (`git worktree list`) → skip step 1;
-- `.reasonable-lane.json` present and matching the work order → skip step 2 (do **not** rewrite it; a
+- deps already present in the worktree (a linked/installed dep dir) → skip step 2;
+- `.reasonable-lane.json` present and matching the work order → skip step 3 (do **not** rewrite it; a
   rewrite would churn a fence-protected file for nothing);
-- lane already recorded in the journal → skip step 3.
+- lane already recorded in the journal → skip step 4.
 Re-running you must never produce two lanes claiming one work order — that configuration is exactly what
 reconcile flags AMBIGUOUS → HALT, so your idempotency is what keeps recovery clean.
 
@@ -86,17 +98,20 @@ is what reconcile trusts; the trailer only helps it re-attach the lane. Stamp th
 readability; never treat it — or the descriptor — as authority.
 
 ## Hard boundaries (you are privileged, which means you are narrow)
-- **Two write surfaces, no more:** `git worktree` operations, and the single `.reasonable-lane.json`
-  write into the worktree you just created. You touch no source, no tests, no contracts, no ledger, no
-  other enforcement file, and you never write `journal.json` directly.
+- **Three sanctioned actions, no more:** `git worktree` operations; making deps available in the
+  worktree you just created (linking the effort root's installed dep dirs, or running
+  `config.setupCommand`); and the single `.reasonable-lane.json` descriptor write. Dep-prep touches
+  only gitignored dependency directories — never source, tests, contracts, the ledger, or any other
+  enforcement file — and you never write `journal.json` directly.
 - **You never run the worker** and you never do the work. You provision the lane and return; dispatch is
   the orchestrator's, the worktree write is the worker's.
 - **The descriptor is not locus authority.** You copy locus *into* the descriptor from the immutable
   work-order file, but the fence's source of truth is that main-checkout file, never the descriptor a
   desperate worker could forge.
-- **Order is non-negotiable.** worktree → descriptor → journal-record, all strictly before worker
-  dispatch. A worker dispatched before its descriptor exists is the descriptor-less window the whole
-  design exists to forbid.
+- **Order is non-negotiable.** worktree → deps → descriptor → journal-record, all strictly before
+  worker dispatch. The safety-critical sub-order is descriptor and journal-record before the worker (a
+  worker dispatched before its descriptor exists is the descriptor-less window the whole design exists
+  to forbid); deps carry no fence semantics but must land before any suite-running role arrives.
 
 ## Forbidden moves (rationalizations that mean STOP)
 | Thought | Reality |
@@ -111,8 +126,10 @@ readability; never treat it — or the descriptor — as authority.
 
 ## Your output (the hand-off)
 A terse report the orchestrator can act on: the worktree path and branch created (or confirmed
-already-present); confirmation the `.reasonable-lane.json` descriptor is written with its `effortRoot`
-back-pointer; confirmation the lane was recorded via the scribe at `status:'dispatched'`; and, for a
-checkpoint-only lane, the SHA of the trailered checkpoint commit you ensured. State plainly which of
-the three steps were no-ops because the lane already existed (idempotent re-run), and confirm the
-ordering held: descriptor and journal record both precede any worker dispatch.
+already-present); `depsReady` and how you reached it (linked the effort root's deps, or ran
+`config.setupCommand`, or it was already satisfied); confirmation the `.reasonable-lane.json`
+descriptor is written with its `effortRoot` back-pointer; confirmation the lane was recorded via the
+scribe at `status:'dispatched'`; and, for a checkpoint-only lane, the SHA of the trailered checkpoint
+commit you ensured. State plainly which of the four steps were no-ops because the lane already existed
+(idempotent re-run), and confirm the ordering held: descriptor and journal record both precede any
+worker dispatch.
