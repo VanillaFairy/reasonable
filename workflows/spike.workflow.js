@@ -1,4 +1,4 @@
-// spike.workflow.js — the timeboxed spike runner (architecture §19, DESIGN §5.7).
+// spike.workflow.js - the timeboxed spike runner (architecture S19, DESIGN S5.7).
 //
 // SHAPE (from the architecture's topology table): a single timeboxed spike-runner,
 // quarantine-fenced -> knowledge-artifact persistence -> return. Launched by the
@@ -6,27 +6,27 @@
 // nesting, D16d). A spike buys information; its deliverable is a knowledge artifact,
 // never code. The spike-runner's code is law-free, extraterritorial, and discarded;
 // the only sanctioned membrane crossing is the evidence-formatted knowledge artifact
-// (rewrite-from-knowledge, never refactor-from-spike, DESIGN §5.7).
+// (rewrite-from-knowledge, never refactor-from-spike, DESIGN S5.7).
 //
 // PERSISTENCE without inventing a role: the spike-runner writes the knowledge
-// artifact INSIDE its quarantine (it can — that path is under quarantineRoot) and
+// artifact INSIDE its quarantine (it can - that path is under quarantineRoot) and
 // returns it structured. This workflow does NOT write the artifact to mainline:
-// DESIGN §5.7 routes that harvest through the RETRO (conclusion-leak guard —
+// DESIGN S5.7 routes that harvest through the RETRO (conclusion-leak guard -
 // findings enter the vision only via the retro, never a direct mainline write from
-// a spike). There is no mainline knowledge-writer in the §20 role lattice, so this
+// a spike). There is no mainline knowledge-writer in the S20 role lattice, so this
 // script does not conjure one.
 //
 // PURITY (substrate-ref): pure JS. No filesystem, no Date.now / Math.random /
 // argless new Date() (they throw and would break deterministic replay). All side
-// effects live INSIDE agents — the script orchestrates, agents do the I/O. To stamp
+// effects live INSIDE agents - the script orchestrates, agents do the I/O. To stamp
 // time or vary by iteration we pass values in via `args`, never read a clock. This
 // file is self-contained: every schema literal and the guard() helper are inlined,
 // no imports.
 //
-// THE FENCE IS NOT THE SCRIPT (architecture §3, §13). The script holds zero
+// THE FENCE IS NOT THE SCRIPT (architecture S3, S13). The script holds zero
 // enforcement authority. The spike-runner is path-fenced to its quarantine by the
 // PreToolUse hook reading the `.reasonable-lane.json` the lane-provisioner writes
-// (quarantineOnly:true + quarantineRoot, fence.mjs §2 / DESIGN §5.7). The script
+// (quarantineOnly:true + quarantineRoot, fence.mjs S2 / DESIGN S5.7). The script
 // merely sequences the agents; the hook does the containing.
 
 export const meta = {
@@ -40,7 +40,7 @@ export const meta = {
 }
 
 // ---------------------------------------------------------------------------
-// Inline schemas (the structured agent contracts). Kept literal — meta stays a
+// Inline schemas (the structured agent contracts). Kept literal - meta stays a
 // pure literal above; these may be ordinary consts.
 // ---------------------------------------------------------------------------
 
@@ -63,13 +63,13 @@ const PROVISION_RESULT = {
 }
 
 // The spike-runner's verdict. The gate of a spike is "a falsifiable question
-// answered WITH EVIDENCE" — not code that runs. A timeboxed "no" is a success.
+// answered WITH EVIDENCE" - not code that runs. A timeboxed "no" is a success.
 // This structured return IS the knowledge that crosses the membrane back to the
 // main session; the spike CODE never crosses (it stays quarantined and is
 // discarded). The spike-runner ALSO persists the same knowledge as an artifact
-// file inside its quarantine (it can — that path is under quarantineRoot); the
+// file inside its quarantine (it can - that path is under quarantineRoot); the
 // main-session orchestrator harvests that artifact into mainline at the retro
-// (DESIGN §5.7 — "the orchestrator harvests it through the retro"). This workflow
+// (DESIGN S5.7 - "the orchestrator harvests it through the retro"). This workflow
 // does NOT write mainline itself: there is no mainline knowledge-writer role in
 // the topology, and inventing one would breach a narrow agent's charter + the
 // fence (knowledge laundering crosses ONLY through the retro).
@@ -80,7 +80,7 @@ const SPIKE_VERDICT = {
   properties: {
     question: { type: 'string', description: 'The single falsifiable question, restated (a yes/no or a which-of-these, with a clear success criterion).' },
     method: { type: 'string', description: 'The cheapest thing built to answer it: harness shape, scope, what was hardcoded/skipped. Disposable by design.' },
-    evidence: { type: 'string', description: 'The CURATED evidence that crosses the membrane: exact incantation(s) that worked, exact output, what was measured. Curate evidence, not accident — whole-code quoting is refactor-from-spike by the back door.' },
+    evidence: { type: 'string', description: 'The CURATED evidence that crosses the membrane: exact incantation(s) that worked, exact output, what was measured. Curate evidence, not accident - whole-code quoting is refactor-from-spike by the back door.' },
     verdict: {
       type: 'string',
       enum: ['feasible', 'infeasible', 'inconclusive'],
@@ -88,9 +88,9 @@ const SPIKE_VERDICT = {
     },
     bindingConstraint: { type: 'string', description: 'For an infeasible verdict: the specific requirement that cannot be met and why (the evidence standard for a "can\'t be done" claim). Omit otherwise.' },
     confidence: { type: 'string', enum: ['high', 'medium', 'low'], description: 'Confidence in the verdict given the evidence and the timebox spent.' },
-    expiry: { type: 'string', description: 'MANDATORY. The versions/conditions tested against, because spike conclusions rot — e.g. "automerge 2.1.0, Rust 1.86; re-verify on a major automerge bump or document-model change."' },
+    expiry: { type: 'string', description: 'MANDATORY. The versions/conditions tested against, because spike conclusions rot - e.g. "automerge 2.1.0, Rust 1.86; re-verify on a major automerge bump or document-model change."' },
     artifactPath: { type: 'string', description: 'The path (UNDER the quarantine root) where the spike-runner wrote the mandatory-format knowledge artifact. The main session harvests it into mainline at the retro; it is NEVER read as code.' },
-    timeboxExpired: { type: 'boolean', description: 'true if the spike-runner hit the timebox before reaching a decisive answer (verdict is then typically inconclusive — still a returnable result).' },
+    timeboxExpired: { type: 'boolean', description: 'true if the spike-runner hit the timebox before reaching a decisive answer (verdict is then typically inconclusive - still a returnable result).' },
   },
 }
 
@@ -99,7 +99,7 @@ const SPIKE_VERDICT = {
 // call would exceed the token ceiling (spent >= total). A raw throw would abort
 // the whole spike and lose the knowledge already gathered. guard() catches that
 // throw and re-tags it as a structured ceiling signal, so a budget wall is never
-// misread as a spike failure. Any non-budget throw is re-raised — we do not
+// misread as a spike failure. Any non-budget throw is re-raised - we do not
 // swallow real errors. (No clock / random here: pure.)
 // ---------------------------------------------------------------------------
 async function guard(thunk) {
@@ -117,20 +117,20 @@ async function guard(thunk) {
 // The single typed return to the main session. A tagged union the main session
 // branches on (mirrors the architecture's GATE_RESULT discipline: distinct
 // outcomes are distinct human decisions, never collapsed):
-//   verdict          — the spike answered (feasible | infeasible | inconclusive);
+//   verdict          - the spike answered (feasible | infeasible | inconclusive);
 //                      the knowledge artifact sits in the quarantine and the retro
 //                      harvests it into mainline.
-//   budget-exhausted — the token ceiling hit before a decisive answer; the partial
+//   budget-exhausted - the token ceiling hit before a decisive answer; the partial
 //                      knowledge (if any) is returned so the main session can
 //                      extend / re-scope, NOT a silent correctness gap.
-//   blocked          — quarantine could not be provisioned, or the spike-runner
-//                      died (null return) — the main session must decide.
+//   blocked          - quarantine could not be provisioned, or the spike-runner
+//                      died (null return) - the main session must decide.
 function done(result) { return result }
 
 // ---------------------------------------------------------------------------
 // The run.
 //
-// args (passed by the main-session orchestrator at launch — the script reads no
+// args (passed by the main-session orchestrator at launch - the script reads no
 // disk and no clock; everything dynamic rides in args):
 //   {
 //     effortRoot,        // absolute path to the main checkout (where .reasonable/ lives)
@@ -167,14 +167,14 @@ export default async function run() {
   log(`Provisioning quarantine for spike ${spike.id || '(unnamed)'}: ${spike.question}`)
 
   const provisionPrompt = [
-    `Provision a QUARANTINE lane for a spike (DESIGN §5.7, architecture §13/D7).`,
-    `Effort root (canonical .reasonable/ — the descriptor back-pointer target): ${a.effortRoot}`,
+    `Provision a QUARANTINE lane for a spike (DESIGN S5.7, architecture S13/D7).`,
+    `Effort root (canonical .reasonable/ - the descriptor back-pointer target): ${a.effortRoot}`,
     `Worktree path (must be NESTED under the effort root, e.g. ${a.effortRoot}/.worktrees/${spike.id || '<spike-id>'}): ${quarantine.worktreePath}`,
     `Branch: ${quarantine.branch}`,
     `Quarantine root the spike-runner is path-fenced to: ${quarantine.quarantineRoot}`,
     `This is a LAW-FREE quarantine, so the descriptor you write MUST set`,
-    `quarantineOnly:true and quarantineRoot to the path above (fence.mjs §2). role: "spike-runner".`,
-    `No locus/contracts apply — the quarantine is extraterritorial; the fence allows any write UNDER`,
+    `quarantineOnly:true and quarantineRoot to the path above (fence.mjs S2). role: "spike-runner".`,
+    `No locus/contracts apply - the quarantine is extraterritorial; the fence allows any write UNDER`,
     `quarantineRoot and denies every write outside it.`,
     `Order is the safety property: \`git -C ${a.effortRoot} worktree add <worktree-path> -b ${quarantine.branch}\``,
     `(the worktree NESTED under the effort root, so findEffortRoot resolves the canonical .reasonable/ from`,
@@ -209,26 +209,26 @@ export default async function run() {
     `You are running ONE timeboxed spike. Answer exactly one FALSIFIABLE question WITH EVIDENCE.`,
     `Your deliverable is a knowledge artifact (which you return as structured output), never code.`,
     ``,
-    `Question (the gate — a question answered with evidence, NOT code that runs):`,
+    `Question (the gate - a question answered with evidence, NOT code that runs):`,
     `  ${spike.question}`,
     spike.context ? `Context / what is already ruled out:\n  ${spike.context}` : ``,
     `Timebox: ${spike.timebox || 'as briefed by the orchestrator'}. A timeboxed "no" (or inconclusive)`,
-    `is a SUCCESS — you learned the direction is closed. Do not run past the timebox chasing certainty.`,
+    `is a SUCCESS - you learned the direction is closed. Do not run past the timebox chasing certainty.`,
     ``,
     `Your workspace is the LAW-FREE quarantine at: ${provision.quarantineRoot}`,
     `Everything you write goes UNDER that path. You are path-fenced there by hook; any write outside it`,
-    `is hard-blocked, and you must not try. Your code is DISCARDED — hack freely, hardcode, skip error`,
+    `is hard-blocked, and you must not try. Your code is DISCARDED - hack freely, hardcode, skip error`,
     `handling; optimize for a fast, decisive answer.`,
     ``,
     `Curate evidence vs. accident: the implementer who later builds the real thing reads your artifact and`,
     `NEVER your code. Quote only the curated incantations that are genuinely evidence; leave scaffolding`,
-    `accidents behind. The expiry note is MANDATORY — name the versions/conditions you tested against,`,
+    `accidents behind. The expiry note is MANDATORY - name the versions/conditions you tested against,`,
     `because spike conclusions rot.`,
     ``,
-    `Write the knowledge artifact as a file UNDER the quarantine (the mandatory format —`,
+    `Write the knowledge artifact as a file UNDER the quarantine (the mandatory format -`,
     `docs/artifacts.md: question / method / evidence / verdict / confidence / EXPIRY) and ALSO return it`,
     `as your structured output, with artifactPath set to where you wrote it. The orchestrator harvests`,
-    `that artifact into mainline at the retro — you do NOT write to mainline (you are fenced out of it).`,
+    `that artifact into mainline at the retro - you do NOT write to mainline (you are fenced out of it).`,
     `For an infeasible verdict, include the binding constraint with its evidence. Set timeboxExpired honestly.`,
   ].filter(Boolean).join('\n')
 
@@ -247,7 +247,7 @@ export default async function run() {
   // The knowledge crosses back to the main session TWO sanctioned ways: as this
   // structured verdict, and as the artifact file the spike-runner wrote in the
   // quarantine (path in verdict.artifactPath). The main-session orchestrator
-  // harvests that artifact into mainline AT THE RETRO (DESIGN §5.7 — conclusion
+  // harvests that artifact into mainline AT THE RETRO (DESIGN S5.7 - conclusion
   // leak / knowledge laundering is blocked: findings enter the vision only through
   // the retro, never via a direct mainline write from here). The spike CODE is
   // discarded; re-entry is rewrite-from-knowledge, never refactor-from-spike.

@@ -48,11 +48,17 @@ hooks; substitute the installed absolute path when you invoke a script.)
 - Record the slice opening in the journal (the last write you own before the run takes over the index).
 
 ## 1. Launch the vertical-slice-runner workflow
-- Launch `workflows/vertical-slice-runner.workflow.js` with `args`: `effortRoot` (the main checkout,
-  native path), `verticalSliceId`, the `route` snapshot, the contract paths, the per-slice
-  `budget.total`, the supervision `profile`, `runMode`, and the brownfield flags (`brownfield`,
-  `lowFloor`). The Workflow call returns **immediately** with a run id; the run executes in the
-  background and notifies you on completion.
+- Launch it **by name** — `Workflow({ name: 'vertical-slice-runner', args: {...} })` — not by
+  `scriptPath`. The registered-name path passes `args` reliably; **`scriptPath` drops `args`** (the
+  run then sees an empty `args` global). Pass `args`: `effortRoot` (the main checkout, native path),
+  `verticalSliceId`, the `route` snapshot, the contract paths, the per-slice `budget.total`, the
+  supervision `profile`, `runMode`, and the brownfield flags (`brownfield`, `lowFloor`). Pass `args`
+  as an actual JSON object, never a stringified one. The Workflow call returns **immediately** with a
+  run id; the run executes in the background and notifies you on completion.
+- **Args-drop fallback (D18):** even if `args` arrives empty, the runner's reconcile prologue
+  recovers `effortRoot` and the open slice from its own cwd (the effort root) and threads them back,
+  so a run still proceeds; it only HALTs (asking you to relaunch by name) when the root cannot be
+  recovered at all. Prefer launching by name so the fallback never has to fire.
 - **The runner is the loop — do not re-implement it.** Inside, deterministically and per the spec: it
   runs the reconcile prologue (HALT on AMBIGUOUS), dispatches the `route-planner` (footprints +
   resources + trust-staleness), packs work orders into disjoint waves via pure set-algebra

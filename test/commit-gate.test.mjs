@@ -120,6 +120,33 @@ check('fallback → commits tracked mod, leaves untracked, warns', () => {
   assert.ok(status(root).includes('newfile.txt'), 'untracked file must remain');
 });
 
+// F — conservativeFallback (the unattended Stop backstop): a fallback tracked mod is
+// SURFACED in leftTracked and NEVER swept (the stray-.gitignore-onto-branch incident).
+check('conservativeFallback → fallback tracked mod left unswept (leftTracked + warn)', () => {
+  const root = newRepo(); // effort present, NO work-orders dir → fallback
+  const scope = resolveScope(root);
+  assert.equal(scope.source, 'fallback');
+
+  writeFileSync(join(root, 'README.md'), 'base\nstray edit\n'); // tracked mod, unprovable provenance
+
+  const res = commitGate(root, { commit: true, conservativeFallback: true, message: 'must not sweep' });
+  assert.equal(res.committed, false, 'nothing in provable scope → no commit');
+  assert.ok(!res.inScope.includes('README.md'), 'tracked mod is NOT in conservative scope');
+  assert.ok(res.leftTracked.includes('README.md'), 'tracked mod surfaced in leftTracked');
+  assert.ok(res.warnings.some((w) => w.includes('README.md')), 'must warn about the unswept tracked change');
+  assert.ok(status(root).includes('README.md'), 'tracked mod must remain uncommitted');
+});
+
+// G — .reasonable/ state is STILL committed under conservativeFallback (it is provable
+// effort state, not unprovable WIP) — durability is preserved, only unscoped code is held.
+check('conservativeFallback → .reasonable/ artifact still committed (provable)', () => {
+  const root = newRepo();
+  write(root, '.reasonable/ledger.jsonl', '{"seq":1,"type":"ratification"}\n');
+  const res = commitGate(root, { commit: true, conservativeFallback: true, message: 'commit effort state' });
+  assert.ok(res.inScope.includes('.reasonable/ledger.jsonl'), '.reasonable/ artifact is in scope');
+  assert.equal(res.committed, true, 'effort state is durably committed even in conservative fallback');
+});
+
 for (const t of tmps) { try { rmSync(t, { recursive: true, force: true }); } catch { /* best effort */ } }
 
 if (process.exitCode) console.error(`\ncommit-gate: FAILURES above (${passed} passed).`);

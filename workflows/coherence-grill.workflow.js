@@ -1,7 +1,7 @@
 export const meta = {
   name: 'coherence-grill',
   description:
-    'Adversarial coherence grill for the draft intention (D15): loop a grill-adversary that returns the independent batch of forks at the draft\'s highest open altitude tier (approach before detail); return the batch to the human, or — when none is found — persist the ratified intention.md atomically via an intention-writer worker.',
+    'Adversarial coherence grill for the draft intention (D15): loop a grill-adversary that returns the independent batch of forks at the draft\'s highest open altitude tier (approach before detail); return the batch to the human, or - when none is found - persist the ratified intention.md atomically via an intention-writer worker.',
   whenToUse:
     'Launched by reasonable:analysis (main session) to grill the draft intention into a coherent oracle before any vertical slice runs. Re-launched after each human resolution against the strengthened draft.',
   phases: [
@@ -11,7 +11,7 @@ export const meta = {
 }
 
 // ---------------------------------------------------------------------------
-// Inline schema literals (self-contained — no imports). The grill-adversary is
+// Inline schema literals (self-contained - no imports). The grill-adversary is
 // FORCED to call StructuredOutput against FORKS_OR_NONE; the intention-writer
 // against WRITER_REPORT. Schemas mirror agents/grill-adversary.md and
 // agents/intention-writer.md exactly.
@@ -19,8 +19,8 @@ export const meta = {
 
 // The grill-adversary returns exactly one of: a BATCH of mutually-independent
 // forks at the draft's highest open altitude tier (approach before detail), or
-// no-fork-found. Batching + altitude ordering cut the NUMBER of grill→answer→
-// re-grill rounds; the adversarial stop is unchanged — the loop still ends ONLY
+// no-fork-found. Batching + altitude ordering cut the NUMBER of grill->answer->
+// re-grill rounds; the adversarial stop is unchanged - the loop still ends ONLY
 // on a from-scratch no-fork-found. The top-level type MUST stay the literal
 // 'object' (the Messages API rejects a top-level array type); the batch rides a
 // nested `forks` array.
@@ -80,14 +80,14 @@ const FORKS_OR_NONE = {
           },
           whyDraftDoesNotSettle: {
             type: 'string',
-            description: 'Why the current draft does not already resolve this — read the whole policy first.',
+            description: 'Why the current draft does not already resolve this - read the whole policy first.',
           },
         },
       },
     },
     deferred: {
       type: 'string',
-      description: 'For kind:"forks" ONLY (optional): what was deliberately held back this pass — coupled forks, or lower-altitude forks an approach-tier resolution may dissolve — so the human knows the grill continues after this batch. Omit when this batch is believed exhaustive at the current tier and no lower tier is gated behind it.',
+      description: 'For kind:"forks" ONLY (optional): what was deliberately held back this pass - coupled forks, or lower-altitude forks an approach-tier resolution may dissolve - so the human knows the grill continues after this batch. Omit when this batch is believed exhaustive at the current tier and no lower tier is gated behind it.',
     },
     // --- present when kind === 'no-fork-found' ---
     exercised: {
@@ -101,7 +101,7 @@ const FORKS_OR_NONE = {
 // a `schema` FORCES this object, so the writer CANNOT emit a bare JSON null to mean "I
 // could not persist" (the forced tool call always yields a non-null object). An in-band
 // failure rides `persisted:false` (+ failureReason); a bare-null return is reserved for
-// agent death/skip. The consumer HALTs on (null || persisted !== true) — the methodology
+// agent death/skip. The consumer HALTs on (null || persisted !== true) - the methodology
 // must not proceed believing intention.md landed when it did not. The top-level type MUST
 // stay the literal 'object' (the Messages API rejects a top-level array type).
 const WRITER_REPORT = {
@@ -110,12 +110,12 @@ const WRITER_REPORT = {
   required: ['persisted'],
   properties: {
     persisted: { type: 'boolean', description: 'The one atomic commit (intention.md + its ledger line + Work-Order trailer) durably landed.' },
-    filePath: { type: 'string', description: 'The path written — must be .reasonable/intention.md (present on success).' },
+    filePath: { type: 'string', description: 'The path written - must be .reasonable/intention.md (present on success).' },
     scope: { type: 'string', enum: ['full', 'micro'] },
     policyClauseCount: { type: 'integer', minimum: 0 },
     resolvedForkCount: { type: 'integer', minimum: 0 },
     commitSha: { type: 'string', description: 'SHA of the one atomic commit containing intention.md + its ledger line + Work-Order trailer (present on success).' },
-    failureReason: { type: 'string', description: 'On persisted:false, the one-line reason the write could not land — never fabricate a commit to look durable.' },
+    failureReason: { type: 'string', description: 'On persisted:false, the one-line reason the write could not land - never fabricate a commit to look durable.' },
     ambiguousClausesFlagged: {
       type: 'array',
       items: { type: 'string' },
@@ -125,11 +125,11 @@ const WRITER_REPORT = {
 }
 
 // ---------------------------------------------------------------------------
-// guard() — D16b. The engine THROWS once budget.spent >= budget.total. Wrap
+// guard() - D16b. The engine THROWS once budget.spent >= budget.total. Wrap
 // every agent() so a budget-ceiling throw becomes a typed {kind:'checkpoint'}
 // OUTCOME instead of being misread as a correctness gap. A null return (user
 // skip / terminal API error after retries) is a genuine verification gap and
-// is left as null for the caller to handle — never laundered into a pass.
+// is left as null for the caller to handle - never laundered into a pass.
 // ---------------------------------------------------------------------------
 async function guard(thunk) {
   try {
@@ -147,16 +147,16 @@ function withinBudget() {
 
 // ---------------------------------------------------------------------------
 // Workflow body.
-// args (from reasonable:analysis), all JSON values — the script is pure and
+// args (from reasonable:analysis), all JSON values - the script is pure and
 // reads nothing from disk; the agents do the I/O:
-//   args.draft        — the draft intention as it stands this launch (policy +
+//   args.draft        - the draft intention as it stands this launch (policy +
 //                       already-resolved forks audit trail).
-//   args.materials    — what the intention must cover: vision (grilled stories),
+//   args.materials    - what the intention must cover: vision (grilled stories),
 //                       topology sketch, quality attributes; brownfield: the
 //                       existing legacy behaviour (the census topology sketch + the legacy code) to mine for incoherence.
-//   args.scope        — 'full' | 'micro' (default 'full').
+//   args.scope        - 'full' | 'micro' (default 'full').
 //   args.ratifiedPolicy / args.resolvedForks / args.name / args.lane /
-//   args.ledgerLine   — the materials the intention-writer needs once the grill
+//   args.ledgerLine   - the materials the intention-writer needs once the grill
 //                       terminates and the human has ratified (D3a atomic commit).
 // ---------------------------------------------------------------------------
 
@@ -165,7 +165,7 @@ const scope = a.scope === 'micro' ? 'micro' : 'full'
 
 phase('Coherence grill')
 
-// D15: the loop's stop condition is adversarial, not heuristic. while(true) —
+// D15: the loop's stop condition is adversarial, not heuristic. while(true) -
 // each iteration a FRESH-CONTEXT grill-adversary attacks the current draft and
 // returns the independent batch of forks at the draft's highest open altitude
 // tier (approach before detail), or no-fork-found. We return the BATCH to the
@@ -174,7 +174,7 @@ phase('Coherence grill')
 // genuinely finds nothing. Batching + altitude ordering cut the NUMBER of rounds
 // without weakening the stop: the final re-launch is still a from-scratch attack
 // that must come back no-fork-found. A mis-judged "independent" is self-correcting
-// — a resolution that dissolves a sibling just means the next pass won't resurface
+// - a resolution that dissolves a sibling just means the next pass won't resurface
 // it (a possibly-moot human answer, never a corrupt oracle).
 while (true) {
   if (!withinBudget()) {
@@ -184,7 +184,7 @@ while (true) {
     }
   }
 
-  log('Grilling the draft intention for open forks…')
+  log('Grilling the draft intention for open forks...')
 
   const attack = await guard(() =>
     agent(grillAdversaryPrompt(a, scope), {
@@ -195,7 +195,7 @@ while (true) {
     })
   )
 
-  // Budget-ceiling throw re-tagged by guard() — surface it, do not misread as
+  // Budget-ceiling throw re-tagged by guard() - surface it, do not misread as
   // "no fork" (which would silently end the grill and ship an unattacked oracle).
   if (attack && attack.kind === 'checkpoint') {
     return attack
@@ -206,7 +206,7 @@ while (true) {
   if (!attack) {
     return {
       kind: 'checkpoint',
-      reason: 'grill-adversary returned null (user skip or terminal error) — grill did not complete an attack',
+      reason: 'grill-adversary returned null (user skip or terminal error) - grill did not complete an attack',
     }
   }
 
@@ -217,7 +217,7 @@ while (true) {
   }
 
   // kind === 'no-fork-found': a genuine attack turned up nothing. Terminate.
-  log('No ambiguous fork found — the draft survives a genuine attack.')
+  log('No ambiguous fork found - the draft survives a genuine attack.')
   break
 }
 
@@ -227,7 +227,7 @@ while (true) {
 // Persist the ratified intention.md atomically via the fenced intention-writer.
 // ---------------------------------------------------------------------------
 phase('Persist intention')
-log('Persisting the ratified intention.md (one atomic commit)…')
+log('Persisting the ratified intention.md (one atomic commit)...')
 
 const report = await guard(() =>
   agent(intentionWriterPrompt(a, scope), {
@@ -242,23 +242,23 @@ if (report && report.kind === 'checkpoint') {
   return report
 }
 
-// The intention did NOT durably land — HALT rather than claim success (the methodology
+// The intention did NOT durably land - HALT rather than claim success (the methodology
 // must not proceed believing intention.md exists when it does not). A `schema` FORCES a
 // WRITER_REPORT object, so an in-band failure rides persisted:false; a bare-null return is
-// reserved for agent death/skip. Both HALT — the grill is done but the oracle is not durable.
+// reserved for agent death/skip. Both HALT - the grill is done but the oracle is not durable.
 if (!report || report.persisted !== true) {
   return {
     kind: 'halt',
     reason: (report && report.failureReason)
-      ? `intention-writer could not persist intention.md (${report.failureReason}) — oracle did not land`
-      : 'intention-writer did not persist intention.md (null / persisted:false) — oracle did not land',
+      ? `intention-writer could not persist intention.md (${report.failureReason}) - oracle did not land`
+      : 'intention-writer did not persist intention.md (null / persisted:false) - oracle did not land',
   }
 }
 
 return { kind: 'intention-persisted', report }
 
 // ---------------------------------------------------------------------------
-// Prompt builders (pure string assembly — no I/O, no Date.now/random). They
+// Prompt builders (pure string assembly - no I/O, no Date.now/random). They
 // hand the agent its context manifest as JSON; the agent reads the live files
 // it cites (glossary, artifacts) itself.
 // ---------------------------------------------------------------------------
@@ -271,18 +271,18 @@ function grillAdversaryPrompt(a, scope) {
     'docs/glossary.md, and docs/artifacts.md (the intention.md shape + its Resolved-forks audit trail).',
     '',
     'You are a FRESH CONTEXT this iteration: you carry the current draft and the materials it must cover,',
-    'never any prior grilling transcript. Already-resolved forks live in the draft\'s audit trail — do NOT',
+    'never any prior grilling transcript. Already-resolved forks live in the draft\'s audit trail - do NOT',
     're-litigate them. Hunt for (1) a two-defensible-ways fork, or (2) an internal contradiction. The bar',
     'is defensibility under the current text, not your taste. Reachable forks only. You are READ-ONLY:',
     'you never draft clauses, pick the right reading, or edit the draft.',
     '',
-    'ALTITUDE FIRST, THEN BATCH (this cuts the number of grill→answer→re-grill rounds without weakening',
+    'ALTITUDE FIRST, THEN BATCH (this cuts the number of grill->answer->re-grill rounds without weakening',
     'the stop condition). Tag every fork: "approach" (its resolution can restructure the design/topology/',
     'approach and may dissolve detail forks) or "detail" (a decision within a fixed approach). Surface only',
     'the HIGHEST open tier: if any approach fork survives, return the approach batch and WITHHOLD detail',
-    'forks (an approach pivot may delete them — grilling the detail of an approach that may not survive is',
+    'forks (an approach pivot may delete them - grilling the detail of an approach that may not survive is',
     'the exact waste this ordering prevents). Within that tier, return ALL forks that are MUTUALLY',
-    'INDEPENDENT — resolving any one does not change whether the others are forks or how they read.',
+    'INDEPENDENT - resolving any one does not change whether the others are forks or how they read.',
     'Withhold coupled forks for a later pass and say what you held back in `deferred`. A wrong independence',
     'call is self-correcting: the next pass simply won\'t resurface a now-settled fork.',
     '',
@@ -295,8 +295,8 @@ function grillAdversaryPrompt(a, scope) {
     '',
     // Stable reference FIRST (cache-friendly prefix), volatile draft LAST: the draft
     // grows each round as resolved forks accrue; the materials do not. (The realistic
-    // token win is modest — one adversary call per launch, cross-launch cache usually
-    // cold — the real round-count saving comes from batching + altitude above.)
+    // token win is modest - one adversary call per launch, cross-launch cache usually
+    // cold - the real round-count saving comes from batching + altitude above.)
     'MATERIALS THE INTENTION MUST COVER (grilled user stories / topology sketch / quality attributes;',
     'brownfield: the existing legacy behaviour, read via the census topology sketch, to mine for incoherence):',
     asBlock(a.materials),
@@ -305,7 +305,7 @@ function grillAdversaryPrompt(a, scope) {
     asBlock(a.draft),
     '',
     'Return exactly one StructuredOutput object: {kind:"forks", forks:[{forkType, altitude, situation,',
-    'readings|contradictingClauses, whyDraftDoesNotSettle}, …], deferred?} OR {kind:"no-fork-found", exercised}.',
+    'readings|contradictingClauses, whyDraftDoesNotSettle}, ...], deferred?} OR {kind:"no-fork-found", exercised}.',
   ].join('\n')
 }
 
@@ -314,18 +314,18 @@ function intentionWriterPrompt(a, scope) {
     'You are the intention-writer in a reasonable effort. The coherence-grill has terminated',
     '(no ambiguous fork found) and the human has RATIFIED the decision-policy. Persist it: write',
     '.reasonable/intention.md and collapse the write into ONE worker-owned atomic commit (file + your',
-    'own ledger line + a Work-Order trailer, together — D3a). Read your agent definition,',
+    'own ledger line + a Work-Order trailer, together - D3a). Read your agent definition,',
     'docs/glossary.md, and docs/artifacts.md (the intention.md shape + the verdict/commit envelope).',
     '',
     'You do NOT grill, decide, or resolve forks. Transcription fidelity is the discipline: persist what',
     'was ratified, VERBATIM in the human\'s wording (the wording is cited by fork-resolving agents).',
     'Carry EVERY resolved fork into the "Resolved forks (the grill\'s audit trail)" section. Do not add,',
     'tidy, sharpen, or invent clauses or forks. If a ratified clause reads ambiguously, transcribe it',
-    'verbatim and FLAG it — do not resolve it. Write intention.md ONLY (plus your one ledger line);',
+    'verbatim and FLAG it - do not resolve it. Write intention.md ONLY (plus your one ledger line);',
     'intention.md is itself fence-protected and you are the sanctioned genesis writer.',
     '',
     'Oracle scope: ' + scope + (scope === 'micro'
-      ? '. For micro: the body is just the change sentence, its behaviorDelta, and the touched seam\'s pinned behaviour — no full policy.'
+      ? '. For micro: the body is just the change sentence, its behaviorDelta, and the touched seam\'s pinned behaviour - no full policy.'
       : '. For full: the effort-wide decision policy plus the resolved-forks audit trail.'),
     '',
     'EFFORT / COMPONENT NAME (for the title): ' + asInline(a.name),
@@ -334,7 +334,7 @@ function intentionWriterPrompt(a, scope) {
     'RATIFIED DECISION POLICY (the human\'s exact wording):',
     asBlock(a.ratifiedPolicy != null ? a.ratifiedPolicy : a.draft),
     '',
-    'RESOLVED FORKS (the grill\'s audit trail — each fork the human settled, with its round tag):',
+    'RESOLVED FORKS (the grill\'s audit trail - each fork the human settled, with its round tag):',
     asBlock(a.resolvedForks),
     '',
     'LEDGER LINE to commit alongside intention.md in the SAME atomic commit:',
@@ -342,7 +342,7 @@ function intentionWriterPrompt(a, scope) {
     '',
     'Return the WRITER_REPORT. On a clean atomic commit set persisted:true with {filePath, scope,',
     'policyClauseCount, resolvedForkCount, commitSha, ambiguousClausesFlagged?}; if you CANNOT land the',
-    'commit faithfully set persisted:false with a one-line failureReason (the script HALTs — never fabricate',
+    'commit faithfully set persisted:false with a one-line failureReason (the script HALTs - never fabricate',
     'a SHA, and do not emit a bare null on purpose: bare-null is reserved for death). Show git evidence',
     '(e.g. git show --stat) that the one commit contains intention.md AND the ledger line, and nothing else.',
   ].join('\n')
