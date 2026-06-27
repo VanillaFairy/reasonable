@@ -150,7 +150,7 @@ function done(result) { return result }
 //   }
 // ---------------------------------------------------------------------------
 export default async function run() {
-  const a = args || {}
+  const a = { ...(args || {}) } // mutable copy - never mutate the frozen `args` global
   const spike = a.spike || {}
   const quarantine = a.quarantine || {}
 
