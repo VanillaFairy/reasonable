@@ -111,7 +111,7 @@ const CONFIRM = {
     ran: { type: 'boolean', description: 'false => skipped (not a git repo, no single-test cmd, missing locus)' },
     admissible: { type: ['boolean', 'null'], description: 'true = had teeth (downgrade); false = mechanically-confirmed vacuous; null = not run' },
     skippedReason: { type: 'string' },
-    killingMutant: { type: 'string' },
+    killingMutant: { type: 'string', description: 'one-line summary of the killing mutant; the agent stringifies the discriminator JSON object {file,line,from,to}, or empty' },
   },
 }
 
@@ -166,12 +166,13 @@ function honestyPrompt(a, survey) {
 function confirmPrompt(a, survey, flag) {
   const sp = (survey.subprojects || [])[0] || {}
   const oneCmd = sp.testOneCommand || '(no single-test command detected)'
-  const globs = (sp.testGlobs || []).join(',')
+  // ONE --test-glob per glob — the discriminator takes the flag repeatably, not comma-joined.
+  const globArgs = (sp.testGlobs || []).map((g) => "--test-glob '" + g + "' ").join('')
   return [
     'You are the test-auditor, lens = CONFIRM. ' + baseCtx(a),
     'Mechanically settle ONE honesty flag: testId=' + JSON.stringify(flag.testId || null) + ', locus=' + JSON.stringify(flag.locus || null) + ', source=' + JSON.stringify(flag.source || null) + '.',
     'If targetRoot is a git repo AND a single-test command exists AND locus is known, run the reverse-discriminator:',
-    "  node " + (a.reasonableRoot || '$CLAUDE_PLUGIN_ROOT') + "/lib/discriminator.mjs --reverse --test '" + (flag.testId || '<id>') + "' --locus '" + (flag.locus || '<glob>') + "' --test-one-cmd '" + oneCmd + "' " + (globs ? ("--test-glob '" + globs + "' ") : '') + "--tree '" + (a.targetRoot || '.') + "' --json",
+    "  node " + (a.reasonableRoot || '$CLAUDE_PLUGIN_ROOT') + "/lib/discriminator.mjs --reverse --test '" + (flag.testId || '<id>') + "' --locus '" + (flag.locus || '<glob>') + "' --test-one-cmd '" + oneCmd + "' " + globArgs + "--tree '" + (a.targetRoot || '.') + "' --json",
     'admissible:false => mechanically-confirmed vacuous (ran:true, admissible:false). admissible:true => had teeth, downgrade (ran:true, admissible:true). If you cannot run it, set ran:false with skippedReason. Return the CONFIRM schema. Do NOT edit anything.',
   ].join('\n')
 }
@@ -261,9 +262,18 @@ log('Confirm: mechanically checking ' + flags.length + ' honesty flag(s) + sanit
 const confirmedRaw = await pipeline(flags, (flag, _orig, i) =>
   guard(() => agent(confirmPrompt(a, survey, flag), { label: 'confirm:' + (flag.testId || i), phase: 'Confirm', agentType: 'reasonable:test-auditor', schema: CONFIRM }))
 )
-const confirmed = (confirmedRaw || []).filter(ok)
+// No silent caps: a budget-checkpointed / null confirm result must surface as a skip (it is
+// neither vacuous nor teeth-confirmed). Otherwise a HIGH-sycophantic flag whose confirmation was
+// truncated would vanish from the report AND never raise FAILING.
+const confirmed = []
+for (let i = 0; i < (confirmedRaw || []).length; i++) {
+  const r = confirmedRaw[i]
+  if (ok(r)) confirmed.push(r)
+  else skipped.push('teeth:' + ((flags[i] && flags[i].testId) || i) + ' — confirm did not complete (budget/null)')
+}
 const scan = await guard(() => agent(scanPrompt(a, survey), { label: 'confirm:scan', phase: 'Confirm', agentType: 'reasonable:test-auditor', schema: SCAN }))
-if (ok(scan) && Array.isArray(scan.skipped)) for (const s of scan.skipped) skipped.push(s)
+if (ok(scan)) { if (Array.isArray(scan.skipped)) for (const s of scan.skipped) skipped.push(s) }
+else skipped.push('sanity/mapping — scan did not complete (budget/null)')
 
 phase('Report')
 const verdict = computeVerdict(coverage, runner, honesty, confirmed)
