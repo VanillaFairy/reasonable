@@ -37,11 +37,15 @@ function newRepo() {
   git(root, 'config', 'commit.gpgsign', 'false');
 
   // Source with a MUTABLE operator ( > is perturbed by the engine; >= is NOT).
-  write(root, 'src/num.mjs', 'export const isPositive = (n) => n > 0;\n');
-  // A single-test runner: `node tests/run.mjs <id>` exits non-zero on assertion failure.
-  write(root, 'tests/run.mjs', [
-    "import assert from 'node:assert';",
-    "import { isPositive } from '../src/num.mjs';",
+  // NOTE: `.js` (CommonJS), NOT `.mjs` — the discriminator's mutation enumerator only
+  // recognizes /\.(rs|ts|tsx|js|jsx|py|go|java|kt|swift)$/, so a `.mjs` source is skipped
+  // (zero mutation sites) and the teeth test could never go red. `.js` + require keeps the
+  // fixture runner-free and inside the mutable-extension set.
+  write(root, 'src/num.js', 'const isPositive = (n) => n > 0;\nmodule.exports = { isPositive };\n');
+  // A single-test runner: `node tests/run.js <id>` exits non-zero on assertion failure.
+  write(root, 'tests/run.js', [
+    "const assert = require('node:assert');",
+    "const { isPositive } = require('../src/num.js');",
     'const which = process.argv[2];',
     "if (which === 'teeth') {",
     '  assert.strictEqual(isPositive(5), true);',
@@ -79,7 +83,7 @@ function check(name, fn) {
 
 const COMMON = (repo) => [
   '--reverse', '--locus', 'src/**',
-  '--test-one-cmd', 'node tests/run.mjs {test}',
+  '--test-one-cmd', 'node tests/run.js {test}',
   '--test-glob', 'tests/**',
   '--tree', repo, '--json',
 ];
