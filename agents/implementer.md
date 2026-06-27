@@ -89,11 +89,18 @@ the orchestrator rejects a green claim that did not commit. Committing is *durab
 ratification; you commit to your **lane branch** and never push, never merge to the human's branch.
 Concretely:
 
-- **Append your own ledger line** to `.reasonable/ledger.jsonl` as part of that commit — an
-  `enrichment` for a clause you added, a `verdict` on checkpoint/infeasible, the
-  `change-characterized[-planned]` for a moved pin. Use the exact shape in `docs/artifacts.md`.
-  This is **authoritative state**, which is why you write it yourself; a separate scribe writing it
-  *after* you commit would re-open the torn window the methodology exists to kill.
+- **Append your own ledger line** to `.reasonable/ledger.jsonl` as part of that commit. The `type`
+  is load-bearing and the fence reads it: a **contract delta** (a clause you added or changed) is
+  **always `type:"enrichment"`** (or `amendment`/`change-characterized[-planned]` for the rarer
+  moves), with `component` set to the **exact** contract name you edited. A `type:"verdict"` is a
+  *progress note only* (checkpoint / infeasible) — it is **not** a contract delta and the fence does
+  not count it as one. **Never log a clause you added as a `verdict`, and never misname the
+  `component`:** the blind-test-writer's tests are gated on a logged `enrichment` for *that* component,
+  so a mis-typed or wrong-component line leaves the gate seeing no delta — it blocks the tests and
+  spins the wave (the 20-agent / 900k-token oscillation came from exactly this). Use the exact shape
+  in `docs/artifacts.md`. This is **authoritative state**, which is why you write it yourself; a
+  separate scribe writing it *after* you commit would re-open the torn window the methodology exists
+  to kill.
 - **Stamp the `Work-Order: <id>` trailer** on the commit message. The trailer is a re-claim *hint*,
   never an anchor — SHA accounting against the ledger is the truth — so write it honestly and never
   lean on it to mean more than "this commit belongs to this lane."

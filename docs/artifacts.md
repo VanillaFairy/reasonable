@@ -176,6 +176,7 @@ that needs a test command, build command, or test-path classification.
   "buildCommand": "cargo build",
   "testCommand": "cargo test",
   "testOneCommand": "cargo test {test}",
+  "setupCommand": "cargo fetch",
   "testGlobs": ["**/tests/**", "**/*_test.rs"],
   "loudStubMarkers": ["todo!", "unimplemented!", "unreachable!(\"reasonable:"],
   "parkMarkerRegex": "#\\[ignore\\s*=\\s*\"pending:",
@@ -195,7 +196,11 @@ that needs a test command, build command, or test-path classification.
 }
 ```
 
-`testGlobs` classify a path as test vs. source for the fence. `parkMarkerRegex`
+`setupCommand` is the dependency-install command (`npm ci`, `uv sync`, `cargo
+fetch`, …). The lane-provisioner uses it to make a *fresh worktree* able to run its
+suite when the effort root's installed deps cannot simply be linked in — a worktree
+that cannot run tests is what lets a verifier fake a probe. `testGlobs` classify a
+path as test vs. source for the fence. `parkMarkerRegex`
 and `loudStubMarkers` drive the two burndowns. `enforcementPaths` are blocked
 categorically inside any lane (paths are matched relative to the effort root and
 also as suffixes). `lintableInvariants` are the regex subset of the sanity

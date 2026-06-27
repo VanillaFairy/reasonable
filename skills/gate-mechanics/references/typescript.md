@@ -25,6 +25,7 @@ adding one file like this; no agent or skill changes.
   "buildCommand": "tsc --noEmit",
   "testCommand": "vitest run",
   "testOneCommand": "vitest run -t {test}",
+  "setupCommand": "npm ci",
   "testGlobs": ["**/*.test.ts", "**/*.test.tsx", "**/*.spec.ts", "**/__tests__/**", "tests/**", "e2e/**"],
   "loudStubMarkers": ["NotImplemented", "TODO_REASONABLE", "throw new Error('reasonable"],
   "parkMarkerRegex": "(it|test|describe)\\.skip\\(|// pending:",
