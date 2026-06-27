@@ -64,5 +64,56 @@ check('a `## Scenarios` after a clause does not perturb that clause', () => {
   assert.strictEqual(c.citations.length, 0, 'no citations leak from scenarios');
 });
 
+// ── `## Observable Seams` — the render-clause public test-observation surface. ────
+// It is structured (the blind-test-writer TARGETS a declared handle instead of guessing)
+// but, like `## Scenarios`, parser-INVISIBLE to clauses/citations (footprint-zero).
+const CONTRACT_WITH_SEAMS = `---
+component: choice-edge
+---
+
+## Citations
+- graph-store §1
+
+## Clauses
+
+### §5 Self-loop renders as a bezier arc
+A self-referential edge renders as a curved bezier arc, not a straight line.
+- Gate: vertical-slice:edge-paths / asserts \`self_loop_is_arc\`
+
+## Observable Seams
+- component: default export \`ChoiceEdge\` (the edge component to import)
+- guard-badge: the guard badge at the midpoint → \`[data-testid=guard-badge]\`
+- waypoint: each waypoint affordance → \`[data-testid=edge-waypoint]\`
+`;
+
+check('`## Observable Seams` bullets parse into `seams`', () => {
+  const c = parseContract(CONTRACT_WITH_SEAMS, 'choice-edge');
+  assert.strictEqual(c.seams.length, 3, 'three declared seams');
+  const byKey = Object.fromEntries(c.seams.map((s) => [s.key, s]));
+  assert.strictEqual(byKey['component'].importHint, 'ChoiceEdge', 'the export to import is captured');
+  assert.strictEqual(byKey['guard-badge'].handle, '[data-testid=guard-badge]', 'the stable handle is captured');
+  assert.strictEqual(byKey['waypoint'].handle, '[data-testid=edge-waypoint]', 'per-element handle captured');
+});
+
+check('`## Observable Seams` is footprint-zero (no clauses, no citations leak)', () => {
+  const c = parseContract(CONTRACT_WITH_SEAMS, 'choice-edge');
+  assert.strictEqual(c.clauses.length, 1, 'exactly the one real clause — seams are not clauses');
+  assert.strictEqual(c.clauses[0].id, '§5', 'the real clause is intact');
+  assert.strictEqual(c.citations.length, 1, 'only the real `## Citations` edge — seams add none');
+  assert.strictEqual(c.citations[0].component, 'graph-store', 'the citation graph is unperturbed');
+});
+
+check('a clause after `## Observable Seams` is not attributed to the section', () => {
+  const TRAILING_CLAUSE = CONTRACT_WITH_SEAMS + `
+### §6 Guard badge shows the guard label
+The badge text is the guard's label.
+- Gate: vertical-slice:edge-paths / asserts \`badge_shows_label\`
+`;
+  const c = parseContract(TRAILING_CLAUSE, 'choice-edge');
+  assert.strictEqual(c.clauses.length, 2, 'both real clauses parse');
+  assert.strictEqual(c.clauses[1].gates.length, 1, 'the post-seams clause keeps its gate');
+  assert.strictEqual(c.seams.length, 3, 'the seams section is closed by the clause, not extended');
+});
+
 if (process.exitCode) console.error(`\ncontract: FAILURES above (${passed} passed).`);
 else console.log(`\ncontract: all ${passed} checks pass. ✓`);

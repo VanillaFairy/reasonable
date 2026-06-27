@@ -54,6 +54,53 @@ smell. The sanity invariant forbids it; the cure is **condition-based waiting** 
 a timeout). See the superpowers `systematic-debugging` skill's condition-based-waiting reference — it
 coexists with `reasonable`.
 
+## Observable seams + test conventions (render-coupled clauses)
+
+A render-only clause (a component draws a shape, positions an element, portals a badge) is testable
+**blind** only when the contract declares an **observable seam** — the export to import and a stable
+DOM handle per element — and the implementer **exposes** it. Guessing the seam is what dies at load
+(`Cannot find module` / "Element type is invalid") or at query ("Unable to find an element"). The
+classifier `lib/seam.mjs` routes such a red to `seam-undeclared` (declare + expose), never a blind redo.
+
+`.reasonable/test-conventions.md` (TypeScript/React default) records the conventions the blind-writer
+follows — **detect them from an existing test, don't guess**:
+
+- **Module system:** ESM `import` — **never** CJS `require` (Vite/Vitest projects are ESM).
+- **Render lib:** React Testing Library: `render(<X/>)`, then `screen.getByTestId('…')` / `getByRole`.
+- **Import shape:** a component is often a `export default` — import it as `import X from '…'`, not
+  `import { X }`. Confirm default-vs-named against the contract's `## Observable Seams`.
+
+Contract `## Observable Seams` → test → DOM, kept in parity:
+
+```markdown
+## Observable Seams
+- component: default export `ChoiceEdge`
+- guard-badge: the guard badge at the midpoint → `[data-testid=guard-badge]`
+```
+
+```tsx
+// blind test — targets the DECLARED seam (ESM import, default export, declared testid)
+import { render, screen } from '@testing-library/react';
+import ChoiceEdge from '../edges/ChoiceEdge';            // declared default export
+
+it('renders a guard badge at the midpoint', () => {       // choice-edge §6
+  render(<ChoiceEdge {...props} />);
+  expect(screen.getByTestId('guard-badge')).toBeInTheDocument();
+});
+```
+
+```tsx
+// implementer — EXPOSES the declared seam in the DOM (parity obligation). A badge portalled
+// through EdgeLabelRenderer still carries the declared testid the test queries.
+<EdgeLabelRenderer>
+  <div data-testid="guard-badge" style={{ transform: `translate(${mx}px, ${my}px)` }}>{label}</div>
+</EdgeLabelRenderer>
+```
+
+**Prefer function-level where exact:** a path string or coordinate is a pure value — export the
+function (`edgePath(...)`) and assert it directly; no seam, no render harness. Reserve observable
+seams for genuinely render-only observations.
+
 ## Fakes and the composition root
 
 A fake exported from a module for test use is fine; a fake imported into the production composition

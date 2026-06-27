@@ -212,6 +212,14 @@ const VERIFIER_VERDICT = {
 
 // OUTCOME - every lane-running agent is schema-forced to emit this tagged union;
 // the trap router switches on `kind` (architecture S8, D5/D12).
+//
+// `seam-undeclared` is the deterministic route for a render-clause RED that died because
+// the test could not OBSERVE the unit (a missing/undeclared OBSERVABLE SEAM - module-load
+// death, wrong export shape, or a missing DOM handle), NOT because behaviour disagreed.
+// The adjudicator classifies it with lib/seam.mjs (a computed binary, never a guess) and
+// the route arm sends it to a SEAM-DECLARATION re-pass (the implementer enriches its
+// `## Observable Seams` + exposes the handle), NOT another blind redo - which is what
+// looped `fix-test -> intent-fork` forever in the render-clause incident.
 const OUTCOME = {
   type: 'object',
   required: ['kind', 'workOrder'],
@@ -220,7 +228,7 @@ const OUTCOME = {
     kind: {
       type: 'string',
       enum: [
-        'green', 'scope-expansion', 'ripple', 'jurisdiction', 'spike-needed',
+        'green', 'scope-expansion', 'ripple', 'jurisdiction', 'seam-undeclared', 'spike-needed',
         'infeasible', 'checkpoint', 'intent-fork', 'other',
       ],
     },
@@ -573,6 +581,20 @@ async function provisionThenImplement(wo, _orig, _idx, ctx) {
   const a = ctx.args;
   const effortRoot = a.effortRoot;
 
+  // A prior adjudication may have routed `seam-undeclared` here: a render clause whose
+  // OBSERVABLE SEAM the blind-writer could not target (module-load death / wrong export /
+  // missing DOM handle). The implementer's re-pass IS the seam-declaration step - declare
+  // the missing handles in its `## Observable Seams` and EXPOSE them in the DOM. Consume
+  // the task (idempotent; adjudicate re-sets it only if the seam is STILL missing).
+  ctx.seamTasks = ctx.seamTasks || {};
+  ctx.seamRedeclares = ctx.seamRedeclares || {};
+  const seamTask = ctx.seamTasks[wo.id] || null;
+  if (seamTask) {
+    ctx.seamRedeclares[wo.id] = (ctx.seamRedeclares[wo.id] || 0) + 1;
+    delete ctx.seamTasks[wo.id];
+    log(`seam-declaration re-pass for ${wo.id} (attempt ${ctx.seamRedeclares[wo.id]}): implementer declares + exposes the observable seam (subkind: ${seamTask.subkind || 'n/a'}).`);
+  }
+
   // 1) Provision the lane BEFORE the fenced worker - closes the descriptor-less window (D7)
   //    AND capture the worktree (PROVISION_ACK, not OUTCOME) so we can direct the CODE-writing
   //    roles into it. Two-root model: code -> the worktree (git -C); .reasonable/ state -> the
@@ -632,6 +654,9 @@ async function provisionThenImplement(wo, _orig, _idx, ctx) {
   // 3) Implement on the active path: thin-real only; CODE -> the worktree (git -C); the OWN
   //    contract enrichment + the ledger line -> the CANONICAL effort root (on-disk append
   //    content-referencing the commit SHA, D3a/D5 - the ledger is gitignored, never in the commit).
+  const seamDirective = seamTask
+    ? `SEAM-DECLARATION RE-PASS (a prior adjudication returned seam-undeclared; lib/seam.mjs subkind: ${seamTask.subkind || 'n/a'}): a render clause's OBSERVABLE SEAM was undeclared or unexposed - the blind test could not OBSERVE the unit (module-load / export shape / missing DOM handle), it did NOT disagree about behaviour. Do TWO things: (1) declare the missing handle(s)/export in your component's \`## Observable Seams\` section (PUBLIC observation surface - the export to import + a stable \`data-testid\`/\`role\` per element; this is API surface, not behaviour); (2) EXPOSE them in the DOM you render (add the data-testid, fix the export shape) so the declared seam and the rendered DOM are in PARITY. The declared seam is part of the contract delta you are accountable for. Missing: ${j(seamTask.missing || seamTask.signals || seamTask.hint || seamTask)}.`
+    : '';
   return guard(wo.id, () => ctx.agent(
     [
       'Implement this work order on the active vertical-slice path (thin-real only; loud stubs off-path).',
@@ -642,12 +667,14 @@ async function provisionThenImplement(wo, _orig, _idx, ctx) {
       `TWO ROOTS, by DOMAIN: write code under the worktree (${worktree}) and stay within your declared locus (request scope expansion from the orchestrator rather than editing out of locus). Write \`.reasonable/\` state to the CANONICAL effort root by ABSOLUTE path - never into the worktree (gitignored, lost, fence-denied). Your process cwd is the effort root; use absolute paths + git -C.`,
       `Enrich your OWN contract with newly-learned musts. Your component(s): ${j((wo.footprint && wo.footprint.contracts) || wo.contracts || [])} - edit ${effortRoot}/.reasonable/contracts/<that-component>.md and append the ledger line with EXACTLY type:"enrichment" and component set to that SAME name, to ${effortRoot}/.reasonable/ledger.jsonl.`,
       'CRITICAL (ratchet + fence): a contract delta is type:"enrichment" - NEVER type:"verdict" (a verdict is only a progress note for checkpoint/infeasible) - and its component MUST match your contract name above EXACTLY. The blind-test-writer\'s tests are fence-gated on a logged enrichment/amendment/characterization for THIS component; a verdict-typed or wrong-component entry leaves the gate seeing no delta, blocks the tests, and spins the wave. Log it right the first time, in this same atomic commit, BEFORE the blind-test stage.',
-      'Report your enrichment in the OUTCOME detail as detail.enrichment = { enriched, clauses:[ids you added], touchesSharedContract (true iff a new Citations bullet to a neighbour) } so the contract-enrichment adversary can risk-gate and judge the PROPOSED diff against the vision + slice spec BEFORE tests derive from it.',
+      `OBSERVABLE SEAMS (render-coupled clauses): a clause whose only observation is via rendering needs a declared seam so the blind-writer can target it instead of guessing. PREFER a function-level clause where the observable is a pure value (a path string, a coordinate) - test the exported function, not the DOM. ONLY for a genuinely render-only observable, declare a \`## Observable Seams\` bullet in your contract (the export to import + a stable \`data-testid\`/\`role\` per element) and EXPOSE it in the DOM you render. Follow the repo TEST CONVENTIONS (${effortRoot}/.reasonable/test-conventions.md, if present) for the module system / export shape / render lib - never invent them.`,
+      seamDirective,
+      'Report your enrichment in the OUTCOME detail as detail.enrichment = { enriched, clauses:[ids you added], touchesSharedContract (true iff a new Citations bullet to a neighbour) } so the contract-enrichment adversary can risk-gate and judge the PROPOSED diff against the vision + slice spec BEFORE tests derive from it. Report any observable seams you declared/exposed as detail.seamsExposed = [keys].',
       `Land your terminal effects as ONE logical step (D3a/D5): the work-product CODE in a single \`git -C ${worktree}\` commit carrying a \`Work-Order: ${wo.id}\` trailer; your ledger line as an on-disk append to ${effortRoot}/.reasonable/ledger.jsonl that content-references that commit SHA - the ledger is gitignored, NEVER part of the git commit.`,
       'If you hit a wall, emit the matching OUTCOME kind (scope-expansion / ripple / jurisdiction / spike-needed / infeasible / intent-fork / other) - never thrash toward green.',
       `Cite ${effortRoot}/.reasonable/intention.md when a fork turns on a scope/priority choice; an unsettleable fork is intent-fork (BREAKING), never a silent guess.`,
       'Return the OUTCOME.',
-    ].join('\n'),
+    ].filter(Boolean).join('\n'),
     { label: `implement:${wo.id}`, phase: 'Enrich', agentType: 'reasonable:implementer', schema: OUTCOME },
   ));
 }
@@ -753,6 +780,9 @@ async function blindTest(prev, wo, _idx, ctx) {
       `Lane worktree (write the TEST files here, by absolute path - tests are CODE): ${worktree}`,
       `Work order: ${wo.id} (read the contract delta from the canonical ${a.effortRoot}/.reasonable/ledger.jsonl entry + the contract files; do NOT read src).`,
       'Translate the contract delta into test changes UNDER THE WORKTREE (tests track contracts 1:1). Every new must enters as a RED assertion first.',
+      `FOLLOW THE REPO TEST CONVENTIONS - never guess them. Read ${a.effortRoot}/.reasonable/test-conventions.md (and an existing test file in the suite): use the declared MODULE SYSTEM (e.g. ESM \`import\`, NEVER CJS \`require\` in an ESM repo), RUNNER, and RENDER LIB. The conventions and the contract's \`## Observable Seams\` are PUBLIC TEST SURFACE, not implementation - reading them does NOT break your blindness to behaviour.`,
+      'PREFER FUNCTION-LEVEL where the contract is exact: if a clause\'s observable is a pure value (a path string, a coordinate), import and assert the exported FUNCTION, not the rendered DOM. Reserve render tests for genuinely render-only observations.',
+      `For a render-only clause, TARGET the contract's \`## Observable Seams\`: import via the DECLARED export, and query the DECLARED stable handle (\`data-testid\`/\`role\`) for each element - do not guess an export shape or an incidental attribute. If a render clause has NO declared observable seam, do NOT guess one: produce the test against the declared seam if present, else flag it - the adjudicator will route \`seam-undeclared\` deterministically (the implementer then declares + exposes it). You still NEVER read the implementation and NEVER assert what the code does.`,
       'You do not run tests (no Bash). Formalize expectations blind. Your process cwd is the effort root, so write tests by absolute path under the worktree - never into the worktree .reasonable/.',
       'Return the OUTCOME (kind:"green" if you produced the test delta cleanly; otherwise the matching trap kind).',
     ].join('\n'),
@@ -773,7 +803,15 @@ async function adjudicate(prev, wo, _idx, ctx) {
   if (!prev || prev.kind !== 'green') return prev;
   const a = ctx.args;
   const worktree = (ctx.worktrees && ctx.worktrees[wo.id]) || a.effortRoot;
-  return guard(wo.id, () => ctx.agent(
+  const plug = a.reasonableRoot || '$CLAUDE_PLUGIN_ROOT';
+  // The bounded-escalation cap: how many SEAM-DECLARATION re-passes we allow before a
+  // persistently-undeclared/unexposed seam escalates to the human instead of looping (the
+  // *new* path must not become the next infinite loop). ctx.seamRedeclares[wo] counts the
+  // declaration passes the implementer has already taken (incremented in
+  // provisionThenImplement). At the cap, a render clause genuinely resists a render test -
+  // a function-level reframe or a human seam decision is owed.
+  const SEAM_REDECLARE_CAP = 2;
+  const result = await guard(wo.id, () => ctx.agent(
     [
       'Adjudicator: you have Bash. ACTUALLY RUN the lane suite for this work order, then judge every red with the CONTRACT TEXT as the sole arbiter. You run and you judge; you fix nothing (no Edit) - a different actor carries out the verdict.',
       `Effort root (canonical .reasonable/ - read the contract here): ${a.effortRoot}`,
@@ -781,12 +819,32 @@ async function adjudicate(prev, wo, _idx, ctx) {
       `Work order: ${wo.id}`,
       `Run the suite in the worktree (cwd ${worktree}), NOT the main checkout. Read the contract from ${a.effortRoot}/.reasonable/contracts/.`,
       'ANTI-PLACEHOLDER (cardinal rule): execute the suite for real and report detail.suiteRan=true with detail.failing=[failing test ids]. If you CANNOT run it (deps missing - see if the lane needs an install - or no test command, or a harness error), that is a LOUD verification gap: return kind:"other" with a note naming exactly why it could not run. You may NEVER return kind:"checkpoint" (that is the budget ceiling, not a probe gap) and NEVER kind:"green" without an executed, fully-green suite. Inventing a probe result is the cardinal sin - it manufactures a false green.',
-      'Implementation violates contract -> verdict fix-implementation (test untouched): return kind:"jurisdiction" so the implementer is re-dispatched to satisfy the contract next pass. Test mistranslates a clause -> verdict fix-test, citing the clause; if the blind writer must redo it, return kind:"intent-fork". Green-ness is never the goal state of test-editing.',
+      `SEAM TRIAGE (do this on ANY red, BEFORE the contract judgment): a render-clause test can die because it could not OBSERVE the unit (module-load death, wrong export shape, or a missing DOM handle) rather than because behaviour disagrees. Capture the failing output to a file and CLASSIFY it deterministically - never eyeball it: \`node ${plug}/lib/seam.mjs --classify --log <captured-output-file> --json\`. If it reports kind:"seam" -> return kind:"seam-undeclared" with detail = { component:<the render component>, clause:<the render clause id if known>, subkind:<module-load|export-shape|element-not-found>, missing:<the export/handle the test needed>, signals:<the classifier signals> }. This routes a SEAM-DECLARATION re-pass (the implementer declares its \`## Observable Seams\` + exposes the handle), NOT a blind redo. Do this ONLY when the classifier says kind:"seam" - a real assertion mismatch stays yours to judge below.`,
+      'Implementation violates contract (a real behavioural red the classifier calls kind:"behavior") -> verdict fix-implementation (test untouched): return kind:"jurisdiction" so the implementer is re-dispatched to satisfy the contract next pass. Test mistranslates a clause -> verdict fix-test, citing the clause; if the blind writer must redo it, return kind:"intent-fork". Green-ness is never the goal state of test-editing.',
       `A scope/priority/jurisdiction fork must cite ${a.effortRoot}/.reasonable/intention.md; an unsettleable fork is intent-fork (BREAKING).`,
-      'Return the OUTCOME: kind:"green" ONLY when the suite actually executed and is fully green and the lane is consistent with its contract (set detail.suiteRan=true); any red -> the matching non-green kind above (never green, never checkpoint).',
+      'Return the OUTCOME: kind:"green" ONLY when the suite actually executed and is fully green and the lane is consistent with its contract (set detail.suiteRan=true); a seam-observation red -> kind:"seam-undeclared"; any behavioural red -> the matching kind above (never green, never checkpoint).',
     ].join('\n'),
     { label: `adjudicate:${wo.id}`, phase: 'Enrich', agentType: 'reasonable:adjudicator', schema: OUTCOME },
   ));
+
+  // Bounded-escalation guard around the seam route. The adjudicator classifies; the
+  // SCRIPT bounds the loop (a fixed control flow cannot grow an unbounded one). On a
+  // seam-undeclared verdict: below the cap, stash the task so the next pass's implementer
+  // declares + exposes the seam (deterministic resolution, NOT intent-fork). At/over the
+  // cap, the seam resisted declaration twice - escalate BREAKING to the human rather than
+  // spin (a render clause may need a function-level reframe or a human seam decision).
+  if (result && result.kind === 'seam-undeclared') {
+    const tries = (ctx.seamRedeclares && ctx.seamRedeclares[wo.id]) || 0;
+    if (tries >= SEAM_REDECLARE_CAP) {
+      return { kind: 'intent-fork', workOrder: wo.id, verticalSlice: wo.verticalSlice || a.verticalSliceId,
+        detail: { stage: 'adjudicate', reason: `observable seam still undeclared/unexposed after ${tries} declaration pass(es) (subkind: ${(result.detail && result.detail.subkind) || 'n/a'}) - a render clause may need a function-level reframe or a human seam decision`, seam: result.detail || {}, oracle: 'vision + vertical-slice spec' },
+        note: 'seam route exhausted its bounded re-passes - escalating to the human (fail toward scrutiny)' };
+    }
+    ctx.seamTasks = ctx.seamTasks || {};
+    ctx.seamTasks[wo.id] = result.detail || {};
+    log(`adjudicate: ${wo.id} red is a seam-observation failure (subkind: ${(result.detail && result.detail.subkind) || 'n/a'}) - routing seam-undeclared (declaration pass ${tries + 1}/${SEAM_REDECLARE_CAP}), NOT a blind redo.`);
+  }
+  return result;
 }
 
 // audit - the mechanical teeth in escalating cost order, as a read-only parallel()
@@ -901,6 +959,19 @@ function route(outcome, state, mode) {
       // dispatch the adjudicator (which cites the oracle) - re-runs next pass.
       s.needsAnotherPass = true;
       s.pendingInbox.push({ class: 'ADVISORY', kind: 'jurisdiction', workOrder: outcome.workOrder, detail: outcome.detail || {} });
+      break;
+
+    case 'seam-undeclared':
+      // A render clause's OBSERVABLE SEAM was missing/undeclared (deterministic, classified
+      // by lib/seam.mjs - NOT a behaviour mismatch). The fix is a SEAM-DECLARATION re-pass:
+      // the implementer enriches its `## Observable Seams` + exposes the handle, then the
+      // blind-writer re-targets it. This is the loop the old `fix-test -> intent-fork ->
+      // blind redo` could never close (a blind redo cannot fix a seam it cannot see).
+      // ADVISORY, not BREAKING: it resolves itself in-run. The adjudicate stage already
+      // stashed the task on ctx and bounds the re-passes (escalates to intent-fork at the
+      // cap), so this arm only needs to keep the loop going.
+      s.needsAnotherPass = true;
+      s.pendingInbox.push({ class: 'ADVISORY', kind: 'seam-undeclared', workOrder: outcome.workOrder, detail: outcome.detail || {} });
       break;
 
     case 'spike-needed':

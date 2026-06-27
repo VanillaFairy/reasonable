@@ -182,7 +182,7 @@ it does not grow control flow (which a fixed run forbids).
 
 ```
 OUTCOME.kind =
-  green | scope-expansion | ripple | jurisdiction | spike-needed |
+  green | scope-expansion | ripple | jurisdiction | seam-undeclared | spike-needed |
   infeasible | checkpoint | intent-fork | other
 ```
 
@@ -192,6 +192,7 @@ OUTCOME.kind =
 | `scope-expansion` | grant+log (autonomous) or inbox (gated) |
 | `ripple` | sequence provider-first / consumer-first single-contract pipeline runs (§5.10) |
 | `jurisdiction` | dispatch the adjudicator (which cites the oracle) |
+| `seam-undeclared` | **seam-declaration re-pass (ADVISORY)** — a render-clause red the `lib/seam.mjs` classifier calls a seam-observation failure (module-load / export-shape / element-not-found), NOT a behaviour mismatch. The implementer enriches its `## Observable Seams` + exposes the handle; the blind-writer re-targets it. Bounded (escalates to `intent-fork` after a few passes) — never a blind redo, which could not close the loop. |
 | `spike-needed` | **return** to the main session to launch the spike workflow (nesting limit, §12) |
 | `infeasible` | dispatch the skeptic; two independent exhaustions auto-promote to the dead-end ceremony |
 | `checkpoint` | triage the budget: extend once / fresh-context retry / escalate |
