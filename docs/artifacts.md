@@ -187,6 +187,8 @@ that needs a test command, build command, or test-path classification.
   "parkMarkerRegex": "#\\[ignore\\s*=\\s*\"pending:",
   "runMode": "gated",
   "brownfield": false,
+  "baseBranch": "master",
+  "effortBranch": "effort/fireside-widget",
   "enforcementPaths": [
     ".reasonable/ledger.jsonl", ".reasonable/journal.json",
     ".reasonable/supervision.json", ".reasonable/sanity-invariants.md",
@@ -223,6 +225,31 @@ trigger: ungoverned existing code is touched). When `true`, the brownfield
 mechanisms turn on — `baseline.json` exists, the `census`/`characterizer` roles
 run, and the floor-containment fence rule applies. When unset / `false`, every
 brownfield-only field and event below is a no-op.
+
+`baseBranch` / `effortBranch` — the **multi-slice branch-hygiene** pair
+(`lib/branch.mjs`), written once at analysis (step 7a). reasonable maintains a
+dedicated **effort / integration branch** `effort/<name>` created off `baseBranch`
+(the ref the effort started from) and **checked out in the main checkout for the
+whole effort**. The mechanism, deterministic and escalation-free:
+
+- **lanes are cut from `effortBranch`, explicitly** — the lane-provisioner runs
+  `git worktree add … -b lane/<wo> <effortBranch>`, never a bare HEAD, so a slice
+  that depends on an earlier slice is cut from a base that already contains it;
+- **green lanes auto-merge into `effortBranch`** at each slice gate (`--no-ff`,
+  merge SHA recorded) — automatically, logged, no human gate (the membrane, §
+  vertical-slice-execution 7); so the next slice's lane is cut from a branch
+  holding slices 1..N;
+- **`baseBranch` is written exactly once**, at effort end, by the single
+  `effortBranch → baseBranch` merge — the one human review gate (gated blocks;
+  autonomous logs / leaves it as the one deliberate landing). Per-slice hygiene
+  **never escalates**;
+- **reconcile reads both**, accounts each lane's commits against `effortBranch`
+  (not master), and **surfaces** any live lane that does not descend from it (a
+  build-on-stale — cut from the wrong base; surfaced, never a halt).
+
+Both are **null on an effort that predates this field** — then lanes are cut from
+bare HEAD (the legacy behaviour) and there is no base to validate against.
+`config.json` is fence-protected, so an agent cannot self-edit the branch pair.
 
 ---
 

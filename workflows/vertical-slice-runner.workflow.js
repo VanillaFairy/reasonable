@@ -106,6 +106,14 @@ const BRIEFING = {
     // always recover the canonical root from disk and hand it back to the (pure) script.
     effortRoot: { type: ['string', 'null'] },
     brownfield: { type: 'boolean' },
+    // Branch hygiene: the dedicated integration branch every lane is cut from (and green
+    // lanes merge into), and the base ref written only at effort end. Read from config by
+    // the reconciler and threaded back so the (pure) script can pass the lane base to the
+    // provisioner. Null on an effort that predates this field (bare-HEAD back-compat).
+    effortBranch: { type: ['string', 'null'] },
+    baseBranch: { type: ['string', 'null'] },
+    // Live lanes that do NOT descend from the effort branch (a build-on-stale; surfaced).
+    laneBaseIssues: { type: 'array', items: { type: 'object', additionalProperties: true } },
     // The trust-staleness set: trusted-green tests whose governing clause was
     // amended/extended since last verification (S16, D13) - marked for re-verify.
     staleTrusted: { type: 'array', items: { type: 'string' } },
@@ -509,6 +517,7 @@ function reconcilePrompt(a) {
     rootLine,
     sliceLine,
     'ALWAYS return the resolved effortRoot and currentVerticalSlice in the BRIEFING (even when they were supplied) - the pure script threads back whatever you resolved here.',
+    'BRANCH HYGIENE: read config.effortBranch + config.baseBranch and RETURN them in the BRIEFING (reconcile.mjs surfaces them). The effort branch is the base every lane is cut from; the script threads it to the provisioner. Run lib/reconcile.mjs and surface any laneBaseIssues (live lanes that do NOT descend from the effort branch = a build-on-stale, cut from the wrong base): report them, do NOT halt on them - they are a surfaced inconsistency the orchestrator re-bases, the lane work is intact in git.',
     'Partition every artifact configuration into RESOLVED / SAFE-DEFAULT / AMBIGUOUS.',
     'Read config.runMode; if it is absent/null on a cold restart, HALT (defaulting to a "safer" mode is a forbidden inference).',
     'Keep the four FIRST-LINE AMBIGUOUS -> HALT classes: sha-custody (mismatched-trailer reclaim), ledger-without-commit (torn window), runmode-absent, two-lanes-one-WO.',
@@ -600,12 +609,17 @@ async function provisionThenImplement(wo, _orig, _idx, ctx) {
   //    roles into it. Two-root model: code -> the worktree (git -C); .reasonable/ state -> the
   //    canonical effort root. The worktree is nested under the effort root so findEffortRoot
   //    resolves the canonical .reasonable/ from inside it.
+  const laneBase = a.effortBranch ? ` ${a.effortBranch}` : '';
+  const baseNote = a.effortBranch
+    ? `Cut the lane from the EFFORT BRANCH \`${a.effortBranch}\` as an EXPLICIT base (it already contains every earlier green slice), NEVER from a bare HEAD - that is what keeps a dependent slice off stale code.`
+    : 'No effort branch configured (an effort predating branch hygiene) - cut the lane from HEAD (bare, legacy behaviour).';
   const ack = await guard(wo.id, () => ctx.agent(
     [
       'Provision the lane for this work order, idempotently, BEFORE any fenced worker writes code.',
       `Effort root (canonical .reasonable/ - the descriptor back-pointer target): ${effortRoot}`,
       `Work order: ${wo.id} (role: ${wo.role || 'implementer'})`,
-      `Do exactly four things in order: (1) git -C ${effortRoot} worktree add ${effortRoot}/.worktrees/${wo.id} -b lane/${wo.id} (a real registered worktree NESTED UNDER the effort root, NOT an engine throwaway);`,
+      baseNote,
+      `Do exactly four things in order: (1) git -C ${effortRoot} worktree add ${effortRoot}/.worktrees/${wo.id} -b lane/${wo.id}${laneBase} (a real registered worktree NESTED UNDER the effort root, cut from the effort branch when one is given, NOT an engine throwaway);`,
       '(2) make the worktree able to RUN ITS SUITE - a git worktree is a fresh checkout with no gitignored deps, so the adjudicator/auditor would otherwise be unable to run: link the effort root\'s already-installed dependency dir(s) (node_modules / .venv / target / vendor ...) into the worktree (fast, stack-agnostic), or if none exist run config.setupCommand there; idempotent. Set depsReady accordingly;',
       '(3) write the one .reasonable-lane.json descriptor at the worktree root (effortRoot back-pointer + narrowed locus/role/floorImpact/contractBirth); (4) record the lane in the journal via the scribe.',
       'Do NOT seed .reasonable/ into the worktree - effort state stays canonical (gitignored), reached via the back-pointer. Ensure a checkpoint-only lane carries a trailered commit so reconcile can re-claim it.',
@@ -1130,6 +1144,10 @@ if (typeof briefing.floorUnexplained === 'number' && briefing.floorUnexplained =
 // the only recovery path.
 if (!a.effortRoot && briefing.effortRoot) a.effortRoot = briefing.effortRoot;
 if (!a.verticalSliceId && briefing.currentVerticalSlice) a.verticalSliceId = briefing.currentVerticalSlice;
+// Branch hygiene: the reconciler read effortBranch/baseBranch from config; thread them in
+// so the provisioner cuts every lane from the effort branch (explicit base, never bare HEAD).
+if (!a.effortBranch && briefing.effortBranch) a.effortBranch = briefing.effortBranch;
+if (!a.baseBranch && briefing.baseBranch) a.baseBranch = briefing.baseBranch;
 if (!a.effortRoot) {
   return { kind: 'halt', reason: 'effort root unresolved: not supplied in args and the reconciler could not recover it from cwd. Re-launch the runner by NAME with args.effortRoot set (the scriptPath path drops args).' };
 }

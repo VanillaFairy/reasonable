@@ -19,10 +19,13 @@ launch nested workflows (spike/scaffold), merge lanes, and reconcile the journal
 ## Mode behavior (gated vs autonomous)
 
 Read `mode` from `.reasonable/config.json` (set by `reasonable:develop` / `reasonable:develop-autonomously`)
-and pass it to the runner in `args.runMode`. Approval gates (the inbox, merges, second budget
-extensions) behave by mode — **gated**: they **block** for an explicit human nod (*silence never
-consents*); **autonomous**: decide, **log** to the ledger (`approvedBy:"autonomous"`), and proceed
-without blocking. The runner enforces this distinction inside its trap router; you enforce it at the
+and pass it to the runner in `args.runMode`. Approval gates (the inbox, the **final effort→base merge**,
+second budget extensions) behave by mode — **gated**: they **block** for an explicit human nod (*silence
+never consents*); **autonomous**: decide, **log** to the ledger (`approvedBy:"autonomous"`), and proceed
+without blocking. **Per-slice integration is not one of these gates:** a green lane auto-merges into the
+**effort branch** every slice, automatically and logged, in *both* modes — branch hygiene never
+escalates (§7). Only the single end-of-effort `effortBranch → baseBranch` merge is the human-integration
+decision (§7a). The runner enforces this distinction inside its trap router; you enforce it at the
 membrane crossings it hands back. In **both** modes the full enrichment pipeline (implement → blind
 test → adjudicate → audit) and every mechanical gate check (discriminator, mutation sampling, sanity,
 mapping) runs inside the runner — **the protocol is absolute**, never streamlined. A **vision
@@ -70,7 +73,9 @@ ledger.
   `scriptPath`. The registered-name path passes `args` reliably; **`scriptPath` drops `args`** (the
   run then sees an empty `args` global). Pass `args`: `effortRoot` (the main checkout, native path),
   `verticalSliceId`, the `route` snapshot, the contract paths, the per-slice `budget.total`, the
-  supervision `profile`, `runMode`, and the brownfield flags (`brownfield`, `lowFloor`). Pass `args`
+  supervision `profile`, `runMode`, the **branch pair** (`effortBranch`, `baseBranch` — so the
+  provisioner cuts lanes from the effort branch; the reconcile prologue also recovers them from
+  `config.json` if omitted), and the brownfield flags (`brownfield`, `lowFloor`). Pass `args`
   as an actual JSON object, never a stringified one. The Workflow call returns **immediately** with a
   run id; the run executes in the background and notifies you on completion.
 - **Args-drop fallback (D18):** even if `args` arrives empty, the runner's reconcile prologue
@@ -256,16 +261,41 @@ it at the membrane before merging and closing:
 - **Verify the gate evidence yourself.** The slice's promoted scenarios are GREEN and the
   vertical-slice-gate audit (mutation + sanity + proportionality + mapping, `adversarial-audit` skill)
   passed. The gate is the merge condition, not a vibe — re-check, don't trust the summary.
-- **Merge each lane (gate-GREEN is the merge condition).** A lane merges to the vertical-slice branch
-  **only when its gate is GREEN**; merge in the ripple's topological order. Lanes had provably
-  **disjoint footprints**, so **a merge conflict between them is a footprint bug** — an under-declared
-  locus or missing citation. Log it (it debugs the spec layer); fix the footprint. Record every merge
-  SHA in the journal (provenance accounting; `lib/commit-accounting.mjs`).
+- **Merge each green lane into the EFFORT BRANCH — automatically, no per-slice escalation.** A lane
+  merges **only when its gate is GREEN**, in the ripple's topological order, into `config.effortBranch`
+  (which the main checkout is on for the whole effort): `git merge --no-ff lane/<wo>`. This is the
+  **one default resolution applied every slice** — integrate to the effort branch — so the next slice's
+  lane is cut from a branch that already contains slices 1..N. It **never escalates**: in **autonomous**
+  mode it proceeds and is logged (`approvedBy:"autonomous"`); in **gated** mode the supervision profile
+  governs the *nod*, but per-slice integration hygiene is not the human-integration decision — that is
+  the single `effortBranch → baseBranch` merge at effort end (below). Lanes had provably **disjoint
+  footprints**, so **a merge conflict between them is a footprint bug** — an under-declared locus or
+  missing citation. Log it (it debugs the spec layer); fix the footprint. Record every merge SHA in the
+  journal (provenance accounting; `lib/commit-accounting.mjs`). The base branch is **never written**
+  here.
 - **Update the journal** (work orders `merged`; vertical slice closing) — a write you own again now the
   run has returned.
 - **Invoke the `retro` skill** — the mandatory blocking heartbeat. The run ended **at** the retro gate,
   never through it; the human-blocking retro runs here, in the main session. Do not open the next
   vertical slice before the retro runs.
+
+## 7a. Effort end — merge the effort branch to the base (the single human gate)
+Per-slice integration never reaches the base branch — green lanes accumulate on the **effort branch**
+and the base stays untouched for the whole effort. The **one** integration that touches the base is the
+final `effortBranch → baseBranch` merge, when the route's frontier is exhausted (no open slices) and the
+last retro has passed:
+
+```
+git checkout <baseBranch>
+git merge --no-ff <effortBranch>      # records the merge SHA in the journal/ledger
+```
+
+This is the **natural human review gate** — the whole effort lands as one reviewable integration. In
+**gated** mode it **blocks** for the human's explicit nod (silence never consents); in **autonomous**
+mode it is the single deliberate landing act — log it (and, if your run is configured to leave the
+final landing to a person, stop here and present the effort branch for review rather than auto-merging
+to the base). Because per-slice hygiene already integrated every slice onto the effort branch, this
+merge is the *only* point integration was ever a question — and it is asked exactly once.
 
 ## Run mode and the supervision profile
 Two distinct controls govern human involvement; **neither ever waives a mechanical check.**

@@ -322,6 +322,25 @@ one of the three is probably wrong.
   the human never works in a lane. Identified on disk by a `.reasonable-lane.json`
   descriptor at the worktree root — this is what the fence reads to bind the law
   to the governed.
+- **Effort branch** — the dedicated **integration branch** (`effort/<name>`,
+  `config.effortBranch`) reasonable maintains for an effort: created off the base
+  branch at effort start and checked out in the main checkout for the effort's
+  duration. **Every lane is cut from it** (explicit base, never a bare HEAD) and
+  **every green lane auto-merges back into it** at the slice gate (`--no-ff`,
+  logged, no escalation), so a slice that depends on earlier slices is always cut
+  from a base that already contains them. The *one default integration resolution*,
+  applied every slice. Null on an effort predating branch hygiene (lanes then cut
+  from bare HEAD).
+- **Base branch** — the ref an effort started from (`config.baseBranch`, e.g.
+  `master`). **Written exactly once**, at effort end, by the single
+  `effortBranch → baseBranch` merge — the natural human review gate (gated blocks;
+  autonomous logs / leaves it as the one deliberate landing). Untouched for the
+  whole effort; per-slice hygiene never reaches it.
+- **Build-on-stale** — a lane cut from the wrong base (e.g. the base branch, or a
+  HEAD missing an earlier green slice) instead of the effort branch, so it builds
+  on stale code. Reconcile **surfaces** it (a live lane that does not descend from
+  the effort branch) as an inconsistency to re-base — never a halt (the work is
+  intact in git), and never a silent integration of stale code.
 
 ---
 

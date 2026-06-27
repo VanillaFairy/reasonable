@@ -62,6 +62,24 @@ over an AMBIGUOUS verdict with a hopeful interpretation — the script's halt is
   / ledger-without-commit / runmode-absent / two-lanes HALT classes are unchanged — those stay
   first-line AMBIGUOUS → HALT.)
 
+## Branch hygiene — surface the integration branch and any build-on-stale
+reasonable maintains a dedicated **effort branch** (`config.effortBranch`, e.g. `effort/<name>`): every
+lane is cut from it and every green lane merges back into it, so a dependent slice is always cut from a
+base that already contains the earlier slices. `reconcile.mjs` reads `config.effortBranch` +
+`config.baseBranch` and:
+
+- **accounts each lane's commits against the EFFORT BRANCH** (not master) — a lane is cut from the
+  effort branch, so `<effortBranch>..<lane>` is the lane's *own* work; measuring against master would
+  absorb the whole effort branch into the lane and break SHA accounting;
+- **validates that every live lane descends from the effort branch.** A lane that does **not** is a
+  **build-on-stale**: it was cut from the wrong base (e.g. master, missing an earlier slice). This is a
+  **SURFACED inconsistency, NOT a halt** — the lane's work is intact in git, so you report it (the
+  briefing's `laneBaseIssues`) for the orchestrator to re-base/re-cut; you never silently let it
+  integrate stale, and you never halt the run over it.
+
+Carry `effortBranch`, `baseBranch`, and any `laneBaseIssues` in the briefing. (Absent on an effort that
+predates branch hygiene — then lanes were cut from bare HEAD and there is no base to validate against.)
+
 ## Run mode — read it, never infer it
 Read `config.runMode` (`gated` | `autonomous` | `null`) and carry it in the briefing so the main
 session re-asserts it into the next launch. **If `runMode` is absent or null on a cold restart, that
@@ -107,6 +125,8 @@ Return the typed `BRIEFING` the `vertical-slice-runner` prologue consumes (it di
   with the RESOLVED downgrades/re-claims named), the footprints + resource claims + `independent()`
   grouping for the next dispatch wave.
 - **`runMode`** as read from `config.json` (or the halt, if absent).
+- **`effortBranch` / `baseBranch`** as read from `config.json`, and **`laneBaseIssues`** — any live
+  lanes not descended from the effort branch (build-on-stale; surfaced, never halting).
 - **The trust-staleness set** — the specific tests to re-verify and the amend/extend event that staled
   each.
 - **The inbox**, BREAKING first (intent-forks, vision amendments, second budget extensions, reconcile
