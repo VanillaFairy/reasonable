@@ -93,6 +93,7 @@ work-orders/, verdicts/, knowledge/, …) is **orchestrator-only**. The **main s
   inbox.json *             # approval inbox (also mirrored in journal for convenience)
   progress.json            # derived progress tree, effort-scoped (for graphing; D19; no parser)
   progress.md              # derived progress tree, the pinnable live view (D19; no parser)
+  progress-live.jsonl      # EPHEMERAL per-tool-call heartbeats the mirror overlays (D19 tier-2; presentation-only; reset freely)
   contracts/<component>.md *   # one per component, provider-owned clauses
   vertical-slices/<vertical-slice-id>.md   # vertical-slice specs (prose + a machine-readable gate block)
   work-orders/<wo-id>.json *   # work-order definitions
@@ -143,6 +144,7 @@ orchestrator's Bash:
 | ledger.jsonl | initialized empty at analysis; thereafter **each worker** appends its own line | atomic **on-disk** append, **content-referencing** that worker's D3a code commit — *not* part of the git tree (D4/D5) |
 | ledger.jsonl `verifier-verdict` line | **adversary** proposes (read-only, returns it as data); the **orchestrator** or a narrow writer appends it | atomic **on-disk** append, content-referencing the judged commit — **not** a git commit of state (D4/D5) |
 | journal.json · inbox.json | **journal-writer** (the single serialized scribe, D3b) | the derived index (rebuildable by reconcile) |
+| progress.{json,md} · progress-live.jsonl | the **`progress` / `progress-live` hooks** (`lib/progress*.mjs`, no model) | derived presentation mirror + its ephemeral live overlay — not via a tool, never canonical |
 | .reasonable-lane.json | **lane-provisioner** (before any fenced worker is dispatched) | `git worktree add` + the one descriptor write |
 | knowledge/`<id>`.md | **spike-runner** (or a dead-end ceremony) | from the quarantine |
 | progress-verdicts/ · ripple-manifests/ | **implementer** (checkpoint / escalation) | in-lane |
@@ -490,6 +492,39 @@ may belong to a different effort) is never consulted.
 The canonical index (`journal.json` / `inbox.json`) stays the lone serialized scribe's
 (D3b); the mirror is a *separate* presentation artifact with a *single* deterministic writer,
 so no concurrent-writer hazard is introduced.
+
+---
+
+## progress-live.jsonl  (ephemeral live channel, D19 tier-2)
+
+The **live heartbeat channel** the mirror overlays. The canonical projection above only
+advances when the scribe writes `journal.json` — once per wave — so a whole
+provision→implement→blind-test→adjudicate→audit wave would otherwise run with `progress.md`
+frozen on `pending`. This file is the fine-grained "what is happening **right now**" tier:
+
+- **Written by a hook, not the scribe** — a `PreToolUse` hook (`hooks/progress-live` →
+  `lib/progress-live.mjs`) fires on **every subagent write/run tool call** and **appends** one
+  line: `{ key, wo, stage, agentRole, tool, target, ts }`. The `stage`
+  (`provision|implement|blind-test|adjudicate|audit|reconcile|plan|scribe|…`) is derived for
+  free from the acting agent's role (`agent_type` → `roleOf`), so one hook delivers both
+  *which stage each work order is in* and *which tool it is running*.
+- **Append-only, like the ledger** — many subagents race through a wave with no barrier, so
+  each **appends** its heartbeat (`O_APPEND`, never a read-modify-write) and never clobbers a
+  peer's line; the projection (`readLive`) reduces to the latest line per `key` (the work
+  order, else `@role` for the no-work-order stages).
+- **EPHEMERAL and presentation-only** — it carries **no `*`**: no enforcement logic reads it,
+  it is never a gate input, and tool-call activity **never** enters `journal.json` or the
+  append-only `ledger.jsonl` (no keystroke noise in the program counter). It is parsed only by
+  the presentation projector.
+- **Resets cleanly** — truncated at **session-start** (a cold restart's pre-restart heartbeats
+  are stale "now" noise), and the projection **ignores any heartbeat older than
+  `journal.lastReconciled`**, so a reconcile resets the "now" view with no write side-effect
+  leaking into `reconcile()` (which also runs mid-run). A stale entry past a TTL (a dead agent,
+  or a single long-running tool call) is dropped by the projection.
+
+The mirror merges these as a transient `⟳ now` overlay: an effort-level block for the
+no-work-order stages, and one `⟳ now:` line under each active work order. Deleting the file at
+any time loses only the live overlay, never canonical truth — the next tool call repopulates it.
 
 ---
 

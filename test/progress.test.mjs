@@ -166,6 +166,99 @@ check('non-canonical journal.json (wrong parent) → no regen', () => {
   assert.ok(!existsSync(join(root, '.reasonable', 'progress.md')), 'a journal.json under src/ is not a canonical artifact');
 });
 
+// G — the ephemeral live channel (D19 tier-2) merges on top of the projection.
+const liveLines = (...rows) => rows.map((r) => JSON.stringify(r)).join('\n') + '\n';
+
+check('live merge: latest heartbeat per key attaches to its WO; effort-level for no-WO; TTL drops stale', () => {
+  const root = newEffort(); seed(root);
+  const NOW = Date.parse('2026-06-27T12:10:00Z');
+  const iso = (msAgo) => new Date(NOW - msAgo).toISOString();
+  write(root, '.reasonable/progress-live.jsonl', liveLines(
+    { key: 'WO-3', wo: 'WO-3', stage: 'implement', role: 'implementer', tool: 'Edit', target: 'src/ChoiceEdge.tsx', ts: iso(8000) },
+    { key: 'WO-3', wo: 'WO-3', stage: 'adjudicate', role: 'adjudicator', tool: 'Bash', target: 'npx vitest run', ts: iso(2000) }, // newer → wins
+    { key: '@reconciler', wo: null, stage: 'reconcile', role: 'reconciler', tool: 'Bash', target: 'git rev-list …', ts: iso(3000) },
+    { key: 'WO-STALE', wo: 'WO-STALE', stage: 'implement', role: 'implementer', tool: 'Edit', target: 'x', ts: iso(20 * 60 * 1000) }, // > TTL
+  ));
+  const m = buildModel(root, { now: NOW });
+  const wo3 = m.slices.find((s) => s.id === 'slice-b').children.find((w) => w.id === 'WO-3');
+  assert.ok(wo3.live, 'WO-3 carries a live heartbeat');
+  assert.equal(wo3.live.stage, 'adjudicate', 'latest line per key wins (append-ordered)');
+  assert.equal(wo3.live.tool, 'Bash');
+  assert.ok(m.live.some((l) => l.stage === 'reconcile'), 'a no-work-order heartbeat surfaces at effort level');
+  assert.ok(!m.live.some((l) => l.wo === 'WO-STALE'), 'a heartbeat older than the TTL is dropped');
+  assert.equal(m.counts.live, 2, 'WO-3 (attached) + reconciler (effort); stale dropped');
+});
+
+check('live merge: a heartbeat older than journal.lastReconciled is ignored (reset on reconcile)', () => {
+  const root = newEffort();
+  const NOW = Date.parse('2026-06-27T12:10:00Z');
+  write(root, '.reasonable/journal.json', JSON.stringify({
+    effort: 'demo', currentVerticalSlice: 's', lastReconciled: new Date(NOW - 1000).toISOString(),
+    workOrders: { 'WO-1': { status: 'dispatched', role: 'implementer', verticalSlice: 's' } },
+  }));
+  // First: only a heartbeat that PREDATES the last reconcile — must be ignored.
+  write(root, '.reasonable/progress-live.jsonl', liveLines(
+    { key: 'WO-1', wo: 'WO-1', stage: 'implement', role: 'implementer', tool: 'Edit', target: 'pre', ts: new Date(NOW - 5000).toISOString() },
+  ));
+  let wo1 = buildModel(root, { now: NOW }).slices[0].children[0];
+  assert.ok(!wo1.live, 'a heartbeat older than lastReconciled is not shown');
+  // Then: a post-reconcile heartbeat shows.
+  write(root, '.reasonable/progress-live.jsonl', liveLines(
+    { key: 'WO-1', wo: 'WO-1', stage: 'implement', role: 'implementer', tool: 'Edit', target: 'pre', ts: new Date(NOW - 5000).toISOString() },
+    { key: 'WO-1', wo: 'WO-1', stage: 'implement', role: 'implementer', tool: 'Edit', target: 'fresh', ts: new Date(NOW - 200).toISOString() },
+  ));
+  wo1 = buildModel(root, { now: NOW }).slices[0].children[0];
+  assert.ok(wo1.live && wo1.live.target === 'fresh', 'a post-reconcile heartbeat shows');
+});
+
+check('render: live heartbeats render as ⟳ now lines (per-WO + effort-level), with age', () => {
+  const root = newEffort(); seed(root);
+  const NOW = Date.parse('2026-06-27T12:10:00Z');
+  write(root, '.reasonable/progress-live.jsonl', liveLines(
+    { key: 'WO-3', wo: 'WO-3', stage: 'implement', role: 'implementer', tool: 'Edit', target: 'src/ChoiceEdge.tsx', ts: new Date(NOW - 3000).toISOString() },
+    { key: '@reconciler', wo: null, stage: 'reconcile', role: 'reconciler', tool: 'Bash', target: 'git rev-list …', ts: new Date(NOW - 1000).toISOString() },
+  ));
+  const md = renderMarkdown(buildModel(root, { now: NOW }));
+  assert.match(md, /⟳ now: implement · Edit src\/ChoiceEdge\.tsx/, 'per-WO heartbeat line');
+  assert.match(md, /⟳ \*\*now\*\* · reconcile · Bash git rev-list/, 'effort-level heartbeat line');
+  assert.match(md, /3s ago/, 'heartbeat age is rendered');
+});
+
+// H — the FROZEN-WAVE fix end to end (D19 acceptance #1). The exact state the user
+// observed: a wave just started — the write-ahead has set currentVerticalSlice + flipped
+// this wave's work orders to `dispatched`, NO ledger action has landed yet (the implementer
+// is mid-run), and a live heartbeat shows the current stage. Before the fix this rendered
+// `pending` with currentVerticalSlice:null; now it reads active + the live stage.
+check('frozen-wave fix: write-ahead journal + live heartbeat → active slice + WO + current stage', () => {
+  const root = newEffort();
+  const NOW = Date.parse('2026-06-27T12:10:00Z');
+  // The journal state the per-wave write-ahead produces (no ledger entries yet).
+  write(root, '.reasonable/journal.json', JSON.stringify({
+    effort: 'fireside', currentVerticalSlice: 'choice-edge', phase: 'vertical-slice-execution',
+    workOrders: {
+      'WO-A': { status: 'dispatched', role: 'implementer', verticalSlice: 'choice-edge' },
+      'WO-B': { status: 'dispatched', role: 'implementer', verticalSlice: 'choice-edge' },
+    },
+  }));
+  // A live heartbeat: WO-A is mid-implement (a 6-minute implementer's Edit).
+  write(root, '.reasonable/progress-live.jsonl', liveLines(
+    { key: 'WO-A', wo: 'WO-A', stage: 'implement', role: 'implementer', tool: 'Edit', target: 'src/ChoiceEdge.tsx', ts: new Date(NOW - 4000).toISOString() },
+  ));
+  const m = buildModel(root, { now: NOW });
+  assert.equal(m.currentVerticalSlice, 'choice-edge', 'slice is current, not null');
+  const slice = m.slices.find((s) => s.id === 'choice-edge');
+  assert.equal(slice.status, 'active', 'slice reads active, NOT pending (the frozen-wave bug)');
+  const woA = slice.children.find((w) => w.id === 'WO-A');
+  assert.equal(woA.status, 'dispatched', 'WO flipped to dispatched by the write-ahead');
+  assert.ok(woA.live && woA.live.stage === 'implement', 'and shows its current stage live');
+  // The rendered mirror a pinned human sees: active slice, the WO, and a live tool line.
+  const md = renderMarkdown(m);
+  assert.match(md, /slice \*\*choice-edge\*\*/);
+  assert.match(md, /▶ \*\*choice-edge\*\*  _\(active\)_/, 'active glyph on the slice');
+  assert.match(md, /⟳ now: implement · Edit src\/ChoiceEdge\.tsx/, 'live stage + tool under the WO');
+  assert.doesNotMatch(md, /choice-edge\*\*  _\(pending\)_/, 'the slice is never shown pending');
+});
+
 for (const t of tmps) { try { rmSync(t, { recursive: true, force: true }); } catch { /* best effort */ } }
 
 if (process.exitCode) console.error(`\nprogress: FAILURES above (${passed} passed).`);

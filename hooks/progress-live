@@ -1,0 +1,8 @@
+#!/usr/bin/env bash
+# Bridge: PreToolUse (every subagent write/run tool call) -> lib/progress-live.mjs --hook.
+# Appends a per-agent heartbeat to .reasonable/progress-live.jsonl (the ephemeral live
+# channel the D19 mirror merges) and regenerates progress.{json,md}. Presentation-only,
+# never a gate input. Fails open if node is absent.
+DIR="$(cd "$(dirname "${BASH_SOURCE[0]:-$0}")" && pwd)"
+command -v node >/dev/null 2>&1 || exit 0
+exec node "${DIR}/../lib/progress-live.mjs" --hook "$@"
