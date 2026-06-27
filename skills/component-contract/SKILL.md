@@ -92,6 +92,50 @@ Visibility ≠ wiring: a fake exported `pub` for cross-crate test use is fine; a
 graph is a violation. Do **not** `#[cfg(test)]`-gate a fake that downstream test crates import — that
 breaks their compilation; the rule is about *wiring*, not visibility.
 
+## Observable seams (render-coupled clauses)
+
+A behavioral clause says **what** is observable (a self-loop renders as a bezier arc; a guard badge
+sits at the midpoint; one handle per waypoint). A test of that clause also needs the **observable
+seam** — the *public test-observation surface*: how to **load** the unit (the export to import) and
+how to **find** each element (a stable test handle: `data-testid` / `role`). That surface is **API
+surface, not behaviour**, so it is legitimately **contract-level** — and declaring it is what lets the
+blind-test-writer target a render clause instead of guessing the implementation (and dying at
+module-load / "element not found" before any assertion runs).
+
+> **"Observable seam" ≠ the brownfield `- Seam:` line.** The `- Seam:` clause line (in `## Topology`
+> or a `characterized` clause) is a **code locus** — Feathers' sensing seam, where a characterization
+> test attaches. An **observable seam** is the **render-observation surface** (export + DOM handle).
+> Different concept, different section; keep them distinct (see `docs/glossary.md`).
+
+Declare them in a `## Observable Seams` section — **prose-shaped, footprint-zero** (like `## Scenarios`:
+zero `### §N` clauses, zero `## Citations` bullets, so the citation DAG is unperturbed). One bullet
+per observable, `- <key>: <the export and/or a stable handle>`:
+
+```markdown
+## Observable Seams
+- component: default export `ChoiceEdge` (the edge component to import)
+- guard-badge: the guard badge at the midpoint → `[data-testid=guard-badge]`
+- waypoint: each waypoint affordance → `[data-testid=edge-waypoint]`
+```
+
+Who does what:
+
+- **The implementer** declares a clause's observable seam and **exposes it in the DOM** (emits the
+  `data-testid`, exports the declared shape). A declared seam the DOM doesn't expose is a **parity
+  violation**, exactly like a clause the code doesn't satisfy.
+- **The blind-test-writer** *targets* the declared seam (imports the declared export, queries the
+  declared handle). It still never reads the implementation and never asserts what the code does.
+- **The adjudicator** runs the suite; a render test that died because it couldn't *observe* the unit
+  is classified deterministically (`lib/seam.mjs`) as **`seam-undeclared`** → a seam-declaration
+  re-pass (implementer declares + exposes), **not** a blind redo. That is the loop the old
+  `fix-test → intent-fork` could never close.
+
+**Prefer function-level where the contract is exact.** If a clause's observable is a **pure value** (a
+path string, a coordinate, a parsed token), make it an **exported function** and test that — no seam,
+no render harness needed. Reserve observable seams for **genuinely render-only** observations. A
+contract with `§1–§4` function-level and only `§5–§7` render-only (each with a declared seam) is the
+healthy shape.
+
 ## Enrichment vs amendment (the ratchet — see contract-amendment skill)
 
 - **Enrichment** (adding a clause): free, additive, the paradigm working. The implementer does it in

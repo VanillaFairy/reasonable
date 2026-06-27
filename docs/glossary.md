@@ -91,6 +91,35 @@ one of the three is probably wrong.
   reachable from the production composition root**. Legal in exactly one place.
   Visibility ≠ wiring: a fake exported `pub` for cross-crate test use is fine; a
   fake wired into `main`'s object graph is not.
+- **Observable seam** — the **public test-observation surface** of a render-coupled
+  clause: the *export* a test imports and a *stable handle* (`data-testid` / `role`)
+  per queried element, declared in a contract's `## Observable Seams` section. It is
+  **API surface, not behaviour** — declaring and targeting it does not break the
+  blind-test-writer's blindness — so it is legitimately contract-level. The implementer
+  **exposes** the declared seam in the DOM (a contract-parity obligation: a declared
+  seam the DOM doesn't expose is a violation); the blind-test-writer **targets** it
+  (import the declared export, query the declared handle) instead of guessing the
+  implementation. **Distinct from the brownfield `- Seam:` line** (a code locus —
+  Feathers' sensing seam, where a characterization test attaches): same word root,
+  disjoint concept, kept apart by context (section vs clause-body line). Prefer a
+  **function-level** observable (an exported pure value) where the contract is exact;
+  reserve observable seams for genuinely render-only observations.
+- **Test conventions** — the stack's test-harness conventions (module system, runner,
+  render lib, setup), recorded once per stack in `.reasonable/test-conventions.md` and
+  fed into **every** blind-test-writer dispatch. **Detected or declared, never guessed**:
+  emitting CJS `require` in an ESM repo, or the wrong runner/render API, is a
+  self-inflicted module-load failure, not a contract question. Public test surface, like
+  the observable seam. The hard machine-read bindings stay in `config.json`; this is the
+  prose narrative the writer (and the implementer, when it exposes a seam) follows.
+- **`seam-undeclared`** — the **OUTCOME disposition** for a render-clause red that died
+  because the test could not *observe* the unit (a **module-load** death, **export-shape**
+  mismatch, or **element-not-found**), classified **deterministically** by `lib/seam.mjs`
+  (never eyeballed — *never simulate what a script can compute*), **not** because behaviour
+  disagreed. It routes a **seam-declaration re-pass** (the implementer enriches
+  `## Observable Seams` + exposes the handle, then the blind-writer re-targets it), bounded
+  so it escalates to the human after a few passes rather than looping. It is the
+  deterministic replacement for the `fix-test → intent-fork → blind redo` loop, which a
+  blind redo could never close (it cannot fix a seam it cannot see).
 - **Depth** — informal measure of accumulated contract. Descriptive, never
   normative.
 - **Vertical slice** — the default unit of work: a vertical stage; one user-visible

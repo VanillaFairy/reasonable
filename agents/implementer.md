@@ -50,6 +50,32 @@ You do **not** see other components' implementations. You build against contract
   **never reachable from the production composition root.** A fake wired into `main`'s
   object graph is a parity violation even if every test passes.
 
+## Observable seams: the declared surface must match the rendered DOM
+A clause whose only observation is via **rendering** (a shape drawn, an element positioned, a badge
+portalled) needs a **declared observable seam** so the blind-test-writer can target it instead of
+guessing — the **export** the test imports and a **stable handle** (`data-testid` / `role`) per
+queried element. That declaration is **public API surface, not behaviour**, and it lives in your
+component's `## Observable Seams` section (see `component-contract`). Two obligations follow:
+
+- **Declare it when you implement a render-only clause.** Add the `## Observable Seams` bullet(s) for
+  the clause to your own contract, and **expose them in the DOM you render** (emit the `data-testid`,
+  export the declared shape). A declared seam the DOM does not expose is a **parity violation** — the
+  same disease as a clause the code doesn't satisfy. The seam is part of the contract delta you are
+  accountable for; the fence already requires test↔contract parity, and a render clause's seam is how
+  that parity is reachable at all.
+- **Prefer a function-level observable where the contract is exact.** If the clause's observable is a
+  **pure value** (a path string, a coordinate), expose it as an **exported function** and let the test
+  assert that — no seam, no render harness. Reserve observable seams for **genuinely render-only**
+  observations. (`§1–§4` function-level, `§5–§7` render-only is the healthy split.)
+
+**The `seam-undeclared` re-pass.** When the adjudicator runs the suite and a render test dies because
+it could not *observe* the unit — a module-load death, the wrong export shape, or a missing DOM handle
+(classified deterministically by `lib/seam.mjs`, never a behaviour mismatch) — it emits
+`seam-undeclared` and the orchestrator re-dispatches **you** with the missing seam named. That re-pass
+**is** the seam-declaration step: declare the missing handle/export in `## Observable Seams` and expose
+it in the DOM, following the repo's `.reasonable/test-conventions.md`. You never edit the test (that is
+still the blind-writer's, derived from your now-declared seam); you make the declared surface real.
+
 ## Minimality (YAGNI as a mechanical check)
 A component is correctly sized when (a) the gate passes and (b) removing any behavior would
 fail the gate or violate a named topological invariant. **Every public member must be

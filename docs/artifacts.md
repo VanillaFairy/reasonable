@@ -90,6 +90,7 @@ work-orders/, verdicts/, knowledge/, …) is **orchestrator-only**. The **main s
   sanity-invariants.md     # standing taboos (lintable subset in config.json)
   resource-lexicon.json *  # declarable runtime resources
   documentation-policy.md  # how contracts relate to host docs
+  test-conventions.md      # the stack's test-harness conventions (module system, runner, render lib) — fed to the blind-test-writer
   inbox.json *             # approval inbox (also mirrored in journal for convenience)
   progress.json            # derived progress tree, effort-scoped (for graphing; D19; no parser)
   progress.md              # derived progress tree, the pinnable live view (D19; no parser)
@@ -136,7 +137,7 @@ orchestrator's Bash:
 
 | Artifact | Written by | How |
 |---|---|---|
-| vision · topology · route · config · supervision · resource-lexicon · sanity-invariants · documentation-policy | **orchestrator** (main session, at analysis) | Bash (no-lane path) |
+| vision · topology · route · config · supervision · resource-lexicon · sanity-invariants · documentation-policy · test-conventions | **orchestrator** (main session, at analysis/scaffolding) | Bash (no-lane path) |
 | work-orders/`<id>`.json · vertical-slices/`<id>`.md | **orchestrator** (main session, during the run) | Bash (no-lane path) |
 | intention.md | **intention-writer** (after the coherence-grill ratifies) | its own atomic commit |
 | baseline.json + skeleton contracts | **census** (brownfield, at analysis) | Bash + `lib/baseline.mjs` (no-lane path) |
@@ -343,6 +344,19 @@ Parsing rules (exact):
   keywords `Gate:` / `Provenance:` / `Supersession:` / `Seam:` (those are clause-body lines).
   The inventory is **advisory** — a hint for the route-planner and the human birth-ratification
   gate; tooth-bearing `characterized` clauses are born **separately**, lazily, at first touch.
+- A `## Observable Seams` section (optional) declares the **public test-observation surface** for
+  render-coupled clauses — the **export** a test imports and a **stable handle** (`data-testid` /
+  `role`) per queried element. It is **API surface, not behaviour**: it lets the blind-test-writer
+  *target* a render clause instead of guessing (which dies at module-load / "element not found").
+  Like `## Scenarios` it is **parser-relevant but footprint-zero**: `lib/contract.mjs` parses each
+  bullet into `seams: [{ key, importHint, handle, raw }]` but emits **zero clauses and zero
+  citations**, so the citation DAG is unperturbed. Each bullet is `- <key>: <body>`, where `<body>`
+  names a backticked handle (`` `[data-testid=…]` ``) and/or an export (`` default export `Foo` ``).
+  Do **not** confuse this **observable seam** with the brownfield `- Seam:` clause line, which is a
+  **code locus** (Feathers' sensing seam); they are distinct concepts kept disjoint by context.
+  Verification is **empirical**: the implementer exposes the declared seam in the DOM, and the
+  adjudicator's real suite run proves it (element found ⟺ seam exposed). A render red that the
+  `lib/seam.mjs` classifier calls a seam failure routes the `seam-undeclared` OUTCOME (below).
 - A `- Supersession:` line (`^[-*]\s+Supersession:\s+(pending|<event>)$`) is
   stamped `pending` by the characterizer when the touching change's
   `behaviorDelta` names this clause — the signal that a grown test is about to
@@ -669,6 +683,47 @@ check. Budgets start tight; retros loosen them with telemetry.
 
 The scheduler treats any resource claimed `exclusive` by two work orders as a
 serialization point, exactly like an overlapping file locus.
+
+---
+
+## test-conventions.md
+
+The stack's **test-harness conventions** — standing context fed into **every**
+blind-test-writer dispatch (and useful to the characterizer, scaffolder, and implementer)
+so they **follow** the repo's conventions and never **guess** them. The render-clause
+incident came from guessing: CJS `require` in a Vite/ESM project (module-load death),
+a named import of a `export default` component ("Element type is invalid"). Those are not
+contract questions and not implementation behaviour — they are **public test surface** the
+writer must know up front.
+
+It carries **no `*`**: nothing in `lib/*.mjs` parses it; it is prose the model reads (like
+`documentation-policy.md` / `sanity-invariants.md`). The hard, machine-read bindings
+(`testCommand`, `testGlobs`, `setupCommand`, …) stay in `config.json *`; this file is the
+human/agent-read narrative the blind-writer follows.
+
+It is **detected or declared, once per stack**: on a brownfield effort the orchestrator
+**detects** it from an existing test file + config (the source of truth for "how this repo
+writes tests"); on greenfield it **declares** it from the stack binding table
+(`skills/gate-mechanics/references/<stack>.md`). Written at analysis/scaffolding via the
+no-lane Bash path, alongside `config.json`.
+
+```markdown
+# Test conventions: fireside-widget (typescript)
+
+- **Module system:** ESM — `import`, **never** CJS `require`. `package.json` has `"type": "module"`.
+- **Runner:** Vitest (`vitest run`). Use `describe` / `it` / `expect` / `vi`.
+- **Render lib:** React Testing Library (`@testing-library/react`) — `render`, `screen`,
+  `screen.getByTestId(...)`. Query the contract's declared `## Observable Seams` handles; never
+  reach into the DOM by incidental attribute or by component-internal class names.
+- **Import shape:** prefer the export the contract's `## Observable Seams` declares (often a
+  `default` export for a component); confirm default-vs-named against the declared seam.
+- **Setup:** `vitest.setup.ts` registers `@testing-library/jest-dom`; `jsdom` environment.
+- **An existing example:** `src/edges/Edge.test.tsx` (mirror its import + render + query shape).
+```
+
+The blind-test-writer reads this file (and an existing test) **before** writing a render
+test; the implementer reads it when it **exposes** a declared observable seam, so the
+emitted handle/export matches what a test written to these conventions will query.
 
 ---
 

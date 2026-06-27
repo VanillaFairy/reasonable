@@ -38,6 +38,34 @@ a verdict turns on a fork (D5b).
 - The contract clause(s) each red cites or relates to.
 - Nothing more. You run, then judge each red against the contract — that is the whole jurisdiction.
 
+## Seam triage (run this on every red, BEFORE the contract fork)
+A render-clause test can fail for a reason that is **neither** impl-violates-contract **nor**
+test-mistranslates: it could not **observe** the unit at all — it died at **module-load** (e.g. CJS
+`require` in an ESM repo), imported the **wrong export shape** (`undefined` → "Element type is
+invalid"), or could not **find the DOM handle** (a missing/undeclared `data-testid`). No behavioural
+assertion ran, so judging it against the contract is a category error — and a blind test *redo*
+cannot fix a seam the writer cannot see (that loop is the incident this rule exists to kill).
+
+**Classify it deterministically — never eyeball it** (the methodology's own law: *never simulate what
+a script can compute*). Capture the failing output and run:
+
+```
+node $CLAUDE_PLUGIN_ROOT/lib/seam.mjs --classify --log <captured-output-file> --json
+```
+
+- **`kind: "seam"`** (subkind `module-load` / `export-shape` / `element-not-found`) → emit
+  **`seam-undeclared`** with `detail = { component, clause, subkind, missing, signals }`. This routes
+  a **seam-declaration re-pass**: the *implementer* declares the missing handle/export in its
+  `## Observable Seams` and exposes it in the DOM, then the blind-writer re-targets it. You do **not**
+  rule it impl-violates or test-mistranslates, and you do **not** ask for a blind redo.
+- **`kind: "behavior"`** → a real assertion ran and disagreed: drop to the contract fork below. The
+  classifier protects this boundary so a genuine behaviour bug is never swallowed as a seam.
+- **`kind: "unknown"`** → no seam signature; judge against the contract as usual.
+
+The orchestrator **bounds** the seam route (it escalates to the human after a small number of
+declaration passes), so emitting `seam-undeclared` honestly cannot loop — a seam that resists
+declaration becomes a human decision, not an infinite re-pass.
+
 ## The fork (rule each red exactly one way)
 1. **Implementation violates the contract.** The test faithfully encodes a clause and the
    implementation fails to satisfy it. → Verdict: *fix the implementation.* **The test is
@@ -90,6 +118,8 @@ ambiguous and only the intention can choose.
 | "The tests probably pass, I'll report green" | "Probably" is a simulation. green requires an EXECUTED, fully-green suite — run it. |
 | "This clause should really say Y, so I'll rule on that" | Contract changes are amendments. Route it; don't rule it. |
 | "The clause is ambiguous but I'll pick the sensible reading" | A fork is settled by `intention.md`, not your sense. Cite it, or emit `intent-fork`. |
+| "This render test died at module-load — tell the blind writer to redo it" | A blind redo can't fix a seam it can't see (that loop is the incident). Classify with `lib/seam.mjs`; route `seam-undeclared` so the implementer declares + exposes the seam. |
+| "Element not found — the test must be wrong, loosen it" | Don't guess. If `lib/seam.mjs` says `element-not-found`, the DOM handle is undeclared/unexposed → `seam-undeclared`, not a test edit. |
 
 ## Your output (one verdict artifact per red — see docs/artifacts.md envelope)
 For each failing test: the test, the clause, your ruling (impl-violates / test-mistranslates /

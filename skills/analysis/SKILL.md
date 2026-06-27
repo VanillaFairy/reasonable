@@ -79,6 +79,15 @@ The vision you are extracting has three parts:
    **preserve the supervision `profile` the entry skill (`develop`/`develop-autonomously`) already set; only
    write a profile if none is set, falling back to `standard`.** Default budgets — start **tight**,
    retros loosen with data.
+7b. **Test conventions.** Emit `.reasonable/test-conventions.md`: the stack's test-harness conventions
+   — **module system** (ESM `import` vs CJS `require`), **runner**, **render lib**, **import/export
+   shape**, **setup**, and a pointer to one **existing example test** to mirror (see
+   `docs/artifacts.md § test-conventions.md`). **Detect, don't guess:** on brownfield, read an
+   existing test file + config and transcribe what the repo actually does; on greenfield, declare it
+   from the stack binding table. This is fed into **every** blind-test-writer dispatch so it never
+   guesses how to load/render a unit (the render-clause incident: CJS `require` in an ESM repo,
+   named-importing a default export). Public test surface, not behaviour — pairs with the contract's
+   `## Observable Seams` (the per-clause render-observation handles).
    - **Plant the gitignore entries (idempotent).** Ensure the target repo's `.gitignore` contains
      `.reasonable/`, `.reasonable.done-*/`, `.reasonable-lane.json`, and `.worktrees/` — **unanchored**
      (no leading `/`), so they match the effort root whether it sits at the repo root or at a
@@ -187,7 +196,7 @@ the census skeletons, `baseline.json`, and `intention.md` — alongside the stan
 ## Output
 
 The ratified `.reasonable/` standing artifacts (vision, topology, route, documentation-policy,
-resource-lexicon, sanity-invariants, config, supervision, empty journal/ledger/inbox) and a
-go/no-go for scaffolding. **On the brownfield branch, also:** the census skeleton topology contracts,
+resource-lexicon, sanity-invariants, config, supervision, test-conventions, empty
+journal/ledger/inbox) and a go/no-go for scaffolding. **On the brownfield branch, also:** the census skeleton topology contracts,
 `baseline.json` (the FLOOR partition), and the ratified `intention.md` (the change-intention oracle).
 Then invoke the `scaffolding` skill (in brownfield mode it builds a thin frontier inventory of the route-intended scenarios (deferring tooth-bearing pins to first-touch genesis) rather than building a walking skeleton).
