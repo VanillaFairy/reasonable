@@ -41,6 +41,17 @@
         ]
       }
     ],
+    "PostToolUse": [
+      {
+        "matcher": "Edit|Write|MultiEdit",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "\"${CLAUDE_PLUGIN_ROOT}/hooks/run-hook.cmd\" progress"
+          }
+        ]
+      }
+    ],
     "Stop": [
       {
         "hooks": [

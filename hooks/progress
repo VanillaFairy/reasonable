@@ -1,0 +1,7 @@
+#!/usr/bin/env bash
+# Bridge: PostToolUse (journal / ledger / inbox writes) -> lib/progress.mjs --hook.
+# Regenerates the derived progress mirror (.reasonable/progress.{json,md}) deterministically,
+# no model in the loop. Fails open if node is absent.
+DIR="$(cd "$(dirname "${BASH_SOURCE[0]:-$0}")" && pwd)"
+command -v node >/dev/null 2>&1 || exit 0
+exec node "${DIR}/../lib/progress.mjs" --hook "$@"
