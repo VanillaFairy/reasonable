@@ -1,0 +1,19 @@
+# Canonical line endings - the durable fix for the CRLF-rejection bug.
+#
+# The Workflow approval gate reads workflows/*.js and rejects carriage returns; bash runs
+# the extensionless hook shims and breaks on a stray CR. With core.autocrlf=true and no
+# attributes, a Windows checkout hands these files CRLF. Pin LF for everything the harness,
+# node, or bash reads, so no per-machine autocrlf setting can reintroduce a carriage return.
+*.workflow.js       text eol=lf
+*.mjs               text eol=lf
+*.js                text eol=lf
+
+# Extensionless bash hook shims - always executed by bash, on every platform.
+hooks/fence         text eol=lf
+hooks/budget        text eol=lf
+hooks/sanity        text eol=lf
+hooks/session-start text eol=lf
+hooks/stop-commit   text eol=lf
+
+# run-hook.cmd is a cmd/sh POLYGLOT: it needs the platform-native EOL (CRLF for Windows
+# cmd, LF for Unix bash), which plain autocrlf already provides. Deliberately NOT pinned.

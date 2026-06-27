@@ -971,23 +971,28 @@ function withinAgentCap(state) {
 // -----------------------------------------------------------------------------
 // The run.
 // -----------------------------------------------------------------------------
-const a = args || {};
+// `args` is the FROZEN engine global (the substrate freezes it for deterministic
+// replay). Work on a mutable shallow COPY so the D18 fallback can fill in a missing
+// effortRoot without throwing on the frozen original.
+const a = { ...(args || {}) };
 
 phase('Reconcile');
 // Reconcile prologue - unconditional, total, halting (S12). Direct agent() (not
-// guard()-wrapped): a reconcile failure is a HALT, not a budget checkpoint.
-let state = await agent(reconcilePrompt(a), { label: 'reconcile', agentType: 'reasonable:reconciler', schema: BRIEFING });
-if (!state || state.halt) {
+// guard()-wrapped): a reconcile failure is a HALT, not a budget checkpoint. The agent
+// result (the BRIEFING) is ALSO frozen - read it, never mutate it; the mutable working
+// `state` is a fresh object seeded from it below.
+const briefing = await agent(reconcilePrompt(a), { label: 'reconcile', agentType: 'reasonable:reconciler', schema: BRIEFING });
+if (!briefing || briefing.halt) {
   // Carry the D13 distinction in the slice-runner's own halt result rather than
   // relying solely on reconcile.mjs setting halt: a floor-integrity-unexplained halt
   // is the fifth always-escalate STOP (an UNEXPLAINED autonomous floor breach), tagged
   // distinctly from the four first-line AMBIGUOUS classes for the main-session router.
-  const haltClass = state && state.haltClass || null;
+  const haltClass = briefing && briefing.haltClass || null;
   return {
     kind: 'halt',
     haltClass,
-    floorUnexplained: state && typeof state.floorUnexplained === 'number' ? state.floorUnexplained : null,
-    reason: (state && state.haltReason) ||
+    floorUnexplained: briefing && typeof briefing.floorUnexplained === 'number' ? briefing.floorUnexplained : null,
+    reason: (briefing && briefing.haltReason) ||
       (haltClass === 'floor-integrity-unexplained'
         ? 'UNEXPLAINED autonomous floor-integrity breach - fifth always-escalate STOP (D13)'
         : 'reconcile returned null or AMBIGUOUS (recovery halt)'),
@@ -995,27 +1000,33 @@ if (!state || state.halt) {
 }
 // An EXPLAINED floor diff (or any gated floor diff) does not halt: it surfaces as a
 // non-blocking NOTICE (annotate-not-disarm - the human always sees it, the run continues).
-if (typeof state.floorUnexplained === 'number' && state.floorUnexplained === 0 && (state.evidence || state.haltReason)) {
+if (typeof briefing.floorUnexplained === 'number' && briefing.floorUnexplained === 0 && (briefing.evidence || briefing.haltReason)) {
   log('Reconcile: floor-integrity diff surfaced as a NON-BLOCKING NOTICE (D6/D13: explained-by-verdict or gated) - logged, run continues.');
 }
 
 // D18 args-drop fallback: if args did not carry the effort root / slice, take what the
-// reconciler resolved from disk and thread it into `a` for every downstream stage. The
-// pure script cannot read disk, so the first agent's resolution is the only recovery path.
-if (!a.effortRoot && state.effortRoot) a.effortRoot = state.effortRoot;
-if (!a.verticalSliceId && state.currentVerticalSlice) a.verticalSliceId = state.currentVerticalSlice;
+// reconciler resolved from disk and thread it into `a` (our mutable copy) for every
+// downstream stage. The pure script cannot read disk, so the first agent's resolution is
+// the only recovery path.
+if (!a.effortRoot && briefing.effortRoot) a.effortRoot = briefing.effortRoot;
+if (!a.verticalSliceId && briefing.currentVerticalSlice) a.verticalSliceId = briefing.currentVerticalSlice;
 if (!a.effortRoot) {
   return { kind: 'halt', reason: 'effort root unresolved: not supplied in args and the reconciler could not recover it from cwd. Re-launch the runner by NAME with args.effortRoot set (the scriptPath path drops args).' };
 }
 
 // Effective run mode (carried, never inferred). reconcile read config.runMode; an
 // absent/null mode is already a reconcile HALT above, so here it is concrete.
-const mode = a.runMode || state.runMode;
-state.outcomes = [];
-state.blocked = [];
-state.pendingInbox = [];
-state.greenWorkOrders = [];
-state.agentsDispatched = 0;
+const mode = a.runMode || briefing.runMode;
+// Working state: a fresh MUTABLE object seeded from the frozen briefing. The loop and the
+// trap router mutate these fields freely; the briefing itself is never touched.
+let state = {
+  ...briefing,
+  outcomes: [],
+  blocked: [],
+  pendingInbox: [],
+  greenWorkOrders: [],
+  agentsDispatched: 0,
+};
 
 phase('Plan');
 const plan = await agent(routePrompt(state, a), { label: 'route-plan', agentType: 'reasonable:route-planner', schema: ROUTE_PLAN });

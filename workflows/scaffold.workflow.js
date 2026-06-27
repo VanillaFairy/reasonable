@@ -400,7 +400,7 @@ function scribePrompt(a, build) {
 // returns a typed result and the main session runs the (gated) sign-off gate.
 // ---------------------------------------------------------------------------
 
-const a = args || {}
+const a = { ...(args || {}) } // mutable copy - never mutate the frozen `args` global
 const mode = modeOf(a)
 
 // 1. Provision the lane BEFORE the scaffolder mutates (D7, the characterization model). The
