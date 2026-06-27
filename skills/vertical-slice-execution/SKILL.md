@@ -40,6 +40,24 @@ closing). Inside the run, you reconcile and read; you never co-write the index.
 (`${reasonable}` in the commands below = this plugin's root directory — `$CLAUDE_PLUGIN_ROOT` in
 hooks; substitute the installed absolute path when you invoke a script.)
 
+## Progress visibility (the live tree, D19)
+
+A long run dispatches dozens of agents over many minutes — so progress must be *visible* without
+spamming the chat. The plugin maintains a **deterministic nested progress tree** at
+`.reasonable/progress.md` (and structured `progress.json`): effort → vertical slice → work order →
+atomic action, with agents/tokens since the effort began. It is regenerated **with no model in the
+loop** by a hook on every journal write (zero tokens), so it is always exactly consistent with the
+ledger.
+
+- **Tell the human ONCE** (the first vertical slice of the effort), in your own voice, to **pin
+  `.reasonable/progress.md`** to follow the run live. Later updates are silent — the file just grows.
+- Keep the main-session **TodoWrite at the vertical-slice grain** — one item per frontier slice, the
+  active one `in_progress` — *not* a single opaque "run" item. The within-slice detail (work orders,
+  stages, atomic actions, cost) lives in the mirror, never the todo.
+- When the runner returns a `GATE_RESULT`, post a **concise** boundary digest (1–3 lines: slice +
+  what's done / doing / cost) — read it from `node ${reasonable}/lib/progress.mjs --root <effortRoot>`
+  or the result evidence. Never paste the whole tree into chat; point to the pinned mirror.
+
 ## 0. Open the vertical slice
 - Confirm exactly **one vertical slice in flight** (the default; cross-vertical-slice parallelism is opt-in, see §6).
 - **Promote** the vertical slice's gate just-in-time (remove the ignore marker). Run the suite; confirm the
