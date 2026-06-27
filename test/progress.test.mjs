@@ -6,11 +6,15 @@
 // renders it, and writes the mirror — and that it degrades gracefully on a bare effort.
 
 import assert from 'node:assert';
+import { execFileSync } from 'node:child_process';
 import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, rmSync, existsSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { join, dirname } from 'node:path';
+import { fileURLToPath } from 'node:url';
 
 import { buildModel, renderMarkdown, writeMirror } from '../lib/progress.mjs';
+
+const LIB = join(dirname(fileURLToPath(import.meta.url)), '..', 'lib', 'progress.mjs');
 
 const tmps = [];
 const write = (root, rel, content) => {
@@ -130,6 +134,36 @@ check('bare effort → empty tree, no throw', () => {
   assert.equal(m.counts.workOrders, 0);
   assert.deepEqual(m.slices, []);
   assert.doesNotThrow(() => renderMarkdown(m));
+});
+
+// E — effort scoping: the --hook regen attributes to the WRITTEN artifact, never cwd, so
+// a repo hosting several efforts (each its own .reasonable/) never cross-writes mirrors.
+check('effort-scoped: a journal write regenerates ONLY that effort (multi-effort repo)', () => {
+  const base = mkdtempSync(join(tmpdir(), 'prog-multi-')); tmps.push(base);
+  const A = join(base, 'effort-a'), B = join(base, 'effort-b');
+  for (const r of [A, B]) {
+    mkdirSync(join(r, '.reasonable'), { recursive: true });
+    writeFileSync(join(r, '.reasonable', 'journal.json'), JSON.stringify({ effort: r.endsWith('a') ? 'A' : 'B', workOrders: {} }));
+  }
+  // PostToolUse payload for a write to A's journal — cwd deliberately set to B.
+  execFileSync('node', [LIB, '--hook'], {
+    input: JSON.stringify({ tool_name: 'Write', tool_input: { file_path: join(A, '.reasonable', 'journal.json') }, cwd: B }),
+    stdio: ['pipe', 'pipe', 'pipe'], timeout: 15000,
+  });
+  assert.ok(existsSync(join(A, '.reasonable', 'progress.md')), "A's mirror regenerated (its journal changed)");
+  assert.ok(!existsSync(join(B, '.reasonable', 'progress.md')), "B's mirror untouched, even though cwd was B");
+});
+
+// F — a coincidental journal.json outside .reasonable/ must NOT trigger a regen.
+check('non-canonical journal.json (wrong parent) → no regen', () => {
+  const root = newEffort(); seed(root);
+  mkdirSync(join(root, 'src'), { recursive: true });
+  writeFileSync(join(root, 'src', 'journal.json'), '{}');
+  execFileSync('node', [LIB, '--hook'], {
+    input: JSON.stringify({ tool_name: 'Write', tool_input: { file_path: join(root, 'src', 'journal.json') }, cwd: root }),
+    stdio: ['pipe', 'pipe', 'pipe'], timeout: 15000,
+  });
+  assert.ok(!existsSync(join(root, '.reasonable', 'progress.md')), 'a journal.json under src/ is not a canonical artifact');
 });
 
 for (const t of tmps) { try { rmSync(t, { recursive: true, force: true }); } catch { /* best effort */ } }
