@@ -27,6 +27,7 @@ Written at scaffolding into `.reasonable/config.json`:
   "buildCommand": "cargo build",
   "testCommand": "cargo test",
   "testOneCommand": "cargo test {test}",
+  "setupCommand": "cargo fetch",
   "testGlobs": ["tests/**", "**/*_test.rs", "src/**/tests.rs", "src/**/tests/**"],
   "loudStubMarkers": ["todo!", "unimplemented!", "unreachable!(\"reasonable:"],
   "parkMarkerRegex": "#\\[ignore\\s*=\\s*\"pending:",

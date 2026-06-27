@@ -259,6 +259,16 @@ optimization: a same-session cache with zero authority. The sole correctness aut
 **unconditional reconcile prologue** that re-derives truth from git+ledger+contracts at the start of *every*
 run. The pure script carries no freshness logic (it can't — it has no filesystem).
 
+**The args-drop fallback (D18).** That same property — the prologue runs an agent whose cwd *is* the
+effort root — is also what makes the run resilient when `args` fails to propagate. Launching the runner by
+**registered name** passes `args` reliably; launching by `scriptPath` has been observed to deliver an
+**empty `args`** (so `effortRoot` / `verticalSliceId` arrive undefined). Because the pure script can't read
+disk, the recovery lives in the *first agent*: when `args` lacks the effort root, the reconciler resolves
+it from its own cwd (the nearest `.reasonable/` ancestor) and the open slice from effort state, and returns
+both in the BRIEFING; the script threads them into `a` for every downstream stage, and HALTs only if even
+that recovery fails. Prefer launch-by-name so the fallback never has to fire — but the run no longer depends
+on it.
+
 Reconcile re-derives truth every run rather than trusting any same-session prefix-staleness guarantee. Such
 a guarantee would rest on a false premise: the engine caches on `agent()` **call identity** (prompt/args/order),
 not on a contract *file* changing under a textually-identical call — so a read-only consumer whose prompt
