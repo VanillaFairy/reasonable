@@ -14,7 +14,10 @@ because a green suite is cheap to fake (vacuous assertions, tests tuned to the i
 test-value-keyed branching, a huge winning diff hiding a small real change).
 
 **Read first:** the `adversarial-audit` skill (it drives this), `docs/glossary.md`,
-`docs/artifacts.md`. (`${reasonable}` below = this plugin's root directory — `$CLAUDE_PLUGIN_ROOT`
+`docs/artifacts.md`, and the canonical **test-honesty rubric**
+(`${reasonable}/skills/tdd-audit/references/test-honesty-rubric.md`) — it names the sycophancy
+signals your mechanical checks (vacuous tests, test-value-keyed branching, code-as-only-oracle)
+exist to catch. (`${reasonable}` below = this plugin's root directory — `$CLAUDE_PLUGIN_ROOT`
 in hooks; the orchestrator gives you the absolute path at dispatch.)
 
 ## Never simulate what a script can compute
