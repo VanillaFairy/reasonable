@@ -937,10 +937,19 @@ function route(outcome, state, mode) {
 // is a HALT upstream (the script must not proceed believing a transition persisted) -
 // but loses no truth, since reconcile rebuilds the index from git+ledger.
 async function journalWrite(state) {
+  // Descriptive run telemetry for the deterministic progress mirror (D19): the script's
+  // own agent tally + the engine's token spend. Best-effort, NOT a gate input and NOT
+  // reconcile-rebuildable (like journal.lastReconciled) - it resets from the next wave on
+  // a cold rebuild. The pure script can't stamp time; the scribe adds updatedAt.
+  const cost = {
+    agentsDispatched: state.agentsDispatched || 0,
+    tokensSpent: (typeof budget !== 'undefined' && budget && typeof budget.spent === 'function') ? budget.spent() : null,
+  };
   const ack = await agent(
     [
       'Write the derived index (journal.json + inbox.json) - and nothing else (D3b).',
       'Record the program-counter transitions write-ahead, and append the pending inbox items with their BREAKING/ADVISORY class.',
+      `Also persist this descriptive cost block into journal.json as "cost" (add an updatedAt ISO timestamp): ${j(cost)}. It feeds the deterministic progress mirror (D19) - descriptive telemetry, never a gate input.`,
       `Transitions: ${j({ greenWorkOrders: state.greenWorkOrders || [], checkpoints: (state.checkpoints || []).length, blocked: (state.blocked || []).length })}`,
       `Pending inbox: ${j(state.pendingInbox || [])}`,
       'Return the SCRIBE_ACK: persisted:true once journal.json + inbox.json are durably written faithfully against their schemas; persisted:false if you cannot complete a clean, faithful write (the script reads persisted:false as HALT - it must not proceed believing a transition persisted). A bare-null return is reserved for agent death/skip and also HALTs.',

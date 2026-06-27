@@ -40,8 +40,11 @@ still binds for your normal scribe dispatch.
 1. **`journal.json` — the program counter.** Statuses are exactly
    `pending | dispatched | checkpointed | merged | dead-end`. You record status transitions on
    `workOrders`, the `lanes` map (worktree path → work order), `currentVerticalSlice`, `phase`,
-   `supervision`, and the orchestrator's `commits` accounting. Match the schema in `docs/artifacts.md`
-   field-for-field; invent no fields.
+   `supervision`, and the orchestrator's `commits` accounting. When the dispatch prompt hands you a
+   `cost` block (the runner's agent tally + token spend), persist it as the descriptive `cost` field
+   (stamp an `updatedAt`) — it feeds the deterministic progress mirror (D19), is **never a gate
+   input**, and is the one journal field that is not reconcile-rebuildable. Otherwise match the schema
+   in `docs/artifacts.md` field-for-field; invent no fields.
 2. **`inbox.json` — the approval inbox.** Append an item, or flip an existing item's `status` exactly
    as the script directs. `kind` ∈ `vision-amendment | dead-end | topology-smell | budget-extension |
    provenance-drift`. You never auto-resolve an item — **silence never consents**; only an explicit

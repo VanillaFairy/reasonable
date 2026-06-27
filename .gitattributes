@@ -14,6 +14,7 @@ hooks/budget        text eol=lf
 hooks/sanity        text eol=lf
 hooks/session-start text eol=lf
 hooks/stop-commit   text eol=lf
+hooks/progress      text eol=lf
 
 # run-hook.cmd is a cmd/sh POLYGLOT: it needs the platform-native EOL (CRLF for Windows
 # cmd, LF for Unix bash), which plain autocrlf already provides. Deliberately NOT pinned.
