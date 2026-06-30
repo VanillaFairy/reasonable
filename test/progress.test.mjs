@@ -211,7 +211,7 @@ check('live merge: a heartbeat older than journal.lastReconciled is ignored (res
   assert.ok(wo1.live && wo1.live.target === 'fresh', 'a post-reconcile heartbeat shows');
 });
 
-check('render: live heartbeats render as ⟳ now lines (per-WO + effort-level), with age', () => {
+check('render: live heartbeats render as ⟳ now lines (per-WO + effort-level), with a literal [HH:MM:SS] timestamp', () => {
   const root = newEffort(); seed(root);
   const NOW = Date.parse('2026-06-27T12:10:00Z');
   write(root, '.reasonable/progress-live.jsonl', liveLines(
@@ -219,9 +219,27 @@ check('render: live heartbeats render as ⟳ now lines (per-WO + effort-level), 
     { key: '@reconciler', wo: null, stage: 'reconcile', role: 'reconciler', tool: 'Bash', target: 'git rev-list …', ts: new Date(NOW - 1000).toISOString() },
   ));
   const md = renderMarkdown(buildModel(root, { now: NOW }));
-  assert.match(md, /⟳ now: implement · Edit src\/ChoiceEdge\.tsx/, 'per-WO heartbeat line');
-  assert.match(md, /⟳ \*\*now\*\* · reconcile · Bash git rev-list/, 'effort-level heartbeat line');
-  assert.match(md, /3s ago/, 'heartbeat age is rendered');
+  assert.match(md, /▶ implement {2,}\[12:09:57\] ⟳ Edit src\/ChoiceEdge\.tsx/, 'per-WO heartbeat folds into the active stage, time-prefixed');
+  assert.match(md, /\[12:09:59\] ⟳ \*\*now\*\* · reconcile · Bash git rev-list/, 'effort-level heartbeat line, time-prefixed');
+  assert.doesNotMatch(md, /ago/, 'no stale relative age — literal timestamps only');
+});
+
+// G2 — atomic-action lines carry the same literal [HH:MM:SS] prefix, sliced from the
+// ledger entry's ts; an action with no ts degrades to no prefix (never a crash, never NaN).
+check('render: action lines are time-prefixed from the ledger ts; tsless action → no prefix', () => {
+  const root = newEffort();
+  write(root, '.reasonable/journal.json', JSON.stringify({
+    effort: 'demo', currentVerticalSlice: 's',
+    workOrders: { 'WO-1': { status: 'dispatched', role: 'implementer', verticalSlice: 's' } },
+  }));
+  write(root, '.reasonable/ledger.jsonl', liveLines(
+    { seq: 1, type: 'enrichment', component: 'edge-path', clauses: ['§8'], workOrder: 'WO-1', note: 'autoRoute bypass', ts: '2026-06-27T09:04:11Z' },
+    { seq: 2, type: 'commit', workOrder: 'WO-1' }, // no ts → graceful, no prefix
+  ));
+  const md = renderMarkdown(buildModel(root));
+  assert.match(md, /\[09:04:11\] ✎ enriched edge-path §8 — autoRoute bypass/, 'ledger ts prefixes the action line');
+  assert.match(md, /- ✎ commit/, 'a tsless action renders with no time prefix, no NaN');
+  assert.doesNotMatch(md, /\[NaN/, 'never a NaN timestamp');
 });
 
 // H — the FROZEN-WAVE fix end to end (D19 acceptance #1). The exact state the user
@@ -251,12 +269,128 @@ check('frozen-wave fix: write-ahead journal + live heartbeat → active slice + 
   const woA = slice.children.find((w) => w.id === 'WO-A');
   assert.equal(woA.status, 'dispatched', 'WO flipped to dispatched by the write-ahead');
   assert.ok(woA.live && woA.live.stage === 'implement', 'and shows its current stage live');
-  // The rendered mirror a pinned human sees: active slice, the WO, and a live tool line.
+  // The rendered mirror a pinned human sees: active slice, the WO, its pipeline scaffold,
+  // and the live tool folded into the current (implement) stage.
   const md = renderMarkdown(m);
   assert.match(md, /slice \*\*choice-edge\*\*/);
   assert.match(md, /▶ \*\*choice-edge\*\*  _\(active\)_/, 'active glyph on the slice');
-  assert.match(md, /⟳ now: implement · Edit src\/ChoiceEdge\.tsx/, 'live stage + tool under the WO');
+  assert.match(md, /- ✓ provision/, 'a reached stage shows done in the scaffold');
+  assert.match(md, /- ▶ implement {2,}\[12:09:56\] ⟳ Edit src\/ChoiceEdge\.tsx/, 'live stage + tool folded into the active pipeline stage');
+  assert.match(md, /- · blind-test/, 'a not-yet-reached stage shows pending');
+  assert.match(md, /- · audit/, 'the final stage is pending');
   assert.doesNotMatch(md, /choice-edge\*\*  _\(pending\)_/, 'the slice is never shown pending');
+});
+
+// I — the per-WO pipeline scaffold: a dispatched WO renders the fixed stage checklist with
+// stages before the live one DONE, the live stage ACTIVE (carrying the heartbeat), later
+// stages PENDING. Unevidenced conditional stages (characterize / intent-verify) are HIDDEN
+// (the projection never predicts a stage that may not run).
+check('pipeline: dispatched WO → done<active<pending, conditionals hidden when unevidenced', () => {
+  const root = newEffort();
+  const NOW = Date.parse('2026-06-27T12:10:00Z');
+  write(root, '.reasonable/journal.json', JSON.stringify({
+    effort: 'demo', currentVerticalSlice: 's',
+    workOrders: { 'WO-1': { status: 'dispatched', role: 'implementer', verticalSlice: 's' } },
+  }));
+  write(root, '.reasonable/progress-live.jsonl', liveLines(
+    { key: 'WO-1', wo: 'WO-1', stage: 'blind-test', role: 'blind-test-writer', tool: 'Write', target: 'edge.test.ts', ts: new Date(NOW - 1000).toISOString() },
+  ));
+  const wo = buildModel(root, { now: NOW }).slices[0].children[0];
+  assert.deepEqual(wo.pipeline.map((p) => p.stage), ['provision', 'implement', 'blind-test', 'adjudicate', 'audit'], 'backbone only — characterize/intent-verify hidden');
+  const byStage = Object.fromEntries(wo.pipeline.map((p) => [p.stage, p.status]));
+  assert.equal(byStage.provision, 'done', 'a stage before the live one is done');
+  assert.equal(byStage.implement, 'done');
+  assert.equal(byStage['blind-test'], 'active', 'the live stage is active');
+  assert.equal(byStage.adjudicate, 'pending', 'a stage after the live one is pending');
+  assert.equal(byStage.audit, 'pending');
+});
+
+// J — a merged WO: every backbone stage is done (no active, no pending).
+check('pipeline: merged WO → every backbone stage done', () => {
+  const root = newEffort();
+  write(root, '.reasonable/journal.json', JSON.stringify({
+    effort: 'demo', currentVerticalSlice: 's',
+    workOrders: { 'WO-1': { status: 'merged', role: 'implementer', verticalSlice: 's' } },
+  }));
+  const wo = buildModel(root).slices[0].children[0];
+  assert.deepEqual(wo.pipeline.map((p) => p.stage), ['provision', 'implement', 'blind-test', 'adjudicate', 'audit']);
+  assert.ok(wo.pipeline.every((p) => p.status === 'done'), 'all stages done on a merged WO');
+});
+
+// K — evidence-gated conditionals: a characterization action surfaces `characterize`, a
+// verifier-verdict surfaces `intent-verify`, each at its canonical position, marked done.
+check('pipeline: conditional stages appear (in order) only when the ledger evidences them', () => {
+  const root = newEffort();
+  const NOW = Date.parse('2026-06-27T12:10:00Z');
+  write(root, '.reasonable/journal.json', JSON.stringify({
+    effort: 'bf', currentVerticalSlice: 's',
+    workOrders: { 'WO-1': { status: 'dispatched', role: 'implementer', verticalSlice: 's' } },
+  }));
+  write(root, '.reasonable/ledger.jsonl', liveLines(
+    { seq: 1, type: 'characterization', component: 'legacy', clause: '§1', workOrder: 'WO-1', ts: '2026-06-27T11:00:00Z' },
+    { seq: 2, type: 'enrichment', component: 'legacy', clauses: ['§2'], workOrder: 'WO-1', ts: '2026-06-27T11:05:00Z' },
+    { seq: 3, type: 'verifier-verdict', component: 'legacy', verdict: 'accept', workOrder: 'WO-1', ts: '2026-06-27T11:06:00Z' },
+  ));
+  write(root, '.reasonable/progress-live.jsonl', liveLines(
+    { key: 'WO-1', wo: 'WO-1', stage: 'adjudicate', role: 'adjudicator', tool: 'Bash', target: 'vitest', ts: new Date(NOW - 1000).toISOString() },
+  ));
+  const wo = buildModel(root, { now: NOW }).slices[0].children[0];
+  assert.deepEqual(
+    wo.pipeline.map((p) => p.stage),
+    ['provision', 'characterize', 'implement', 'intent-verify', 'blind-test', 'adjudicate', 'audit'],
+    'both conditionals woven in at their canonical positions',
+  );
+  const byStage = Object.fromEntries(wo.pipeline.map((p) => [p.stage, p.status]));
+  assert.equal(byStage.characterize, 'done', 'characterize evidenced + behind the frontier → done');
+  assert.equal(byStage['intent-verify'], 'done', 'intent-verify evidenced + behind the frontier → done');
+  assert.equal(byStage.adjudicate, 'active', 'the live stage is the frontier');
+  assert.equal(byStage.audit, 'pending');
+});
+
+// L — a spawned agent's own TodoWrite list renders as a checklist subtree under the stage
+// running it (correlated to the WO by role), updated live with no model in the loop.
+check('render: a live agent todo list renders as a checklist subtree under its active stage', () => {
+  const root = newEffort();
+  const NOW = Date.parse('2026-06-27T12:10:00Z');
+  write(root, '.reasonable/journal.json', JSON.stringify({
+    effort: 'demo', currentVerticalSlice: 's',
+    workOrders: { 'WO-1': { status: 'dispatched', role: 'implementer', verticalSlice: 's' } },
+  }));
+  write(root, '.reasonable/progress-live.jsonl', liveLines(
+    { key: 'WO-1', wo: 'WO-1', stage: 'implement', role: 'implementer', tool: 'Edit', target: 'edge.ts', ts: new Date(NOW - 2000).toISOString() },
+    { key: '@implementer', wo: null, stage: 'implement', role: 'implementer', todos: [{ content: 'add CORNER_RADIUS', status: 'completed' }, { content: 'build path', status: 'in_progress' }], ts: new Date(NOW - 1000).toISOString() },
+  ));
+  const md = renderMarkdown(buildModel(root, { now: NOW }));
+  assert.match(md, /- ▶ implement {2,}\[.*\] ⟳ Edit edge\.ts/, 'active implement stage carries the heartbeat');
+  assert.match(md, /☑ add CORNER_RADIUS/, 'a completed agent todo renders under the stage');
+  assert.match(md, /▶ build path/, 'an in-progress agent todo renders under the stage');
+});
+
+// M — ordering & timestamp trust. The action trail is ordered by `seq` (the monotonic
+// append clock = causal order), NEVER by ts. A ts that is later than some higher-seq
+// sibling's is provably wrong (an agent-authored ledger line with a guessed timestamp) and
+// is SUPPRESSED — better no time than a misleading one. (The exact sofia-plays shape.)
+check('render: actions ordered by seq; a future-dated (vs successors) ts is suppressed, never reordered', () => {
+  const root = newEffort();
+  write(root, '.reasonable/journal.json', JSON.stringify({
+    effort: 'demo', currentVerticalSlice: 's',
+    workOrders: { 'WO-1': { status: 'merged', role: 'implementer', verticalSlice: 's' } },
+  }));
+  // ledger.jsonl deliberately appended OUT of file order to prove we sort by seq, with an
+  // enrichment whose agent-authored ts (09:58) is later than the checkpoint/merge after it.
+  write(root, '.reasonable/ledger.jsonl', liveLines(
+    { seq: 47, type: 'checkpoint', workOrder: 'WO-1', ts: '2026-06-30T08:27:56Z' },
+    { seq: 45, type: 'commit', workOrder: 'WO-1', ts: '2026-06-30T07:47:01.379Z' },
+    { seq: 46, type: 'enrichment', component: 'edge-router', clauses: ['§1'], note: 'pure autoRoute', workOrder: 'WO-1', ts: '2026-06-30T09:58:00Z' },
+    { seq: 48, type: 'merge', workOrder: 'WO-1', ts: '2026-06-30T08:27:56Z' },
+  ));
+  const wo = buildModel(root).slices[0].children[0];
+  assert.deepEqual(wo.children.map((a) => a.seq), [45, 46, 47, 48], 'sorted by seq (causal order), not file order');
+  const md = renderMarkdown(buildModel(root));
+  assert.match(md, /\[07:47:01\] ✎ commit/, 'a trustworthy ts is shown');
+  assert.match(md, /\[08:27:56\] ✎ checkpoint/);
+  assert.match(md, /- ✎ enriched edge-router/, 'the enrichment renders…');
+  assert.doesNotMatch(md, /\[09:58:00\]/, '…WITHOUT its provably future-dated 09:58 ts');
 });
 
 for (const t of tmps) { try { rmSync(t, { recursive: true, force: true }); } catch { /* best effort */ } }
