@@ -68,6 +68,25 @@ component's `## Observable Seams` section (see `component-contract`). Two obliga
   assert that — no seam, no render harness. Reserve observable seams for **genuinely render-only**
   observations. (`§1–§4` function-level, `§5–§7` render-only is the healthy split.)
 
+## Input seams: declare the state a clause reads (so a test can set the scenario up)
+A component test does two things — it **drives the inputs** into the scenario and **observes the
+outputs**. Observable seams cover the output side. A clause whose behaviour depends on **external
+state** the component reads (a store via `useStore`, a hook, a context) also needs an **input seam**:
+how a test **mocks that state** to construct the scenario. You wrote the selectors/hooks, so **you
+alone know their mock shape** — declaring it is yours.
+
+- **Declare it when you implement a state-reading clause.** Add the `## Input Seams` bullet(s) for the
+  clause to your own contract: name the state source to mock, the **shape** it should return, and how
+  to **trigger** the scenario. Without it the blind-writer (blind to your code) mocks the store to its
+  **safe empty default**, the scenario never occurs, and your behaviour is **never exercised even
+  though the suite is green** — a parity violation as real as a clause the code doesn't satisfy
+  (Slice 2: every test mocked `useStore` to `[]`, the auto-router branch ran zero times, 370/370
+  green, proving nothing). A behaviour clause whose scenario can't be set up without an undeclared
+  input seam is **your defect** — the same discipline as the observable-seam obligation above.
+- **Input seams are scenario-construction surface, not behaviour.** You declare the mock *shape*; you
+  do not declare what the code computes from it (that is the clause). So an input seam is legitimately
+  contract-level and does not import the prediction disease.
+
 **The `seam-undeclared` re-pass.** When the adjudicator runs the suite and a render test dies because
 it could not *observe* the unit — a module-load death, the wrong export shape, or a missing DOM handle
 (classified deterministically by `lib/seam.mjs`, never a behaviour mismatch) — it emits
@@ -75,6 +94,13 @@ it could not *observe* the unit — a module-load death, the wrong export shape,
 **is** the seam-declaration step: declare the missing handle/export in `## Observable Seams` and expose
 it in the DOM, following the repo's `.reasonable/test-conventions.md`. You never edit the test (that is
 still the blind-writer's, derived from your now-declared seam); you make the declared surface real.
+
+The **input-seam** re-pass arrives differently: there is no red to classify (a missing input seam
+yields a *false green*, not a failure), so the **blind-writer flags `seam-undeclared` proactively**
+when it cannot set a state-reading clause's scenario up. The orchestrator re-dispatches **you** to
+declare the missing mock shape in `## Input Seams`. Here there is nothing to expose in the DOM — you
+already wrote the selectors/hooks; you simply **declare** the state source and the shape a test must
+mock, and the blind-writer re-derives a scenario-constructing test from it.
 
 ## Minimality (YAGNI as a mechanical check)
 A component is correctly sized when (a) the gate passes and (b) removing any behavior would
@@ -204,6 +230,7 @@ specific `OUTCOME` kind the orchestrator already has an arm for:
 | "I'll add this method, we'll probably need it" | Every member must point at a gate assertion. Probably-need-it is YAGNI. Delete it. |
 | "I'll reach into the other module to fix this" | Foreign-contract / out-of-locus. Emit a ripple manifest; request scope expansion. |
 | "I'll leave a sensible default value here for now" | Canned data is a landmine. Use a loud stub. |
+| "This clause reads the store; the blind-writer can figure out the mock" | It can't — it's blind. Declare the mock shape in `## Input Seams`, or the test defaults the store to empty and your behaviour is never exercised (green proving nothing). |
 | "I'm almost there, one more hack" | If the budget halts you, that feeling is the disease. Checkpoint. |
 
 ## Your final message: emit the OUTCOME tagged union

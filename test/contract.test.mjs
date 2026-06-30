@@ -115,5 +115,92 @@ The badge text is the guard's label.
   assert.strictEqual(c.seams.length, 3, 'the seams section is closed by the clause, not extended');
 });
 
+// ── `## Input Seams` — the STATE-reading clause's mock-construction surface. ──────
+// The sibling of `## Observable Seams`: a component test must both OBSERVE outputs
+// (observable seams) AND construct the scenario by mocking the EXTERNAL STATE the unit
+// reads (input seams — a store / hook / context). Like its sibling it is
+// structured-but-footprint-zero: the blind-test-writer reads it to set the scenario up
+// instead of defaulting the mock to its empty value (the false-green trap that left
+// edge-path §8's auto-router branch never exercised — suite 370/370, proving nothing).
+const CONTRACT_WITH_INPUT_SEAMS = `---
+component: choice-edge
+---
+
+# Contract: choice-edge
+
+## Citations
+- graph-store §2
+
+## Clauses
+### §8 Auto-route deflects around a crossed node
+When the straight source→target segment passes through a node bbox, the path deflects into a channel.
+- Gate: vertical-slice:edge-paths / asserts \`autoroute_deflects_around_node\`
+
+## Input Seams
+- node bboxes: mock \`useStore\` to return nodes as \`{ id, position, width, height }\`; autoRoute receives every non-excluded node's bbox.
+- excluded ids: mock \`useExcluded\` to return the set of node ids autoRoute skips.
+`;
+
+check('`## Input Seams` bullets parse into `inputSeams`', () => {
+  const c = parseContract(CONTRACT_WITH_INPUT_SEAMS, 'choice-edge');
+  assert.strictEqual(c.inputSeams.length, 2, 'two declared input seams');
+  const byKey = Object.fromEntries(c.inputSeams.map((s) => [s.key, s]));
+  assert.strictEqual(byKey['node bboxes'].mock, 'useStore', 'the state source to mock is captured');
+  assert.strictEqual(byKey['excluded ids'].mock, 'useExcluded', 'per-bullet mock target captured');
+});
+
+check('`## Input Seams` is footprint-zero (no clauses, no citations leak)', () => {
+  const c = parseContract(CONTRACT_WITH_INPUT_SEAMS, 'choice-edge');
+  assert.strictEqual(c.clauses.length, 1, 'exactly the one real clause — input seams are not clauses');
+  assert.strictEqual(c.clauses[0].id, '§8', 'the real clause is intact');
+  assert.strictEqual(c.citations.length, 1, 'only the real `## Citations` edge — input seams add none');
+  assert.strictEqual(c.citations[0].component, 'graph-store', 'the citation graph is unperturbed');
+});
+
+check('a clause after `## Input Seams` is not attributed to the section', () => {
+  const TRAILING = CONTRACT_WITH_INPUT_SEAMS + `
+### §9 Excluded nodes are skipped
+A node in the excluded set is never deflected around.
+- Gate: vertical-slice:edge-paths / asserts \`excluded_nodes_skipped\`
+`;
+  const c = parseContract(TRAILING, 'choice-edge');
+  assert.strictEqual(c.clauses.length, 2, 'both real clauses parse');
+  assert.strictEqual(c.clauses[1].gates.length, 1, 'the post-input-seams clause keeps its gate');
+  assert.strictEqual(c.inputSeams.length, 2, 'the input-seams section is closed by the clause, not extended');
+});
+
+// Observable + Input seams coexist in one contract: disjoint, both footprint-zero.
+const CONTRACT_WITH_BOTH_SEAMS = `---
+component: choice-edge
+---
+
+# Contract: choice-edge
+
+## Citations
+- graph-store §2
+
+## Clauses
+### §8 Auto-route deflects around a crossed node
+The path deflects into a channel when it would cross a node.
+- Gate: vertical-slice:edge-paths / asserts \`autoroute_deflects\`
+
+## Observable Seams
+- component: default export \`ChoiceEdge\`
+- path: the rendered edge path → \`[data-testid=edge-path]\`
+
+## Input Seams
+- node bboxes: mock \`useStore\` to return nodes as \`{ id, position, width, height }\`.
+`;
+
+check('Observable and Input seams coexist, disjoint and both footprint-zero', () => {
+  const c = parseContract(CONTRACT_WITH_BOTH_SEAMS, 'choice-edge');
+  assert.strictEqual(c.seams.length, 2, 'both observable seams parse');
+  assert.strictEqual(c.inputSeams.length, 1, 'the input seam parses, separately');
+  assert.strictEqual(c.seams.find((s) => s.key === 'component').importHint, 'ChoiceEdge', 'observable export captured');
+  assert.strictEqual(c.inputSeams[0].mock, 'useStore', 'input mock target captured');
+  assert.strictEqual(c.clauses.length, 1, 'one real clause; neither seam section leaks a clause');
+  assert.strictEqual(c.citations.length, 1, 'one real citation; neither seam section leaks an edge');
+});
+
 if (process.exitCode) console.error(`\ncontract: FAILURES above (${passed} passed).`);
 else console.log(`\ncontract: all ${passed} checks pass. ✓`);

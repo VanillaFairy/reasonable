@@ -104,6 +104,20 @@ one of the three is probably wrong.
   disjoint concept, kept apart by context (section vs clause-body line). Prefer a
   **function-level** observable (an exported pure value) where the contract is exact;
   reserve observable seams for genuinely render-only observations.
+- **Input seam** — the **input-side sibling** of the observable seam: the **external state
+  a clause reads** (a store via `useStore`, a hook, a context) and **how a test mocks that
+  state** to construct the scenario, declared in a contract's `## Input Seams` section. A
+  component test drives the inputs *and* observes the outputs; the observable seam is the
+  output surface, the input seam is the input surface. It is **scenario-construction surface,
+  not behaviour** (the mock *shape* is public; what the code computes from it is not) — so,
+  like its sibling, it does not break the blind-test-writer's blindness. The **implementer**
+  declares it (it wrote the selectors/hooks, so it alone knows their mock shape); the
+  **blind-test-writer** consumes it to **set the scenario up** instead of defaulting the mock
+  to its empty value. Its absence is the disease this prevents: a blind writer that mocks a
+  store to `[]` for every test sets up a scenario that never occurs, so the behaviour is
+  **never exercised even though the suite is green**. **Distinct from the `- Seam:` line** (a
+  code locus) and from the observable seam (the output surface): three disjoint uses of the
+  word, kept apart by context.
 - **Test conventions** — the stack's test-harness conventions (module system, runner,
   render lib, setup), recorded once per stack in `.reasonable/test-conventions.md` and
   fed into **every** blind-test-writer dispatch. **Detected or declared, never guessed**:
@@ -111,15 +125,26 @@ one of the three is probably wrong.
   self-inflicted module-load failure, not a contract question. Public test surface, like
   the observable seam. The hard machine-read bindings stay in `config.json`; this is the
   prose narrative the writer (and the implementer, when it exposes a seam) follows.
-- **`seam-undeclared`** — the **OUTCOME disposition** for a render-clause red that died
-  because the test could not *observe* the unit (a **module-load** death, **export-shape**
-  mismatch, or **element-not-found**), classified **deterministically** by `lib/seam.mjs`
-  (never eyeballed — *never simulate what a script can compute*), **not** because behaviour
-  disagreed. It routes a **seam-declaration re-pass** (the implementer enriches
-  `## Observable Seams` + exposes the handle, then the blind-writer re-targets it), bounded
-  so it escalates to the human after a few passes rather than looping. It is the
-  deterministic replacement for the `fix-test → intent-fork → blind redo` loop, which a
-  blind redo could never close (it cannot fix a seam it cannot see).
+- **`seam-undeclared`** — the **OUTCOME disposition** for a clause whose test could not be
+  written or run because a seam was undeclared. It has **two emission paths**, by which side
+  of the test is starved:
+  - **Output (computed from a red).** A render-clause red that died because the test could not
+    *observe* the unit (a **module-load** death, **export-shape** mismatch, or
+    **element-not-found**), classified **deterministically** by `lib/seam.mjs` (never eyeballed
+    — *never simulate what a script can compute*), **not** because behaviour disagreed. The
+    re-pass enriches `## Observable Seams` + exposes the handle.
+  - **Input (proactive flag, no red).** A behaviour clause that depends on **external state**
+    (a store / hook / context) the test must mock to construct the scenario, but with **no
+    declared input seam**. There is no red to classify here — defaulting the mock to empty would
+    produce a **false green** — so the **blind-writer raises it proactively** while writing the
+    test (it cannot set the scenario up), naming the clause + the missing input. The re-pass
+    enriches `## Input Seams` with the mock shape.
+
+  Either way it routes a **seam-declaration re-pass** (the implementer declares the missing seam,
+  then the blind-writer targets it / sets the scenario up), bounded so it escalates to the human
+  after a few passes rather than looping. It is the deterministic replacement for the
+  `fix-test → intent-fork → blind redo` loop, which a blind redo could never close (it cannot fix
+  a seam it cannot see).
 - **Depth** — informal measure of accumulated contract. Descriptive, never
   normative.
 - **Vertical slice** — the default unit of work: a vertical stage; one user-visible
