@@ -426,6 +426,9 @@ Append-only. One JSON object per line. Written by the orchestrator, by each work
 (its own enrichment/verdict line), by the `contract-amendment` ceremony, and by the
 **commit-record** hook (a lane commit's `commit` custody line, D20); the redispatch
 guard and test-parity fence read it. `seq` is monotonic; `ts` is an ISO-8601 timestamp.
+**No actor ever types a commit SHA from memory** — a `commit`/`sha`/`diffRef` hash is
+always the literal output of `git rev-parse` on the lane (read + validated by a
+Bash-capable role), never restated from context (D21).
 
 ```jsonl
 {"seq":1,"ts":"2026-06-12T10:00:00Z","type":"enrichment","component":"parser","clauses":["§3"],"workOrder":"WO-12","verticalSlice":"expr-eval","note":"learned precedence needs a clause"}
@@ -442,13 +445,14 @@ guard and test-parity fence read it. `seq` is monotonic; `ts` is an ISO-8601 tim
 {"seq":12,"ts":"...","type":"intent-check-failure","verticalSlice":"confirm-delete","correctedChoice":"used spinner instead of stale-badge","shouldHavePinged":true,"retro":"R4"}
 {"seq":13,"ts":"...","type":"verifier-verdict","component":"store","diffRef":"src/store/delete.rs","verdict":"accept","oracle":"baseline-intent","by":"intent-verifier","proposed":true,"commit":"sha256:…"}
 {"seq":14,"ts":"...","type":"commit","workOrder":"WO-12","commit":"sha256:…","role":"implementer","by":"commit-record"}
+{"seq":15,"ts":"...","type":"correction","supersedes":14,"workOrder":"WO-12","commit":"sha256:…","reason":"seq 14 recorded a SHA that does not resolve in git"}
 ```
 
 Event `type` values: `enrichment`, `amendment`, `verdict`, `scope-expansion`,
 `budget-extension`, `dead-end`, and the brownfield / run-mode additions
 `characterization`, `characterization-promotion`, `change-characterized`,
 `change-characterized-planned`, `ratification`, `intent-check-failure`,
-`verifier-verdict`, `commit`. The
+`verifier-verdict`, `commit`, `correction`. The
 ratchet's invariant: an `amendment` with `direction:"weaken"` requires
 `approvedBy:"human"` (or `"retro"`) — the engine flags any weakening lacking it.
 
@@ -507,6 +511,19 @@ The additions:
   `workOrder`, `commit` (the SHA), `role`, `by:"commit-record"`. It is a **custody
   anchor, not a verdict** — it accounts the commit for recovery and claims nothing
   about green-ness. Idempotent (one line per SHA); fail-open.
+
+- `correction` — supersedes an EARLIER event's commit SHA with the real one (D21).
+  The append-only ledger is never edited in place, so a bad SHA is fixed forward: a
+  `correction` names the `supersedes` seq it replaces and carries the **real** hash
+  read from `git rev-parse`. `reconcile` HONORS it — the superseded seq is no longer
+  a torn-window HALT ([lib/reconcile.mjs](../lib/reconcile.mjs) `supersededSeqs`).
+  This is the **belt-and-suspenders** to the scribe never originating a SHA: the
+  primary fix removes the opportunity to fabricate one; the correction lets an
+  already-wedged run recover deterministically. A `correction` whose own `commit` is
+  **itself** unresolvable supersedes nothing (a phantom cannot be laundered into
+  another phantom — the original HALT stands and the bad correction line is itself
+  flagged). Fields: `supersedes` (the seq), `workOrder`, `commit` (the real SHA),
+  `reason`.
 
 ---
 
