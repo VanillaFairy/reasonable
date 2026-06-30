@@ -569,14 +569,17 @@ function intentVerifyPrompt(wo, a) {
 // enrichment commit it judged (D5 - durability is the atomic on-disk append, NOT a git
 // commit of orchestration state). The append ANNOTATES the diff explained-by-verdict -
 // advisory only (D6); it silences no guard.
-function verdictWriterPrompt(wo, verdict, a) {
+function verdictWriterPrompt(wo, verdict, a, commit) {
+  const event = { type: 'verifier-verdict', component: wo.role || wo.id, diffRef: verdict.diffRef || null, verdict: verdict.verdict, oracle: verdict.oracle, by: 'intent-verifier', proposed: true, ...(commit ? { commit } : {}) };
   return [
     'You are a NARROW WRITER. The intent-verifier ADVERSARY proposed an `accept` verdict on a contract enrichment as data; it is read-only and never integrates its own verdict (Law 3 corollary). You perform the one resulting act: append ONE verifier-verdict event to the append-only ledger, content-referencing the enrichment it judged. Nothing else.',
     `Effort root: ${a.effortRoot}`,
     `Work order: ${wo.id}.`,
     'Append exactly this event to .reasonable/ledger.jsonl (one JSON line; an on-disk append, NOT a git commit of orchestration state - verdict durability is the atomic on-disk append, D5):',
-    '  ' + j({ type: 'verifier-verdict', component: wo.role || wo.id, diffRef: verdict.diffRef || null, verdict: verdict.verdict, oracle: verdict.oracle, by: 'intent-verifier', proposed: true }),
-    'Add the ledger seq and the code commit/hash the enrichment landed (`commit`) from the live ledger/git - do not invent them.',
+    '  ' + j(event),
+    commit
+      ? 'The `commit` above is the validated work-product SHA the orchestrator read from git via `git rev-parse`. COPY IT VERBATIM - do NOT re-type, complete, shorten, or alter it. You never originate a SHA (D21): a hand-restated hex is the phantom-commit bug. Add only the monotonic `seq` and the `ts` by reading the ledger tail.'
+      : 'The orchestrator did not pass a commit SHA. Do NOT invent one. READ the work-product commit\'s SHA from its own accounting line already in the ledger (the implementer\'s `enrichment`/`commit` entry for this work order) and copy that literal BYTE-FOR-BYTE into a `commit` field. If no such literal exists to copy, the line cannot be written honestly - set persisted:false and HALT (D21). Add the monotonic `seq` and `ts` from the ledger tail.',
     'This verdict ANNOTATES the enrichment diff as explained-by-verdict: ADVISORY ONLY (D6). It does NOT silence any floor or reconcile guard and does NOT bless the enrichment past review - a missing or half-written verdict can only cause MORE human surfacing, never less. Write nothing but this one ledger line. Return the SCRIBE_ACK: persisted:true once the line is durably appended, persisted:false otherwise (the orchestrator surfaces it). A bare-null return is reserved for agent death/skip and also surfaces.',
   ].join('\n');
 }
@@ -684,7 +687,8 @@ async function provisionThenImplement(wo, _orig, _idx, ctx) {
       `OBSERVABLE SEAMS (render-coupled clauses): a clause whose only observation is via rendering needs a declared seam so the blind-writer can target it instead of guessing. PREFER a function-level clause where the observable is a pure value (a path string, a coordinate) - test the exported function, not the DOM. ONLY for a genuinely render-only observable, declare a \`## Observable Seams\` bullet in your contract (the export to import + a stable \`data-testid\`/\`role\` per element) and EXPOSE it in the DOM you render. Follow the repo TEST CONVENTIONS (${effortRoot}/.reasonable/test-conventions.md, if present) for the module system / export shape / render lib - never invent them.`,
       seamDirective,
       'Report your enrichment in the OUTCOME detail as detail.enrichment = { enriched, clauses:[ids you added], touchesSharedContract (true iff a new Citations bullet to a neighbour) } so the contract-enrichment adversary can risk-gate and judge the PROPOSED diff against the vision + slice spec BEFORE tests derive from it. Report any observable seams you declared/exposed as detail.seamsExposed = [keys].',
-      `Land your terminal effects as ONE logical step (D3a/D5): the work-product CODE in a single \`git -C ${worktree}\` commit carrying a \`Work-Order: ${wo.id}\` trailer; your ledger line as an on-disk append to ${effortRoot}/.reasonable/ledger.jsonl that content-references that commit SHA - the ledger is gitignored, NEVER part of the git commit.`,
+      'Report the validated work-product commit SHA as detail.commit (the EXACT `git rev-parse HEAD` output you just validated). The orchestrator passes it VERBATIM to the verifier-verdict scribe, which has no Bash and must copy a provided literal - never restate a SHA from context (D21).',
+      `Land your terminal effects as ONE logical step (D3a/D5): the work-product CODE in a single \`git -C ${worktree}\` commit carrying a \`Work-Order: ${wo.id}\` trailer. Then READ that commit's SHA from git - \`git -C ${worktree} rev-parse HEAD\` - and VALIDATE it with \`git -C ${worktree} cat-file -e <sha>^{commit}\` (it must succeed). NEVER type a 40-char hex from memory: a hand-restated SHA is the phantom-commit bug that wedges reconcile (D21). Your ledger line is an on-disk append to ${effortRoot}/.reasonable/ledger.jsonl whose \`commit\` is that EXACT rev-parse output - the ledger is gitignored, NEVER part of the git commit.`,
       'If you hit a wall, emit the matching OUTCOME kind (scope-expansion / ripple / jurisdiction / spike-needed / infeasible / intent-fork / other) - never thrash toward green.',
       `Cite ${effortRoot}/.reasonable/intention.md when a fork turns on a scope/priority choice; an unsettleable fork is intent-fork (BREAKING), never a silent guess.`,
       'Return the OUTCOME.',
@@ -768,7 +772,10 @@ async function intentVerify(prev, wo, _idx, ctx) {
   // appends the verifier-verdict ledger event (D5). The append ANNOTATES the enrichment
   // diff (advisory, D6); it integrates/blesses/silences nothing. A failed append fails
   // toward scrutiny -> intent-fork.
-  const ack = await guard(wo.id, () => ctx.agent(verdictWriterPrompt(wo, verdict, a), {
+  // Pass the implementer's VALIDATED work-product SHA (read from git, detail.commit) so the
+  // Bash-less scribe copies a provided literal verbatim rather than restating a SHA from context (D21).
+  const enrichmentCommit = (prev.detail && prev.detail.commit) || null;
+  const ack = await guard(wo.id, () => ctx.agent(verdictWriterPrompt(wo, verdict, a, enrichmentCommit), {
     label: `verdict-write:${wo.id}`, phase: 'Enrich', agentType: 'reasonable:journal-writer', schema: SCRIBE_ACK,
   }));
   if (!ack || ack.kind === 'checkpoint' || ack.persisted !== true) {
