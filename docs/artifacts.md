@@ -384,6 +384,27 @@ Parsing rules (exact):
   Verification is **empirical**: the implementer exposes the declared seam in the DOM, and the
   adjudicator's real suite run proves it (element found ⟺ seam exposed). A render red that the
   `lib/seam.mjs` classifier calls a seam failure routes the `seam-undeclared` OUTCOME (below).
+- A `## Input Seams` section (optional) is the **input-side sibling** of `## Observable Seams`. A
+  component test does two things — it **drives the inputs** into the scenario and **observes the
+  outputs**; observable seams cover the second, input seams cover the first. It declares the
+  **external state a clause reads** (a store via `useStore`, a hook, a context) and **how a test
+  mocks that state** to construct the scenario. It is **scenario-construction surface, not
+  behaviour** — the mock *shape* is public, what the code computes from it is not — so, like its
+  sibling, it does not break the blind-test-writer's blindness. Same parse property: **parser-relevant
+  but footprint-zero** — `lib/contract.mjs` parses each bullet into `inputSeams: [{ key, mock, raw }]`
+  (`mock` = the first backticked identifier, the state source to mock) and emits **zero clauses and
+  zero citations**, so the citation DAG is unperturbed. Each bullet is `- <key>: <body>`, where
+  `<body>` names the mock target (`` `useStore` ``) and the shape it should return; the parser keys
+  off the **first line**, and any following prose is model-read. Why it exists: without it the blind
+  writer (blind to the code) mocks the store to its **safe empty default**, the scenario never
+  occurs, and the behaviour is **never exercised even though the suite is green** (Slice 2: every test
+  mocked `useStore` to `[]`, no edge ever crossed a node, the auto-router branch ran zero times —
+  370/370 green, proving nothing). A behaviour clause that depends on external state with **no
+  declared input seam** is the **blind-writer's `seam-undeclared` flag** (it cannot set the scenario
+  up) — the *proactive* twin of the output-side `seam-undeclared` the `lib/seam.mjs` classifier
+  computes from a render red. Verification is **empirical**: once the input seam is declared, the
+  blind-writer constructs the real scenario and the auditor's mechanical teeth (discriminator /
+  mutation) prove the behaviour is now actually reached.
 - A `- Supersession:` line (`^[-*]\s+Supersession:\s+(pending|<event>)$`) is
   stamped `pending` by the characterizer when the touching change's
   `behaviorDelta` names this clause — the signal that a grown test is about to
@@ -774,13 +795,19 @@ no-lane Bash path, alongside `config.json`.
   reach into the DOM by incidental attribute or by component-internal class names.
 - **Import shape:** prefer the export the contract's `## Observable Seams` declares (often a
   `default` export for a component); confirm default-vs-named against the declared seam.
+- **State mocking:** mock the external state a clause reads (store / hook / context) via `vi.mock`
+  to the **shape the contract's `## Input Seams` declares** — supply non-empty state that triggers
+  the scenario under test; never default the mock to its empty value when the clause's behaviour
+  depends on that state.
 - **Setup:** `vitest.setup.ts` registers `@testing-library/jest-dom`; `jsdom` environment.
 - **An existing example:** `src/edges/Edge.test.tsx` (mirror its import + render + query shape).
 ```
 
-The blind-test-writer reads this file (and an existing test) **before** writing a render
-test; the implementer reads it when it **exposes** a declared observable seam, so the
-emitted handle/export matches what a test written to these conventions will query.
+The blind-test-writer reads this file (and an existing test) **before** writing a render test:
+the `## Observable Seams` handles tell it how to *observe* outputs, the `## Input Seams` mock shapes
+how to *construct* the scenario. The implementer reads it when it **exposes** a declared observable
+seam or **declares** an input seam, so the emitted handle/export and the named mock shape match what
+a test written to these conventions will query and mock.
 
 ---
 

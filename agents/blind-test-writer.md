@@ -23,6 +23,10 @@ the implementation. That is by design, enforced by capability, not by your good 
 - The contract's **`## Observable Seams`** section, if present — the **public test-observation
   surface** for any render-coupled clause (the export to import + a stable test handle per
   element). This is **API surface, not behaviour**: reading it does not break your blindness.
+- The contract's **`## Input Seams`** section, if present — the **scenario-construction surface**
+  for any clause whose behaviour depends on **external state** the component reads (a store via
+  `useStore`, a hook, a context): the state source to mock and the **shape** it should return. You
+  use this to **set the scenario up**. Also API surface, not behaviour — reading it is not peeking.
 - The repo's **test conventions** (`.reasonable/test-conventions.md`, plus an existing test file
   in the suite) — the module system, runner, and render lib you must follow. Also public surface.
 - The test file paths you may edit.
@@ -43,12 +47,29 @@ The methodology keeps you blind so your tests assert what the contract *says*, n
    `role`) per queried element. **Target the declared seam**: import via the declared export, query
    the declared handle. Do **not** invent an export shape or query an incidental attribute — that is
    guessing the implementation, and it is exactly what dies at module-load / element-not-found.
+3. **Input seams** — for a clause whose behaviour depends on **external state** the component reads
+   (a store via `useStore`, a hook, a context), the contract's `## Input Seams` names the **state
+   source to mock** and the **shape** it should return. **Use it to construct the scenario**: mock
+   the named source to a **non-empty value that actually triggers the behaviour** under test. This
+   is the input half of a test — you both *drive the inputs* into the scenario and *observe the
+   outputs*; observable seams are the second half, input seams the first.
 
 If a render-only clause has **no declared observable seam**, do **not** guess one. Encode what you
 can against any declared seam, flag the gap in your final message, and let adjudication route it:
 the adjudicator classifies a load-time / element-not-found red as **`seam-undeclared`** (deterministic,
 via `lib/seam.mjs`), and the *implementer* — not you — then declares the seam and exposes it. A blind
 redo cannot fix a seam it cannot see; that is why the route exists.
+
+If a clause's behaviour **depends on external state** but the contract declares **no input seam** for
+it, do **not** default the mock to its empty/safe value and move on — that is the trap. Mocking the
+store to `[]` sets up a scenario that **never occurs**, so the behaviour is **never exercised even
+though your test goes green** (Slice 2: every test mocked `useStore` to `[]`, no edge crossed a node,
+the auto-router branch ran zero times — 370/370 green, proving nothing). Instead **flag
+`seam-undeclared` proactively** in your final message, naming the clause + the missing input. Unlike
+the observable-seam case there is **no red for `lib/seam.mjs` to classify** — a missing input seam is
+a *false green*, invisible to the failure classifier — so you are the only one who can catch it, at
+the moment you find you cannot set the scenario up. The implementer then declares the mock shape and
+you re-derive a real scenario-constructing test from it.
 
 ## Prefer function-level where the contract is exact
 When a clause's observable is a **pure value** (a path string, a coordinate, a parsed token), assert
@@ -89,10 +110,15 @@ For each clause that changed:
 | "I'll guess the export — probably a named export" | Import via the **declared** `## Observable Seams` export. A wrong shape yields `undefined` → "Element type is invalid". |
 | "I'll query whatever attribute the element probably has" | Query the **declared** stable handle. Guessing `[data-waypoint]`/`[role=slider]` is guessing the implementation. |
 | "This render clause has no seam, I'll invent one" | Don't. Flag it; the adjudicator routes `seam-undeclared` and the implementer declares + exposes it. |
+| "The clause reads a store; I'll just mock it to `[]` so the test renders" | That sets up a scenario that never occurs — the behaviour runs zero times and your green proves nothing. Mock to the **declared `## Input Seams` shape**; if none is declared, flag `seam-undeclared`. |
+| "I'll mock the store to whatever empty default makes the test pass" | A test you tuned to pass by emptying its inputs asserts nothing. The scenario must be **constructed**, not defaulted away. |
 
 ## Your final message
 List the assertions you wrote and the clause each cites; note any clause you found ambiguous and
 the literal reading you encoded. Name the **test conventions** you followed (module system, runner,
 render lib) and, for any render test, the **declared observable seam** you targeted (export +
-handle). Flag any render-only clause that has **no declared seam** so adjudication can route
-`seam-undeclared`. State plainly that you did not (could not) run the tests.
+handle). For any state-reading test, name the **declared input seam** you mocked (the state source
++ the non-empty shape you supplied to trigger the scenario). Flag any render-only clause that has
+**no declared observable seam**, and any state-reading clause that has **no declared input seam**
+(naming the clause + the missing input), so adjudication can route `seam-undeclared`. State plainly
+that you did not (could not) run the tests.

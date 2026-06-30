@@ -54,6 +54,18 @@ Run them. Read their output. Do not eyeball-estimate what they measure.
 - **(d) Proportionality review.** A small contract delta with a huge winning diff is suspicious
   even when green — scope sprawl or hidden special-casing. Compare the diff size to the contract
   delta and flag mismatches.
+- **(e) Empty-mock smell (input-seam exercise check).** A green that mutation sampling catches as
+  vacuous often has one upstream cause: the scenario was **never set up**. For a clause whose
+  behaviour depends on **external state** (it cites a `## Input Seams` source — a store / hook /
+  context, e.g. `useStore`), check whether **every** test touching that clause mocks the source to
+  the **same empty/default value** (`[]`, `{}`, `null`, `undefined`). If so, **flag the clause as
+  probably not exercised** — the state-dependent branch (the whole point of the clause) likely runs
+  zero times despite the green. This single heuristic catches the input-seam disease directly (Slice
+  2: every test mocked `useStore` to `[]`; no edge crossed a node; the auto-router branch ran zero
+  times; 370/370 green, proving nothing — the `.width != null` node filter could be inverted with no
+  test failing). It is a *smell*, not a proof: report it as a finding for the orchestrator to route
+  (declare/strengthen the input seam, re-derive a scenario-constructing test), and let mutation
+  sampling over the clause's locus confirm whether the branch is reachable by any test at all.
 - **Sanity invariants.** Run `node ${reasonable}/lib/sanity.mjs scan` for the lintable subset;
   apply the rest of the sanity-invariants checklist by reading the diff.
 

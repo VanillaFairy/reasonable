@@ -136,6 +136,48 @@ no render harness needed. Reserve observable seams for **genuinely render-only**
 contract with `§1–§4` function-level and only `§5–§7` render-only (each with a declared seam) is the
 healthy shape.
 
+## Input seams (state-reading clauses)
+
+A component test does **two** things: it **drives the inputs** into the scenario under test, and it
+**observes the outputs**. Observable seams cover the second. But a clause whose behaviour depends on
+**external state** the component reads — a store via `useStore`, a hook, a context — also needs the
+blind-test-writer to know **how to mock that state** to set the scenario up. Without it the blind
+writer (blind to the code) mocks the store to its **safe empty default**, the scenario never occurs,
+and the behaviour is **never exercised even though the suite is green**.
+
+> This is not hypothetical. In Slice 2, `ChoiceEdge` read node bboxes from the ReactFlow store and
+> called `autoRoute`, but no input seam declared how a test supplies those bboxes — so the blind
+> writer mocked `useStore` to `[]` for **every** test, no edge ever crossed a node, and the
+> auto-router branch — the whole new behaviour — ran **zero times**. Suite 370/370, proving nothing.
+
+Declare them in a `## Input Seams` section — **prose-shaped, footprint-zero** (like `## Observable
+Seams`: zero `### §N` clauses, zero `## Citations` bullets). One bullet per state source,
+`- <key>: mock <state source> to return <shape>; <how to trigger the scenario>`:
+
+```markdown
+## Observable Seams
+- export: default `ChoiceEdge` (memo(ChoiceEdgeComponent))
+## Input Seams
+- node bboxes: mock `useStore` to return nodes as `{ id, position:{x,y}, width, height }`.
+  autoRoute receives the bboxes of all non-excluded nodes. To exercise a CROSSING, supply a node
+  whose bbox the straight source→target segment passes through.
+```
+
+Who does what:
+
+- **The implementer** declares a clause's input seam — it **wrote the selectors/hooks, so it alone
+  knows their mock shape**. A behaviour clause whose scenario can't be set up without an undeclared
+  input seam is the implementer's defect — the same discipline as the observable-seam obligation.
+- **The blind-test-writer** *consumes* the input seam to **construct the scenario** (mock the named
+  state source to a non-empty value that triggers the behaviour), not just observe the output. It
+  still never reads the implementation and never asserts what the code does.
+- When a clause describes behaviour that depends on external state with **no declared input seam**,
+  the blind-test-writer emits the **`seam-undeclared`** flag (naming the clause + the missing input)
+  **rather than defaulting the mock to empty and silently not testing the behaviour**. Unlike the
+  output side — where `lib/seam.mjs` computes `seam-undeclared` from a render *red* — a missing input
+  seam produces a **false green**, so the blind-writer must raise it **proactively** while writing the
+  test. The orchestrator then re-dispatches the implementer to declare the mock shape.
+
 ## Enrichment vs amendment (the ratchet — see contract-amendment skill)
 
 - **Enrichment** (adding a clause): free, additive, the paradigm working. The implementer does it in
@@ -163,4 +205,6 @@ vocabulary in anything normative; let human prose breathe elsewhere.
 - **A member with no gate to point at.** YAGNI violation — delete it or add the gate first.
 - **Restating a provider's clause in a consumer.** Cite it; don't copy it.
 - **Canned data off-path.** Use a loud stub; a plausible fake value is a landmine.
+- **A state-reading clause with no input seam.** The blind writer mocks the store to empty, the
+  scenario never occurs, and the green proves nothing. Declare the mock shape in `## Input Seams`.
 - **Treating `status: sealed` as an exemption.** It is descriptive. Parity applies regardless.
