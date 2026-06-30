@@ -394,8 +394,13 @@ Parsing rules (exact):
   but footprint-zero** — `lib/contract.mjs` parses each bullet into `inputSeams: [{ key, mock, raw }]`
   (`mock` = the first backticked identifier, the state source to mock) and emits **zero clauses and
   zero citations**, so the citation DAG is unperturbed. Each bullet is `- <key>: <body>`, where
-  `<body>` names the mock target (`` `useStore` ``) and the shape it should return; the parser keys
-  off the **first line**, and any following prose is model-read. Why it exists: without it the blind
+  `<body>` names the mock target (`` `useStore` ``) and the **state it consumes**; the parser keys
+  off the **first line**, and any following prose is model-read. For a **selector store**
+  (`useStore(selector)`) the seam declares the **state the selector reads** and the test drives the
+  **real selector** against it (`(selector) => selector(mockState)`) — mocking the hook to a
+  pre-computed **constant** bypasses the selector (the logic under test never runs; line-448's
+  `measured.width != null` filter stayed untested behind a constant bbox array). Why it exists:
+  without it the blind
   writer (blind to the code) mocks the store to its **safe empty default**, the scenario never
   occurs, and the behaviour is **never exercised even though the suite is green** (Slice 2: every test
   mocked `useStore` to `[]`, no edge ever crossed a node, the auto-router branch ran zero times —

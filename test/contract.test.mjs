@@ -137,8 +137,8 @@ When the straight source→target segment passes through a node bbox, the path d
 - Gate: vertical-slice:edge-paths / asserts \`autoroute_deflects_around_node\`
 
 ## Input Seams
-- node bboxes: mock \`useStore\` to return nodes as \`{ id, position, width, height }\`; autoRoute receives every non-excluded node's bbox.
-- excluded ids: mock \`useExcluded\` to return the set of node ids autoRoute skips.
+- node bboxes: mock \`useStore\` to drive the real selector against \`{ nodeLookup }\` state — \`Map<id, { position, measured:{ width, height } }>\`; supply a node the segment crosses.
+- excluded ids: mock \`useExcluded\` to drive its selector against the set of node ids autoRoute skips.
 `;
 
 check('`## Input Seams` bullets parse into `inputSeams`', () => {
@@ -189,7 +189,7 @@ The path deflects into a channel when it would cross a node.
 - path: the rendered edge path → \`[data-testid=edge-path]\`
 
 ## Input Seams
-- node bboxes: mock \`useStore\` to return nodes as \`{ id, position, width, height }\`.
+- node bboxes: mock \`useStore\` to drive the real selector against \`{ nodeLookup }\` store state.
 `;
 
 check('Observable and Input seams coexist, disjoint and both footprint-zero', () => {

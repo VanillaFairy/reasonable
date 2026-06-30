@@ -111,11 +111,15 @@ one of the three is probably wrong.
   output surface, the input seam is the input surface. It is **scenario-construction surface,
   not behaviour** (the mock *shape* is public; what the code computes from it is not) — so,
   like its sibling, it does not break the blind-test-writer's blindness. The **implementer**
-  declares it (it wrote the selectors/hooks, so it alone knows their mock shape); the
-  **blind-test-writer** consumes it to **set the scenario up** instead of defaulting the mock
-  to its empty value. Its absence is the disease this prevents: a blind writer that mocks a
-  store to `[]` for every test sets up a scenario that never occurs, so the behaviour is
-  **never exercised even though the suite is green**. **Distinct from the `- Seam:` line** (a
+  declares it (it wrote the selectors/hooks, so it alone knows **what store state they
+  consume**); the **blind-test-writer** consumes it to **set the scenario up** instead of
+  defaulting the mock to its empty value. For a **selector store** (`useStore(selector)`) the
+  seam declares the **state the selector reads**, and the test drives the **real selector**
+  against it (`(selector) => selector(mockState)`) — mocking the hook to a **constant** output
+  (even a non-empty one) bypasses the selector, so the logic under test never runs. Its absence
+  is the disease this prevents: a blind writer that mocks a store to `[]` (or to a constant) for
+  every test sets up a scenario that never occurs, so the behaviour is **never exercised even
+  though the suite is green**. **Distinct from the `- Seam:` line** (a
   code locus) and from the observable seam (the output surface): three disjoint uses of the
   word, kept apart by context.
 - **Test conventions** — the stack's test-harness conventions (module system, runner,

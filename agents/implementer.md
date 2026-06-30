@@ -72,20 +72,30 @@ component's `## Observable Seams` section (see `component-contract`). Two obliga
 A component test does two things — it **drives the inputs** into the scenario and **observes the
 outputs**. Observable seams cover the output side. A clause whose behaviour depends on **external
 state** the component reads (a store via `useStore`, a hook, a context) also needs an **input seam**:
-how a test **mocks that state** to construct the scenario. You wrote the selectors/hooks, so **you
-alone know their mock shape** — declaring it is yours.
+how a test supplies that state to construct the scenario. You wrote the selectors/hooks, so **you
+alone know what store state they consume** — declaring it is yours.
 
 - **Declare it when you implement a state-reading clause.** Add the `## Input Seams` bullet(s) for the
-  clause to your own contract: name the state source to mock, the **shape** it should return, and how
+  clause to your own contract: name the state source to mock, the **state shape it consumes**, and how
   to **trigger** the scenario. Without it the blind-writer (blind to your code) mocks the store to its
   **safe empty default**, the scenario never occurs, and your behaviour is **never exercised even
   though the suite is green** — a parity violation as real as a clause the code doesn't satisfy
   (Slice 2: every test mocked `useStore` to `[]`, the auto-router branch ran zero times, 370/370
   green, proving nothing). A behaviour clause whose scenario can't be set up without an undeclared
   input seam is **your defect** — the same discipline as the observable-seam obligation above.
-- **Input seams are scenario-construction surface, not behaviour.** You declare the mock *shape*; you
-  do not declare what the code computes from it (that is the clause). So an input seam is legitimately
-  contract-level and does not import the prediction disease.
+- **For a selector store, declare the state the selector consumes — not its output.** A
+  `useStore(selector)` read is higher-order: the **selector is your production logic** (it derives the
+  value from store state). The seam must drive the **real selector** against mocked state
+  (`useStore: (selector) => selector(mockState)`), so declare the **shape of `mockState`** (e.g.
+  `nodeLookup` as `Map<id, { position, measured:{ width, height } }>`), the state one level *up* the
+  data-flow. If you instead let the test mock `useStore` to a **pre-computed constant**, the selector
+  body never runs and a mutant inside it survives — even a *non-empty* constant bypasses it (Slice 2
+  round 2: the `measured.width != null` filter at line 448 stayed untested behind a constant bbox
+  array). (A plain `useFoo()` / `useContext(Ctx)` read has no selector — declare the value the unit
+  reads.)
+- **Input seams are scenario-construction surface, not behaviour.** You declare the consumed *state
+  shape*; you do not declare what the selector/code computes from it (that is the clause). So an input
+  seam is legitimately contract-level and does not import the prediction disease.
 
 **The `seam-undeclared` re-pass.** When the adjudicator runs the suite and a render test dies because
 it could not *observe* the unit — a module-load death, the wrong export shape, or a missing DOM handle
@@ -230,7 +240,8 @@ specific `OUTCOME` kind the orchestrator already has an arm for:
 | "I'll add this method, we'll probably need it" | Every member must point at a gate assertion. Probably-need-it is YAGNI. Delete it. |
 | "I'll reach into the other module to fix this" | Foreign-contract / out-of-locus. Emit a ripple manifest; request scope expansion. |
 | "I'll leave a sensible default value here for now" | Canned data is a landmine. Use a loud stub. |
-| "This clause reads the store; the blind-writer can figure out the mock" | It can't — it's blind. Declare the mock shape in `## Input Seams`, or the test defaults the store to empty and your behaviour is never exercised (green proving nothing). |
+| "This clause reads the store; the blind-writer can figure out the mock" | It can't — it's blind. Declare the consumed state in `## Input Seams`, or the test defaults the store to empty and your behaviour is never exercised (green proving nothing). |
+| "I'll declare the input seam as the bbox array the selector produces" | That invites a constant-output mock that bypasses your selector — the logic under test never runs. Declare the **state the selector consumes**, so the test drives the real selector: `(selector) => selector(mockState)`. |
 | "I'm almost there, one more hack" | If the budget halts you, that feeling is the disease. Checkpoint. |
 
 ## Your final message: emit the OUTCOME tagged union
