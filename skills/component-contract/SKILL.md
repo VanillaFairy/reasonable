@@ -152,25 +152,40 @@ and the behaviour is **never exercised even though the suite is green**.
 
 Declare them in a `## Input Seams` section — **prose-shaped, footprint-zero** (like `## Observable
 Seams`: zero `### §N` clauses, zero `## Citations` bullets). One bullet per state source,
-`- <key>: mock <state source> to return <shape>; <how to trigger the scenario>`:
+`- <key>: mock <state source> to <feed the unit the state it reads>; <how to trigger the scenario>`:
 
 ```markdown
 ## Observable Seams
 - export: default `ChoiceEdge` (memo(ChoiceEdgeComponent))
 ## Input Seams
-- node bboxes: mock `useStore` to return nodes as `{ id, position:{x,y}, width, height }`.
-  autoRoute receives the bboxes of all non-excluded nodes. To exercise a CROSSING, supply a node
-  whose bbox the straight source→target segment passes through.
+- node bboxes: mock `useStore` to DRIVE THE REAL SELECTOR against store state — not to return a
+  constant. `useStore: (selector) => selector({ nodeLookup })`, where `nodeLookup` is a
+  `Map<id, { position:{x,y}, measured:{ width, height } }>`. The selector derives every non-excluded
+  node's bbox (that derivation is the logic under test); to exercise a CROSSING, put a node in
+  `nodeLookup` whose bbox the straight source→target segment passes through.
 ```
+
+> **The selector trap (why this matters).** A `useStore(selector)` read is a *higher-order* read:
+> the **selector is production logic**. Mocking `useStore` to return a **pre-computed bbox array**
+> (a constant) replaces `selector(state)` wholesale — so the selector body (the bbox-population /
+> filter logic) **never runs**, and a mutant inside it survives even with a "crossing" test. The
+> faithful mock intercepts the hook but **invokes the real selector** against a mocked **store
+> state**: `useStore: (selector) => selector(mockState)`. So the input seam declares the **state the
+> selector consumes** (`nodeLookup`'s shape), *one level up the data-flow* — not the value the
+> selector produces. (A plain `useFoo()` / `useContext(Ctx)` read has no selector; for those, mock
+> the hook to the value the unit reads — the trap is specific to selector-style stores.)
 
 Who does what:
 
 - **The implementer** declares a clause's input seam — it **wrote the selectors/hooks, so it alone
-  knows their mock shape**. A behaviour clause whose scenario can't be set up without an undeclared
-  input seam is the implementer's defect — the same discipline as the observable-seam obligation.
-- **The blind-test-writer** *consumes* the input seam to **construct the scenario** (mock the named
-  state source to a non-empty value that triggers the behaviour), not just observe the output. It
-  still never reads the implementation and never asserts what the code does.
+  knows what store state they consume**. It declares the **state shape the selector reads** (e.g.
+  `nodeLookup`), not the selector's output. A behaviour clause whose scenario can't be set up without
+  an undeclared input seam is the implementer's defect — the same discipline as the observable-seam
+  obligation.
+- **The blind-test-writer** *consumes* the input seam to **construct the scenario** — for a selector
+  store, mock `useStore` to **drive the real selector** against the declared non-empty state
+  (`(selector) => selector(mockState)`), **never** mock the selector's output to a constant. It still
+  never reads the implementation and never asserts what the code does.
 - When a clause describes behaviour that depends on external state with **no declared input seam**,
   the blind-test-writer emits the **`seam-undeclared`** flag (naming the clause + the missing input)
   **rather than defaulting the mock to empty and silently not testing the behaviour**. Unlike the
@@ -206,5 +221,8 @@ vocabulary in anything normative; let human prose breathe elsewhere.
 - **Restating a provider's clause in a consumer.** Cite it; don't copy it.
 - **Canned data off-path.** Use a loud stub; a plausible fake value is a landmine.
 - **A state-reading clause with no input seam.** The blind writer mocks the store to empty, the
-  scenario never occurs, and the green proves nothing. Declare the mock shape in `## Input Seams`.
+  scenario never occurs, and the green proves nothing. Declare the consumed state in `## Input Seams`.
+- **Mocking a selector store's output instead of its state.** `useStore: () => constantArray`
+  bypasses the production selector — the logic under test never runs. Mock the state and drive the
+  real selector: `useStore: (selector) => selector(mockState)`.
 - **Treating `status: sealed` as an exemption.** It is descriptive. Parity applies regardless.

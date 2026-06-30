@@ -49,10 +49,18 @@ The methodology keeps you blind so your tests assert what the contract *says*, n
    guessing the implementation, and it is exactly what dies at module-load / element-not-found.
 3. **Input seams** — for a clause whose behaviour depends on **external state** the component reads
    (a store via `useStore`, a hook, a context), the contract's `## Input Seams` names the **state
-   source to mock** and the **shape** it should return. **Use it to construct the scenario**: mock
-   the named source to a **non-empty value that actually triggers the behaviour** under test. This
-   is the input half of a test — you both *drive the inputs* into the scenario and *observe the
-   outputs*; observable seams are the second half, input seams the first.
+   source to mock** and the **state shape** it consumes. **Use it to construct the scenario**: feed
+   the unit the **non-empty state that actually triggers the behaviour** under test. This is the
+   input half of a test — you both *drive the inputs* into the scenario and *observe the outputs*;
+   observable seams are the second half, input seams the first.
+   - **Selector stores: drive the real selector, never mock its output.** A `useStore(selector)`
+     read is higher-order — the **selector is production logic** (it derives the value from store
+     state). Mock the hook to **invoke the real selector** against your mocked state:
+     `useStore: (selector) => selector(mockState)`. Do **not** mock `useStore` to return a
+     pre-computed constant — that replaces `selector(state)` wholesale, so the selector body never
+     runs and you assert on a value you hand-built, not one the code derived. The input seam names
+     the **state** the selector consumes (e.g. `nodeLookup`); you supply that state. (A plain
+     `useFoo()` / `useContext(Ctx)` read has no selector — mock it to the value the unit reads.)
 
 If a render-only clause has **no declared observable seam**, do **not** guess one. Encode what you
 can against any declared seam, flag the gap in your final message, and let adjudication route it:
@@ -110,8 +118,9 @@ For each clause that changed:
 | "I'll guess the export — probably a named export" | Import via the **declared** `## Observable Seams` export. A wrong shape yields `undefined` → "Element type is invalid". |
 | "I'll query whatever attribute the element probably has" | Query the **declared** stable handle. Guessing `[data-waypoint]`/`[role=slider]` is guessing the implementation. |
 | "This render clause has no seam, I'll invent one" | Don't. Flag it; the adjudicator routes `seam-undeclared` and the implementer declares + exposes it. |
-| "The clause reads a store; I'll just mock it to `[]` so the test renders" | That sets up a scenario that never occurs — the behaviour runs zero times and your green proves nothing. Mock to the **declared `## Input Seams` shape**; if none is declared, flag `seam-undeclared`. |
+| "The clause reads a store; I'll just mock it to `[]` so the test renders" | That sets up a scenario that never occurs — the behaviour runs zero times and your green proves nothing. Mock to the **declared `## Input Seams` state**; if none is declared, flag `seam-undeclared`. |
 | "I'll mock the store to whatever empty default makes the test pass" | A test you tuned to pass by emptying its inputs asserts nothing. The scenario must be **constructed**, not defaulted away. |
+| "I'll mock `useStore` to return the bbox array the selector would produce" | That bypasses the selector — the production logic under test never runs. Drive the real selector: `useStore: (selector) => selector(mockState)`, and supply `mockState`, not the selector's output. |
 
 ## Your final message
 List the assertions you wrote and the clause each cites; note any clause you found ambiguous and

@@ -54,18 +54,30 @@ Run them. Read their output. Do not eyeball-estimate what they measure.
 - **(d) Proportionality review.** A small contract delta with a huge winning diff is suspicious
   even when green — scope sprawl or hidden special-casing. Compare the diff size to the contract
   delta and flag mismatches.
-- **(e) Empty-mock smell (input-seam exercise check).** A green that mutation sampling catches as
+- **(e) Bypassed-input smell (input-seam exercise check).** A green that mutation sampling catches as
   vacuous often has one upstream cause: the scenario was **never set up**. For a clause whose
   behaviour depends on **external state** (it cites a `## Input Seams` source — a store / hook /
-  context, e.g. `useStore`), check whether **every** test touching that clause mocks the source to
-  the **same empty/default value** (`[]`, `{}`, `null`, `undefined`). If so, **flag the clause as
-  probably not exercised** — the state-dependent branch (the whole point of the clause) likely runs
-  zero times despite the green. This single heuristic catches the input-seam disease directly (Slice
-  2: every test mocked `useStore` to `[]`; no edge crossed a node; the auto-router branch ran zero
-  times; 370/370 green, proving nothing — the `.width != null` node filter could be inverted with no
-  test failing). It is a *smell*, not a proof: report it as a finding for the orchestrator to route
-  (declare/strengthen the input seam, re-derive a scenario-constructing test), and let mutation
-  sampling over the clause's locus confirm whether the branch is reachable by any test at all.
+  context, e.g. `useStore`), read how **every** test touching that clause mocks that source, and flag
+  two patterns:
+  - **Mocked to empty.** Every test mocks the source to the **same empty/default value** (`[]`, `{}`,
+    `null`, `undefined`) — the scenario the clause describes never occurs, so its branch runs zero
+    times despite the green (Slice 2 round 1: every test mocked `useStore` to `[]`; no edge crossed a
+    node; the auto-router branch ran zero times).
+  - **Selector hook mocked to a constant for a clause that *is* the selector.** When the source is a
+    **selector store** (`useStore(selector)`) and the clause's behaviour **is the selector logic**,
+    check whether the tests mock `useStore` to return a **pre-computed constant** (`() => bboxArray`)
+    instead of driving the real selector (`(selector) => selector(mockState)`). A constant — even a
+    **non-empty** one — bypasses the selector entirely, so the bbox-population / filter logic never
+    runs (Slice 2 round 2: the `measured.width != null` node filter at line 448 could be inverted with
+    **no test failing**, because a constant array was supplied above the selector). This is the more
+    insidious case: the empty-mock smell misses it (the array is non-empty), but the behaviour is just
+    as unexercised.
+
+  Either pattern: **flag the clause as probably not exercised**. It is a *smell*, not a proof — report
+  it as a finding for the orchestrator to route (declare/strengthen the input seam to name the consumed
+  state, re-derive a test that drives the real selector), and let mutation sampling over the clause's
+  locus confirm whether the branch is reachable by any test at all. Had this run, it would have flagged
+  **both** Slice-2 rounds upfront, before the mutation backstop.
 - **Sanity invariants.** Run `node ${reasonable}/lib/sanity.mjs scan` for the lintable subset;
   apply the rest of the sanity-invariants checklist by reading the diff.
 
