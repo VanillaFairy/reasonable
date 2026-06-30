@@ -539,10 +539,20 @@ may belong to a different effort) is never consulted.
 
 - `progress.json` — the **structured** tree (for graphical rendering later): each node is
   `{ kind: effort|slice|work-order|action, id, status, title, children, … }` plus
-  effort-level `cost` and `counts`.
+  effort-level `cost` and `counts`. A work-order node also carries a `pipeline` — the fixed
+  wave checklist (`provision → [characterize] → implement → [intent-verify] → blind-test →
+  adjudicate → audit`, the two bracketed stages conditional) projected to per-stage
+  `done|active|pending|blocked`, and `live` (its current heartbeat, optionally with the
+  acting agent's `todos`).
 - `progress.md` — the **pinnable** rendered tree. The orchestrator tells the human once to
   pin it (`.reasonable/progress.md`) to follow a long run live; it updates each wave with no
-  token cost.
+  token cost. Each work order renders its `pipeline` scaffold (done/active/pending stages,
+  the live tool folded into the active stage, the agent's own todo list nested beneath it).
+  Atomic actions are ordered by **`seq`** (the monotonic append clock = causal order), never
+  by `ts`; each event line carries a **literal `[HH:MM:SS]` UTC timestamp** (sliced from the
+  recorded ISO `ts`, never a relative age that rots in a pinned file). A `ts` that is later
+  than some higher-`seq` sibling's is *provably wrong* (an agent-authored ledger line can
+  carry a guessed timestamp) and is **suppressed** — better no time than a misleading one.
 
 The canonical index (`journal.json` / `inbox.json`) stays the lone serialized scribe's
 (D3b); the mirror is a *separate* presentation artifact with a *single* deterministic writer,
@@ -558,15 +568,20 @@ provision→implement→blind-test→adjudicate→audit wave would otherwise run
 frozen on `pending`. This file is the fine-grained "what is happening **right now**" tier:
 
 - **Written by a hook, not the scribe** — a `PreToolUse` hook (`hooks/progress-live` →
-  `lib/progress-live.mjs`) fires on **every subagent write/run tool call** and **appends** one
-  line: `{ key, wo, stage, agentRole, tool, target, ts }`. The `stage`
+  `lib/progress-live.mjs`) fires on **every subagent write/run/TodoWrite tool call** and
+  **appends** one line: `{ key, wo, stage, role, tool, target, ts }`, or — for a `TodoWrite` —
+  `{ key, wo, stage, role, todos: [{content, status}], ts }` (no `tool`/`target`, so the
+  agent's plan updates without clobbering its "current tool" heartbeat). The `stage`
   (`provision|implement|blind-test|adjudicate|audit|reconcile|plan|scribe|…`) is derived for
   free from the acting agent's role (`agent_type` → `roleOf`), so one hook delivers both
   *which stage each work order is in* and *which tool it is running*.
 - **Append-only, like the ledger** — many subagents race through a wave with no barrier, so
   each **appends** its heartbeat (`O_APPEND`, never a read-modify-write) and never clobbers a
-  peer's line; the projection (`readLive`) reduces to the latest line per `key` (the work
-  order, else `@role` for the no-work-order stages).
+  peer's line; the projection (`readLive`) reduces to the latest positional line per `key`
+  (the work order, else `@role` for the no-work-order stages) and the latest `todos` line per
+  role. A `TodoWrite` carries no work order (a subagent's cwd is the effort root, not its lane
+  worktree), so its todo list is **correlated to the unique live WO of its role** — and when
+  two same-role lanes run at once (ambiguous), it surfaces at effort level, never misattributed.
 - **EPHEMERAL and presentation-only** — it carries **no `*`**: no enforcement logic reads it,
   it is never a gate input, and tool-call activity **never** enters `journal.json` or the
   append-only `ledger.jsonl` (no keystroke noise in the program counter). It is parsed only by
@@ -578,8 +593,9 @@ frozen on `pending`. This file is the fine-grained "what is happening **right no
   or a single long-running tool call) is dropped by the projection.
 
 The mirror merges these as a transient `⟳ now` overlay: an effort-level block for the
-no-work-order stages, and one `⟳ now:` line under each active work order. Deleting the file at
-any time loses only the live overlay, never canonical truth — the next tool call repopulates it.
+no-work-order stages, and — for each active work order — the heartbeat folded into its active
+pipeline stage with the acting agent's todo list nested beneath. Deleting the file at any time
+loses only the live overlay, never canonical truth — the next tool call repopulates it.
 
 ---
 

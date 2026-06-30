@@ -156,7 +156,8 @@ check('--hook CLI: a subagent edit appends a heartbeat and regenerates progress.
   assert.equal(live[0].stage, 'implement');
   assert.equal(live[0].tool, 'Edit');
   assert.ok(existsSync(join(root, '.reasonable', 'progress.md')), 'mirror regenerated');
-  assert.match(readFileSync(join(root, '.reasonable', 'progress.md'), 'utf8'), /⟳ now: implement · Edit src\/ChoiceEdge\.tsx/);
+  // The heartbeat folds into the WO's active pipeline stage (implement), time-prefixed.
+  assert.match(readFileSync(join(root, '.reasonable', 'progress.md'), 'utf8'), /▶ implement {2,}\[\d{2}:\d{2}:\d{2}\] ⟳ Edit src\/ChoiceEdge\.tsx/);
   // Canonical truth untouched — no heartbeat noise leaked into the journal.
   assert.equal(readFileSync(join(root, '.reasonable', 'journal.json'), 'utf8'), journalBefore, 'journal.json byte-identical');
   assert.ok(!existsSync(join(root, '.reasonable', 'ledger.jsonl')), 'no ledger written');
@@ -184,6 +185,56 @@ check('--hook CLI: outside any effort it exits 0 and writes nothing (fail open)'
     stdio: ['pipe', 'pipe', 'pipe'], timeout: 15000,
   });
   assert.ok(!existsSync(join(bare, '.reasonable')), 'no effort, nothing created');
+});
+
+// G — the agent TodoWrite channel: a todos line is captured WITHOUT clobbering the agent's
+// positional heartbeat, and readLive correlates it to the unique live WO of that role.
+check('todos: a @role TodoWrite correlates to the unique live WO of that role; positional heartbeat survives', () => {
+  const { root } = newEffortWithLane('WO-9', 'implementer');
+  const NOW = Date.parse('2026-06-27T12:00:10Z');
+  upsertLive(root, { key: 'WO-9', wo: 'WO-9', stage: 'implement', role: 'implementer', tool: 'Edit', target: 'a.ts', ts: new Date(NOW - 3000).toISOString() });
+  upsertLive(root, { key: '@implementer', wo: null, stage: 'implement', role: 'implementer', todos: [{ content: 'wire it', status: 'in_progress' }, { content: 'self-loop', status: 'pending' }], ts: new Date(NOW - 1000).toISOString() });
+  const live = readLive(root, { now: NOW });
+  assert.ok(live.byWorkOrder['WO-9'].todos, 'todos correlated onto the unique implementer WO');
+  assert.equal(live.byWorkOrder['WO-9'].todos.length, 2);
+  assert.equal(live.byWorkOrder['WO-9'].tool, 'Edit', 'a todos line never clobbers the positional (Edit) heartbeat');
+  assert.equal(live.effort.length, 0, 'no duplicate effort-level entry once the todos correlate to a WO');
+});
+
+// G2 — honesty under parallel same-role lanes: with TWO live implementer WOs, a @role
+// todos line cannot be attributed to one — it surfaces at effort level, never misattributed.
+check('todos: ambiguous @role (2+ same-role WOs) → effort-level, never misattributed to a WO', () => {
+  const { root } = newEffortWithLane('WO-A', 'implementer');
+  const NOW = Date.parse('2026-06-27T12:00:10Z');
+  upsertLive(root, { key: 'WO-A', wo: 'WO-A', stage: 'implement', role: 'implementer', tool: 'Edit', target: 'a.ts', ts: new Date(NOW - 3000).toISOString() });
+  upsertLive(root, { key: 'WO-B', wo: 'WO-B', stage: 'implement', role: 'implementer', tool: 'Edit', target: 'b.ts', ts: new Date(NOW - 3000).toISOString() });
+  upsertLive(root, { key: '@implementer', wo: null, stage: 'implement', role: 'implementer', todos: [{ content: 'something', status: 'pending' }], ts: new Date(NOW - 1000).toISOString() });
+  const live = readLive(root, { now: NOW });
+  assert.ok(!live.byWorkOrder['WO-A'].todos && !live.byWorkOrder['WO-B'].todos, 'never pinned to a guessed WO');
+  assert.ok(live.effort.some((e) => Array.isArray(e.todos) && e.todos.length), 'todos surface at effort level instead');
+});
+
+// G3 — the --hook CLI end-to-end: a subagent's Edit gives the positional heartbeat, a
+// following TodoWrite appends a TODOS line (no positional tool), and readLive correlates
+// the todos onto the WO. (The rendered subtree is covered in progress.test.mjs; the hook's
+// mirror regen is debounced, so this asserts the canonical channel + correlation directly.)
+check('--hook CLI: a subagent TodoWrite appends a todos line (no tool); readLive correlates it to the WO', () => {
+  const { root, worktree } = newEffortWithLane('WO-9', 'implementer');
+  write(root, '.reasonable/journal.json', JSON.stringify({
+    effort: 'demo', currentVerticalSlice: 's',
+    workOrders: { 'WO-9': { status: 'dispatched', role: 'implementer', verticalSlice: 's' } },
+  }));
+  for (const payload of [
+    { tool_name: 'Edit', tool_input: { file_path: join(worktree, 'src', 'x.ts') }, cwd: root, agent_type: 'reasonable:implementer' },
+    { tool_name: 'TodoWrite', tool_input: { todos: [{ content: 'wire autoRoute', status: 'in_progress', activeForm: 'wiring' }, { content: 'self-loop guard', status: 'pending', activeForm: 'guarding' }] }, cwd: root, agent_type: 'reasonable:implementer' },
+  ]) execFileSync('node', [LIB, '--hook'], { input: JSON.stringify(payload), stdio: ['pipe', 'pipe', 'pipe'], timeout: 15000 });
+  const lines = readFileSync(join(root, '.reasonable', LIVE_FILE), 'utf8').trim().split('\n').map(JSON.parse);
+  const todoLine = lines.find((l) => Array.isArray(l.todos));
+  assert.ok(todoLine && !todoLine.tool, 'the todos line carries todos and no positional tool');
+  assert.equal(todoLine.todos.length, 2);
+  const live = readLive(root);
+  assert.ok(live.byWorkOrder['WO-9'] && live.byWorkOrder['WO-9'].todos, 'todos correlated onto the unique implementer WO');
+  assert.equal(live.byWorkOrder['WO-9'].tool, 'Edit', 'the positional (Edit) heartbeat is intact');
 });
 
 for (const t of tmps) { try { rmSync(t, { recursive: true, force: true }); } catch { /* best effort */ } }
