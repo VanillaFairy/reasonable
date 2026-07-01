@@ -99,6 +99,25 @@ For each clause that changed:
 4. Leave deeper, not-yet-contracted behavior **parked** (ignore-marked with a reason) if it pins an
    outer contract; write just-in-time assertions only for the clauses in this delta.
 
+## Report your progress as you go
+
+Report your own section starting (first action) and finishing (last action, before you return),
+using the phase label your dispatch prompt gave you (normally `"blind-test"`):
+
+    node "${CLAUDE_PLUGIN_ROOT}/lib/action-report.mjs" --root <effortRoot> --workOrder <id> \
+      --level section --label "<the phase name your prompt gave you>" started
+
+As you translate each contract clause into a test, report it starting and finishing:
+
+    node "${CLAUDE_PLUGIN_ROOT}/lib/action-report.mjs" --root <effortRoot> --workOrder <id> \
+      --level item --kind clause --ref '§4' --label '<short description>' started
+    ... write the test for §4 ...
+    node "${CLAUDE_PLUGIN_ROOT}/lib/action-report.mjs" --root <effortRoot> --workOrder <id> \
+      --level item --ref '§4' finished
+
+    node "${CLAUDE_PLUGIN_ROOT}/lib/action-report.mjs" --root <effortRoot> --workOrder <id> \
+      --level section --label "<same>" finished
+
 ## Hard boundaries (capability- and fence-enforced)
 - **You edit test paths only.** A non-test edit is hard-blocked.
 - **You never run anything.** No Bash, by allowlist. Whether the test passes is the
