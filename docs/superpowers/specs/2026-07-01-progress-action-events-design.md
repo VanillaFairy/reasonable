@@ -191,10 +191,20 @@ under concurrency.
 
 ## Agent constitution touchpoints
 
-- **The orchestrator** (main session / `vertical-slice-runner` workflow) owns section
-  `started`/`finished` — it already knows exactly when it dispatches a phase and when that
-  dispatch returns control, for both a normal wave stage and a rework phase like
-  `"post-audit fixes"`.
+**Correction from the version discussed verbally:** `workflows/*.workflow.js` scripts are
+strictly pure (no `fs`, no imports, no side effects — every side effect happens inside an
+`agent()` call; see `vertical-slice-runner.workflow.js`'s own purity comment). So the
+orchestrator *cannot* literally call `action-report.mjs` itself. What it CAN do — and does
+today, unchanged — is choose the prompt text for each dispatched agent, including that phase's
+section `label` (`"implementation"`, `"audit"`, or a rework label like `"post-audit fixes"` when
+the workflow is re-dispatching after a rejected audit). Concretely:
+
+- **Every dispatched agent reports its own section boundary**: `action-started(level:"section",
+  label:<the label the workflow put in its prompt>)` as its first Bash action, and
+  `action-finished(level:"section", label:<same>)` as its last, immediately before it returns.
+  This is a constitution-level instruction (see below), not new workflow-script logic — the
+  workflow scripts are unchanged, they just keep including the phase label in the prompt they
+  already construct.
 - **Each dispatched worker** owns its own item-level `started`/`finished`/`obsoleted` calls:
   `implementer`/`blind-test-writer`/`characterizer` report per contract clause (`kind:"clause"`);
   `auditor` reports per entry in its own fixed step catalog; `adjudicator` reports per red/verdict
