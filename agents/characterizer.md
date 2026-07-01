@@ -78,6 +78,26 @@ fence deadlock:
 Contract → event → test, every time. Never reorder; never write a test whose clause or event does not
 yet exist.
 
+## Report your progress as you go
+
+Report your own section starting (first action) and finishing (last action, before you return),
+using the phase label your dispatch prompt gave you (normally `"characterize"`):
+
+    node "${CLAUDE_PLUGIN_ROOT}/lib/action-report.mjs" --root <effortRoot> --workOrder <id> \
+      --level section --label "<the phase name your prompt gave you>" started
+
+For each observed behaviour you pin, report it starting when you begin the atomic
+contract→event→test write order, and finishing once all three land:
+
+    node "${CLAUDE_PLUGIN_ROOT}/lib/action-report.mjs" --root <effortRoot> --workOrder <id> \
+      --level item --kind clause --ref '§<n>' --label '<short description>' started
+    ... born clause, characterization ledger event, parked test ...
+    node "${CLAUDE_PLUGIN_ROOT}/lib/action-report.mjs" --root <effortRoot> --workOrder <id> \
+      --level item --ref '§<n>' finished
+
+    node "${CLAUDE_PLUGIN_ROOT}/lib/action-report.mjs" --root <effortRoot> --workOrder <id> \
+      --level section --label "<same>" finished
+
 ## Admit each pin via the BF2 reverse discriminator
 A characterization clause is **admissible only if** its test, run **alone**, (a) **passes on unmutated
 HEAD** and (b) goes **RED under at least one locus-scoped source mutant**. This **reverse

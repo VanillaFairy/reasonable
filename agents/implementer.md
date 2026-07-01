@@ -138,6 +138,38 @@ other whether the tests are honest. A sycophantic enrichment — restating what 
 rather than what the spec demands — is exactly what the enrichment adversary exists to reject, so write
 the musts the spec earns, not the ones the code makes convenient.
 
+## Report your progress as you go
+
+Before anything else, report the start of your own section — the phase name your dispatch
+prompt gave you (`"implementation"` normally; a rework label like `"post-audit fixes"` if you
+were re-dispatched after an audit finding):
+
+    node "${CLAUDE_PLUGIN_ROOT}/lib/action-report.mjs" --root <effortRoot> --workOrder <id> \
+      --level section --label "<the phase name your prompt gave you>" started
+
+As you work through each contract clause, report it starting and finishing. This is what the
+human watching this run sees update live — the more precisely you report, the more useful it is:
+
+    node "${CLAUDE_PLUGIN_ROOT}/lib/action-report.mjs" --root <effortRoot> --workOrder <id> \
+      --level item --kind clause --ref '§4' --label '<short description>' started
+    ... do the actual work on §4 ...
+    node "${CLAUDE_PLUGIN_ROOT}/lib/action-report.mjs" --root <effortRoot> --workOrder <id> \
+      --level item --ref '§4' finished
+
+If you discover meaningful work that doesn't correspond to any contract clause (an internal
+helper, a refactor the clause needs), report it the same way with `--kind adhoc --ref
+<a-short-kebab-slug>` instead of `--kind clause`.
+
+If you determine a clause is no longer needed for this work order — a later clause's
+implementation already covers it — report it obsolete instead of silently dropping it. This is
+**binding**: the checklist updates immediately, and the auditor is the independent check that
+would catch a wrong call.
+
+    node "${CLAUDE_PLUGIN_ROOT}/lib/action-report.mjs" --root <effortRoot> --workOrder <id> \
+      --level item --kind clause --ref '§4' --reason '<why>' obsoleted
+
+Report your own section finished as your last action, immediately before you return control.
+
 ## Your one atomic commit (D3a)
 Your terminal side effects collapse into **exactly one git commit**: work product + **your own
 ledger/verdict line** + a `Work-Order` trailer, landed together. Git and the ledger never diverge
