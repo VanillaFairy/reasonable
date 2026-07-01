@@ -173,6 +173,15 @@ one of the three is probably wrong.
   *unclassified* divergence.
 - **Ledger** — append-only record of enrichments, amendments, verdicts, scope
   expansions, budget extensions. The methodology's audit log.
+- **Section** — a named span of work a dispatched agent reports within its own work order
+  (`"implementation"`, `"audit"`, a rework label like `"post-audit fixes"`) via an
+  `action-started`/`action-finished` pair (D19). Sections are strictly linear per work order —
+  the *n*-th `action-started` at `level:"section"` is the *n*-th section, in order; a rework
+  cycle appends a new one rather than reopening an old one.
+- **Action event** — the `action-started` / `action-finished` / `action-obsoleted` ledger event
+  trio a dispatched agent reports as it works (D19), replacing the retired per-tool-call
+  heartbeat. `lib/progress.mjs` replays them sequentially into the section/item tree
+  `progress.md` renders; `action-obsoleted` is binding and terminal.
 - **Work order** — one atomic dispatch: named artifact inputs, an artifact
   output, a gate, a **locus**, **resource claims**, a **budget**.
 - **Locus** — a work order's declared edit scope (path globs).
