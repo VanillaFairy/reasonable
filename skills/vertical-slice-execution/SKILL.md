@@ -73,11 +73,19 @@ ledger.
   `scriptPath`. The registered-name path passes `args` reliably; **`scriptPath` drops `args`** (the
   run then sees an empty `args` global). Pass `args`: `effortRoot` (the main checkout, native path),
   `verticalSliceId`, the `route` snapshot, the contract paths, the per-slice `budget.total`, the
-  supervision `profile`, `runMode`, the **branch pair** (`effortBranch`, `baseBranch` — so the
+  supervision `profile`, `runMode`, the slice's **effective `tier`** (`slice.tier ?? config.tier`;
+  default `full` — see the ratchet bullet below), the **branch pair** (`effortBranch`, `baseBranch` — so the
   provisioner cuts lanes from the effort branch; the reconcile prologue also recovers them from
   `config.json` if omitted), and the brownfield flags (`brownfield`, `lowFloor`). Pass `args`
   as an actual JSON object, never a stringified one. The Workflow call returns **immediately** with a
   run id; the run executes in the background and notifies you on completion.
+- **Resolve the slice's effective tier — raise-only.** Tier is two-level: `config.tier` is the effort
+  default and a `route.md` slice may carry its own `tier`; the effective tier is `slice.tier ??
+  config.tier` (absent → `full`). A **human** may set any slice to any tier, but you (an agent) may only
+  ever *raise* a slice to `full` (the safe direction) — never silently lower it to `lite`. `lite` drops
+  **only** the audit's iterative mutation-sample inside the runner (the §17 audit-depth collapse); every
+  other check and guard runs identically, and it composes freely with either run mode. Pass the resolved
+  value as `args.tier`.
 - **Args-drop fallback (D18):** even if `args` arrives empty, the runner's reconcile prologue
   recovers `effortRoot` and the open slice from its own cwd (the effort root) and threads them back,
   so a run still proceeds; it only HALTs (asking you to relaunch by name) when the root cannot be
@@ -134,7 +142,7 @@ drive these stages — you read this so you can interpret the `GATE_RESULT` and 
    discriminator per enrichment (new tests must FAIL at the pre-task commit); **(b)** bidirectional
    mapping; **(c)** mutation sampling at the **vertical-slice gate**; **(d)** reverse discriminator for
    characterization clauses. Gate = **AND over all checks**. Collapses to one discriminator at the low
-   floor.
+   floor; the **`lite` tier** drops only the iterative mutation sampling (c), keeping (a), (b), (d).
 
 The pipeline uses `pipeline()` (**no barrier**): a fast-trapping lane is triaged the instant its chain
 returns, not after the slowest lane.
@@ -315,6 +323,13 @@ whether gates block. The entry skill sets the initial profile (gated→`strict`,
 the retro tunes it. **No profile ever pre-approves mechanical evidence** — discriminator, mutation,
 sanity, and mapping run regardless; `trusting` only pre-approves amendment *batches* unless flagged. In
 autonomous mode the profile is largely inert (nothing waits on the human).
+
+The **tier** — `full | lite` in `config.json`, per-slice overridable in `route.md`, passed to the
+runner as `args.tier` — is the **orthogonal** axis governing per-slice **verification depth**, not human
+involvement. `lite` drops only the audit's iterative mutation-sample (the §17 audit-depth collapse); it
+waives no guard, is never inferred downward (an agent may only *raise* a slice to `full`), and composes
+freely with either mode. Like mode/profile, changing the effort-default tier mid-effort needs an
+explicit human instruction, logged.
 
 Both modes are equally strict about the *procedure*; they differ only in whether the human is waited
 on. Changing mode or profile mid-effort requires an explicit human instruction, logged.

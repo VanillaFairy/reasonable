@@ -26,20 +26,25 @@ pinning component APIs at the moment of least knowledge. The cure is two meta-pr
 > **(2) Capability beats discipline.** Enforce by hook/allowlist/fence what would otherwise be a
 > prompt an agent can rationalize away.
 
-## Two run modes — chosen explicitly, never guessed
+## Two orthogonal axes — mode and tier — chosen explicitly, never guessed
 
-An effort runs in exactly one of two modes, selected **only** by which entry skill the user invokes:
+An effort is parameterized by two **orthogonal** axes, both resolved at entry by `reasonable:develop`
+(the single entry point — it *asks* both up front) and both **explicit, never inferred**:
 
-- **`reasonable:develop` — GATED (the default).** Every human-ratification gate (analysis sign-off,
-  scaffold sign-off, each retro) **blocks and waits** for explicit human approval. Silence never
-  ratifies.
-- **`reasonable:develop-autonomously` — AUTONOMOUS.** Gates self-ratify and are **logged**; the system
-  never blocks on the human. But **every step and every mechanical check still runs** — autonomy
-  means "do not wait for the human," never "skip a step."
+- **mode** ∈ `gated | autonomous` — does a human-ratification gate (analysis sign-off, scaffold
+  sign-off, each retro) **block and wait** (gated, the default), or **self-ratify-and-log** (autonomous,
+  which never blocks but still runs every step and every mechanical check)? Autonomy means "do not wait
+  for the human," never "skip a step." (`reasonable:develop-autonomously` remains a thin alias that
+  presets autonomous and routes into the same flow.)
+- **tier** ∈ `full | lite` — the **effort-default** per-slice ceremony depth (per-slice overridable in
+  `route.md`). `lite` is the §17 audit-depth collapse made user-selectable: it drops the vertical-slice
+  audit's iterative **mutation-sample only**, waiving no guard — everything else (the coherence-grill,
+  the walking skeleton, the blind-test separation, the discriminator, the fences, the floor trip-wire)
+  runs identically. `full` is the default.
 
-**Mode is never inferred.** A standing/background directive ("act autonomously", "be concise",
-"KISS") does **not** select autonomous mode and does **not** authorize skipping steps. Only an
-explicit, contemporaneous invocation of the autonomous entry enables it. If unsure, use gated.
+**Neither axis is ever inferred.** A standing/background directive ("act autonomously", "be concise",
+"KISS") selects nothing and authorizes skipping nothing. `gated` and `full` are the safe defaults;
+`autonomous` and `lite` are each an explicit opt-in. When unsure, take the safe default and ask.
 
 ## Precedence (read this — it prevents a silent coin-flip)
 

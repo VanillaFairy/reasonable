@@ -78,7 +78,7 @@ work-orders/, verdicts/, knowledge/, …) is **orchestrator-only**. The **main s
 
 ```
 .reasonable/
-  config.json *            # stack bindings, test/build commands, test globs, run/brownfield mode
+  config.json *            # stack bindings, test/build commands, test globs, run/brownfield mode, tier
   vision.md                # grilled user stories, quality attributes, topology ref
   intention.md             # the cited oracle (grilled decision-policy; scope: full|micro)
   topology.md              # the topology sketch
@@ -185,6 +185,7 @@ that needs a test command, build command, or test-path classification.
   "loudStubMarkers": ["todo!", "unimplemented!", "unreachable!(\"reasonable:"],
   "parkMarkerRegex": "#\\[ignore\\s*=\\s*\"pending:",
   "runMode": "gated",
+  "tier": "full",
   "brownfield": false,
   "baseBranch": "master",
   "effortBranch": "effort/fireside-widget",
@@ -212,12 +213,27 @@ categorically inside any lane (paths are matched relative to the effort root and
 also as suffixes). `lintableInvariants` are the regex subset of the sanity
 invariants the lint hook enforces.
 
-`runMode` ∈ `"gated" | "autonomous" | null`. The entry skill writes it
-(`develop`→`gated`, `develop-autonomously`→`autonomous`); reconcile reads it into the
-briefing and the main session re-asserts it on the next launch. **An absent /
-`null` `runMode` on a cold restart is a HALT** — defaulting to the "safer" mode
-is still an inference, which the framework forbids. `config.json` is itself
-fence-protected, so an agent cannot self-promote mode.
+`runMode` ∈ `"gated" | "autonomous" | null`. The entry skill writes it — `develop`
+asks the human and records `gated`|`autonomous`; the `develop-autonomously` alias
+presets `autonomous`. Reconcile reads it into the briefing and the main session
+re-asserts it on the next launch. **An absent / `null` `runMode` on a cold restart
+is a HALT** — defaulting to the "safer" mode is still an inference, which the
+framework forbids. `config.json` is itself fence-protected, so an agent cannot
+self-promote mode.
+
+`tier` ∈ `"full" | "lite"` (default `"full"`) — the **effort-default** ceremony
+depth, the axis orthogonal to `runMode`. `develop` asks it alongside the mode. `lite`
+is the §17 audit-depth collapse made user-selectable: inside the runner the
+vertical-slice audit drops the iterative **mutation-sample only** (keeping the real
+suite run, the discriminator, bidirectional mapping, and the characterization
+reverse-discriminator) — it waives no guard and thins nothing else. Tier is
+**per-slice overridable**: a `route.md` slice may carry its own `tier`, and the
+effective tier a slice runs under is `slice.tier ?? config.tier`. Unlike `runMode`,
+an absent/invalid `tier` is **not** a HALT — it defaults to `full` (the safe
+direction), so efforts predating the field keep full verification. `config.json` is
+fence-protected, so an agent cannot self-lower the effort default; the **raise-only
+ratchet** (an agent may push a slice to `full`, never down to `lite`) is enforced as a
+main-session discipline in `vertical-slice-execution`.
 
 `brownfield` ∈ `true | false`. Set by the analysis-phase triage (the fourth
 trigger: ungoverned existing code is touched). When `true`, the brownfield
