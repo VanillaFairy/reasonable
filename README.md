@@ -134,7 +134,7 @@ contract-governed tests), `writing-plans`, `executing-plans`. It **coexists with
 The plugin is registered in `vanillafairy/.claude-plugin/marketplace.json`:
 
 ```json
-{ "name": "reasonable", "source": "./reasonable", "version": "1.9.2" }
+{ "name": "reasonable", "source": "./reasonable", "version": "1.9.3" }
 ```
 
 **Requirements:** Node.js (the engine) and Git (worktrees, discriminator, provenance). On Windows,
@@ -165,4 +165,4 @@ just-in-time — is first-class; see [docs/architecture.md](docs/architecture.md
 
 ---
 
-*Design source of truth: `docs/DESIGN.md`. Normative vocabulary: `docs/glossary.md`. Version: v1.9.2.*
+*Design source of truth: `docs/DESIGN.md`. Normative vocabulary: `docs/glossary.md`. Version: v1.9.3.*

@@ -619,7 +619,8 @@ may belong to a different effort) is never consulted.
   order, each with its `items` nested beneath — only the currently-active row carries a literal
   timestamp (its start time; duration is inferred from the gap to whatever started next).
   Atomic actions are ordered by **`seq`** (the monotonic append clock = causal order), never
-  by `ts`; each event line carries a **literal `[HH:MM:SS]` UTC timestamp** (sliced from the
+  by `ts`; each event line carries a **literal `[YYYY-MM-DD HH:MM:SS UTC]` timestamp** (the
+  full date and time, human-punctuated — never the raw ISO `T…Z` form — sliced from the
   recorded ISO `ts`, never a relative age that rots in a pinned file). A `ts` that is later
   than some higher-`seq` sibling's is *provably wrong* (an agent-authored ledger line can
   carry a guessed timestamp) and is **suppressed** — better no time than a misleading one.

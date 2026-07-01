@@ -311,8 +311,8 @@ pending (no start), active (start, no finish), done (both), or obsolete (an expl
 backstopped by the auditor as the independent check that would catch a wrong call); an item
 started but never finished before its section closes stays visibly active, an honest gap rather
 than a silently manufactured completion. Only the currently-active row carries a literal
-`[HH:MM:SS]` timestamp (its start time — duration is inferred from the gap to whatever started
-next, never stored explicitly). (Why not the model, or a timer-driven digest? An LLM tracker
+`[YYYY-MM-DD HH:MM:SS UTC]` timestamp (its start time — duration is inferred from the gap to
+whatever started next, never stored explicitly). (Why not the model, or a timer-driven digest? An LLM tracker
 would burn tokens and could lie; the native session-task store can't be rebuilt from the ledger
 and isn't readable from a hook — only a ledger-derived file honors both *deterministic* and
 *crash-recoverable*.)

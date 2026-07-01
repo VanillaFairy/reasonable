@@ -1,7 +1,7 @@
 {
   "name": "reasonable",
   "description": "Outside-in, contract-governed, adversarially verified development for agentic software work. Every claim reasoned, every reason checked. Supersedes per-brick TDD planning skills.",
-  "version": "1.9.2",
+  "version": "1.9.3",
   "author": {
     "name": "VanillaFairy"
   },
