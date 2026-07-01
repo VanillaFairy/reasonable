@@ -100,7 +100,8 @@ check('projection: work orders + atomic actions hang off the right WO', () => {
   const wo2 = sliceB.children.find((w) => w.id === 'WO-2');
   assert.match(wo2.title, /store defers delete/);
   assert.equal(wo2.children.length, 2, 'enrichment + characterization');
-  assert.match(wo2.children[0].title, /enriched store §1 — defer semantics/);
+  assert.equal(wo2.children[0].title, 'enriched store §1', 'the parent line names component + clauses, no run-on note');
+  assert.deepEqual(wo2.children[0].children, ['clauses: §1', 'defer semantics'], 'an unstructured note degrades to a clause-summary child + a free-text child');
   assert.match(wo2.children[1].title, /characterized store §2 \(store::delete_ok\)/);
 });
 
@@ -112,7 +113,9 @@ check('render: markdown carries cost, slices, work orders, actions, inbox', () =
   assert.match(md, /~23 agents · 910k tok/);
   assert.match(md, /\*\*slice-b\*\*/);
   assert.match(md, /`WO-3`/);
-  assert.match(md, /✎ enriched parser §3 — precedence/);
+  assert.match(md, /✎ enriched parser §3\n/);
+  assert.match(md, /      - clauses: §3\n/);
+  assert.match(md, /      - precedence\n/);
   assert.match(md, /inbox: 1 awaiting you/);
 });
 
@@ -274,9 +277,38 @@ check('render: action lines are time-prefixed from the ledger ts; tsless action 
     { seq: 2, type: 'commit', workOrder: 'WO-1' }, // no ts → graceful, no prefix
   ].map((e) => JSON.stringify(e)).join('\n') + '\n');
   const md = renderMarkdown(buildModel(root));
-  assert.match(md, /\[2026-06-27 09:04:11 UTC\] ✎ enriched edge-path §8 — autoRoute bypass/, 'ledger ts prefixes the action line with a full human-readable datetime');
+  assert.match(md, /\[2026-06-27 09:04:11 UTC\] ✎ enriched edge-path §8\n/, 'ledger ts prefixes the parent enrichment line with a full human-readable datetime');
+  assert.doesNotMatch(md, /enriched edge-path §8 — autoRoute bypass/, 'the note is no longer mashed into the parent line as a run-on suffix');
+  assert.match(md, /      - clauses: §8\n/, 'an unstructured note still gets a clause-summary child');
+  assert.match(md, /      - autoRoute bypass\n/, 'and the free-text note becomes its own child line');
   assert.match(md, /- ✎ commit/, 'a tsless action renders with no time prefix, no NaN');
   assert.doesNotMatch(md, /\[NaN/, 'never a NaN timestamp');
+});
+
+// G3 — an `enrichment` note authored with real structure (clause markers, a declared seam,
+// a verification summary) renders as one child bullet per fragment, matching the visual
+// density of the section/item action-event subtree — never one run-on paragraph. Splitting
+// is regex-only (clause markers, seam/verification phrasing): no LLM in the loop, per D19.
+check('render: a structured enrichment note splits into clause/seam/verification children', () => {
+  const root = newEffort();
+  write(root, '.reasonable/journal.json', JSON.stringify({
+    effort: 'demo', currentVerticalSlice: 's',
+    workOrders: { 'WO-1': { status: 'dispatched', role: 'implementer', verticalSlice: 's' } },
+  }));
+  write(root, '.reasonable/ledger.jsonl', [
+    {
+      seq: 1, type: 'enrichment', component: 'graph-store', clauses: ['§8', '§9'], workOrder: 'WO-1',
+      note: '§8 now validates the selector before storing it. §9 rejects a constant selector. '
+        + 'Declared Input Seam: useStore selector state, not a constant. 12 tests passing, tsc clean.',
+      ts: '2026-06-27T09:04:11Z',
+    },
+  ].map((e) => JSON.stringify(e)).join('\n') + '\n');
+  const md = renderMarkdown(buildModel(root));
+  assert.match(md, /\[2026-06-27 09:04:11 UTC\] ✎ enriched graph-store §8,§9\n/, 'the parent line names component + clauses only');
+  assert.match(md, /      - §8 now validates the selector before storing it\.\n/, 'clause §8 gets its own child line');
+  assert.match(md, /      - §9 rejects a constant selector\.\n/, 'clause §9 gets its own child line');
+  assert.match(md, /      - Declared Input Seam: useStore selector state, not a constant\.\n/, 'the declared seam is a distinct child, not folded into prose');
+  assert.match(md, /      - 12 tests passing, tsc clean\.\n/, 'the verification summary is a distinct child');
 });
 
 // H — the acceptance scenario: an audit finds bugs, a "post-audit fixes" section is appended
