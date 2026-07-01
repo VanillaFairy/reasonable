@@ -12,7 +12,7 @@ import { tmpdir } from 'node:os';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-import { buildModel, renderMarkdown, writeMirror } from '../lib/progress.mjs';
+import { buildModel, renderMarkdown, writeMirror, replayActions } from '../lib/progress.mjs';
 
 const LIB = join(dirname(fileURLToPath(import.meta.url)), '..', 'lib', 'progress.mjs');
 
@@ -166,62 +166,88 @@ check('non-canonical journal.json (wrong parent) → no regen', () => {
   assert.ok(!existsSync(join(root, '.reasonable', 'progress.md')), 'a journal.json under src/ is not a canonical artifact');
 });
 
-// G — the ephemeral live channel (D19 tier-2) merges on top of the projection.
-const liveLines = (...rows) => rows.map((r) => JSON.stringify(r)).join('\n') + '\n';
+// G — action events (D19 replacement for the old per-tool-call heartbeat): agents report their
+// own progress as action-started / action-finished / action-obsoleted ledger lines, replayed
+// SEQUENTIALLY (never accumulated by hand) into an ordered section list, each holding an ordered
+// item list.
 
-check('live merge: latest heartbeat per key attaches to its WO; effort-level for no-WO; TTL drops stale', () => {
-  const root = newEffort(); seed(root);
-  const NOW = Date.parse('2026-06-27T12:10:00Z');
-  const iso = (msAgo) => new Date(NOW - msAgo).toISOString();
-  write(root, '.reasonable/progress-live.jsonl', liveLines(
-    { key: 'WO-3', wo: 'WO-3', stage: 'implement', role: 'implementer', tool: 'Edit', target: 'src/ChoiceEdge.tsx', ts: iso(8000) },
-    { key: 'WO-3', wo: 'WO-3', stage: 'adjudicate', role: 'adjudicator', tool: 'Bash', target: 'npx vitest run', ts: iso(2000) }, // newer → wins
-    { key: '@reconciler', wo: null, stage: 'reconcile', role: 'reconciler', tool: 'Bash', target: 'git rev-list …', ts: iso(3000) },
-    { key: 'WO-STALE', wo: 'WO-STALE', stage: 'implement', role: 'implementer', tool: 'Edit', target: 'x', ts: iso(20 * 60 * 1000) }, // > TTL
-  ));
-  const m = buildModel(root, { now: NOW });
-  const wo3 = m.slices.find((s) => s.id === 'slice-b').children.find((w) => w.id === 'WO-3');
-  assert.ok(wo3.live, 'WO-3 carries a live heartbeat');
-  assert.equal(wo3.live.stage, 'adjudicate', 'latest line per key wins (append-ordered)');
-  assert.equal(wo3.live.tool, 'Bash');
-  assert.ok(m.live.some((l) => l.stage === 'reconcile'), 'a no-work-order heartbeat surfaces at effort level');
-  assert.ok(!m.live.some((l) => l.wo === 'WO-STALE'), 'a heartbeat older than the TTL is dropped');
-  assert.equal(m.counts.live, 2, 'WO-3 (attached) + reconciler (effort); stale dropped');
+check('replayActions: a single section with two items, one done one active', () => {
+  const { sections } = replayActions([
+    { seq: 1, type: 'action-started', level: 'section', label: 'implementation', ts: '2026-06-27T09:00:00Z' },
+    { seq: 2, type: 'action-started', level: 'item', kind: 'clause', ref: '§1', label: '§1 exists', ts: '2026-06-27T09:00:05Z' },
+    { seq: 3, type: 'action-finished', level: 'item', ref: '§1', ts: '2026-06-27T09:01:00Z' },
+    { seq: 4, type: 'action-started', level: 'item', kind: 'clause', ref: '§2', label: '§2 routes', ts: '2026-06-27T09:01:05Z' },
+  ]);
+  assert.equal(sections.length, 1);
+  assert.equal(sections[0].label, 'implementation');
+  assert.equal(sections[0].status, 'active', 'no matching section finish yet');
+  assert.deepEqual(sections[0].items.map((i) => [i.ref, i.status]), [['§1', 'done'], ['§2', 'active']]);
 });
 
-check('live merge: a heartbeat older than journal.lastReconciled is ignored (reset on reconcile)', () => {
-  const root = newEffort();
-  const NOW = Date.parse('2026-06-27T12:10:00Z');
-  write(root, '.reasonable/journal.json', JSON.stringify({
-    effort: 'demo', currentVerticalSlice: 's', lastReconciled: new Date(NOW - 1000).toISOString(),
-    workOrders: { 'WO-1': { status: 'dispatched', role: 'implementer', verticalSlice: 's' } },
-  }));
-  // First: only a heartbeat that PREDATES the last reconcile — must be ignored.
-  write(root, '.reasonable/progress-live.jsonl', liveLines(
-    { key: 'WO-1', wo: 'WO-1', stage: 'implement', role: 'implementer', tool: 'Edit', target: 'pre', ts: new Date(NOW - 5000).toISOString() },
-  ));
-  let wo1 = buildModel(root, { now: NOW }).slices[0].children[0];
-  assert.ok(!wo1.live, 'a heartbeat older than lastReconciled is not shown');
-  // Then: a post-reconcile heartbeat shows.
-  write(root, '.reasonable/progress-live.jsonl', liveLines(
-    { key: 'WO-1', wo: 'WO-1', stage: 'implement', role: 'implementer', tool: 'Edit', target: 'pre', ts: new Date(NOW - 5000).toISOString() },
-    { key: 'WO-1', wo: 'WO-1', stage: 'implement', role: 'implementer', tool: 'Edit', target: 'fresh', ts: new Date(NOW - 200).toISOString() },
-  ));
-  wo1 = buildModel(root, { now: NOW }).slices[0].children[0];
-  assert.ok(wo1.live && wo1.live.target === 'fresh', 'a post-reconcile heartbeat shows');
+check('replayActions: a repeated action-started for an open ref is a no-op, not a second row', () => {
+  const { sections } = replayActions([
+    { seq: 1, type: 'action-started', level: 'section', label: 'implementation' },
+    { seq: 2, type: 'action-started', level: 'item', kind: 'adhoc', ref: 'extract-helper', ts: '2026-06-27T09:00:05Z' },
+    { seq: 3, type: 'action-started', level: 'item', kind: 'adhoc', ref: 'extract-helper', ts: '2026-06-27T09:00:09Z' },
+  ]);
+  assert.equal(sections[0].items.length, 1, 'no duplicate row for the re-affirmed ref');
+  assert.equal(sections[0].items[0].startedAt, '2026-06-27T09:00:05Z', 'keeps the ORIGINAL start time');
+  assert.equal(sections[0].items[0].status, 'active');
 });
 
-check('render: live heartbeats render as ⟳ now lines (per-WO + effort-level), with a literal [HH:MM:SS] timestamp', () => {
-  const root = newEffort(); seed(root);
-  const NOW = Date.parse('2026-06-27T12:10:00Z');
-  write(root, '.reasonable/progress-live.jsonl', liveLines(
-    { key: 'WO-3', wo: 'WO-3', stage: 'implement', role: 'implementer', tool: 'Edit', target: 'src/ChoiceEdge.tsx', ts: new Date(NOW - 3000).toISOString() },
-    { key: '@reconciler', wo: null, stage: 'reconcile', role: 'reconciler', tool: 'Bash', target: 'git rev-list …', ts: new Date(NOW - 1000).toISOString() },
-  ));
-  const md = renderMarkdown(buildModel(root, { now: NOW }));
-  assert.match(md, /▶ implement {2,}\[12:09:57\] ⟳ Edit src\/ChoiceEdge\.tsx/, 'per-WO heartbeat folds into the active stage, time-prefixed');
-  assert.match(md, /\[12:09:59\] ⟳ \*\*now\*\* · reconcile · Bash git rev-list/, 'effort-level heartbeat line, time-prefixed');
-  assert.doesNotMatch(md, /ago/, 'no stale relative age — literal timestamps only');
+check('replayActions: an obsoleted item shows its own status + reason, regardless of start/finish', () => {
+  const { sections } = replayActions([
+    { seq: 1, type: 'action-started', level: 'section', label: 'implementation' },
+    { seq: 2, type: 'action-started', level: 'item', kind: 'clause', ref: '§4' },
+    { seq: 3, type: 'action-obsoleted', level: 'item', kind: 'clause', ref: '§4', reason: "covered by §3's new helper" },
+  ]);
+  const item = sections[0].items[0];
+  assert.equal(item.status, 'obsolete');
+  assert.equal(item.reason, "covered by §3's new helper");
+});
+
+check('replayActions: obsolete is terminal — a later finished event does not flip it back', () => {
+  const { sections } = replayActions([
+    { seq: 1, type: 'action-started', level: 'section', label: 'implementation' },
+    { seq: 2, type: 'action-started', level: 'item', kind: 'clause', ref: '§4' },
+    { seq: 3, type: 'action-obsoleted', level: 'item', kind: 'clause', ref: '§4', reason: 'moot' },
+    { seq: 4, type: 'action-finished', level: 'item', ref: '§4' }, // stray, out-of-order report
+  ]);
+  assert.equal(sections[0].items[0].status, 'obsolete', 'obsoleted is terminal once reported');
+});
+
+check('replayActions: a finish/obsolete with no prior started still renders, never throws', () => {
+  assert.doesNotThrow(() => {
+    const { sections } = replayActions([
+      { seq: 1, type: 'action-started', level: 'section', label: 'audit' },
+      { seq: 2, type: 'action-finished', level: 'item', kind: 'step', ref: 'discriminator-check' },
+    ]);
+    assert.equal(sections[0].items[0].status, 'done', 'best-effort render, no crash');
+  });
+});
+
+check('replayActions: item identity resets per section — the same ref in two sections is two rows', () => {
+  const { sections } = replayActions([
+    { seq: 1, type: 'action-started', level: 'section', label: 'implementation' },
+    { seq: 2, type: 'action-started', level: 'item', kind: 'clause', ref: '§4' },
+    { seq: 3, type: 'action-finished', level: 'item', ref: '§4' },
+    { seq: 4, type: 'action-finished', level: 'section', label: 'implementation' },
+    { seq: 5, type: 'action-started', level: 'section', label: 'post-audit fixes' },
+    { seq: 6, type: 'action-started', level: 'item', kind: 'clause', ref: '§4' }, // reopened in a NEW section
+  ]);
+  assert.equal(sections.length, 2);
+  assert.equal(sections[0].items.length, 1);
+  assert.equal(sections[0].items[0].status, 'done');
+  assert.equal(sections[1].items.length, 1, 'a fresh row in the new section, not merged with the old one');
+  assert.equal(sections[1].items[0].status, 'active');
+});
+
+check('replayActions: an explicitly finished section is done even as the last section in the run', () => {
+  const { sections } = replayActions([
+    { seq: 1, type: 'action-started', level: 'section', label: 'audit', ts: '2026-06-27T10:00:00Z' },
+    { seq: 2, type: 'action-finished', level: 'section', label: 'audit', ts: '2026-06-27T10:05:00Z' },
+  ]);
+  assert.equal(sections[0].status, 'done');
 });
 
 // G2 — atomic-action lines carry the same literal [HH:MM:SS] prefix, sliced from the
@@ -232,138 +258,104 @@ check('render: action lines are time-prefixed from the ledger ts; tsless action 
     effort: 'demo', currentVerticalSlice: 's',
     workOrders: { 'WO-1': { status: 'dispatched', role: 'implementer', verticalSlice: 's' } },
   }));
-  write(root, '.reasonable/ledger.jsonl', liveLines(
+  write(root, '.reasonable/ledger.jsonl', [
     { seq: 1, type: 'enrichment', component: 'edge-path', clauses: ['§8'], workOrder: 'WO-1', note: 'autoRoute bypass', ts: '2026-06-27T09:04:11Z' },
     { seq: 2, type: 'commit', workOrder: 'WO-1' }, // no ts → graceful, no prefix
-  ));
+  ].map((e) => JSON.stringify(e)).join('\n') + '\n');
   const md = renderMarkdown(buildModel(root));
   assert.match(md, /\[09:04:11\] ✎ enriched edge-path §8 — autoRoute bypass/, 'ledger ts prefixes the action line');
   assert.match(md, /- ✎ commit/, 'a tsless action renders with no time prefix, no NaN');
   assert.doesNotMatch(md, /\[NaN/, 'never a NaN timestamp');
 });
 
-// H — the FROZEN-WAVE fix end to end (D19 acceptance #1). The exact state the user
-// observed: a wave just started — the write-ahead has set currentVerticalSlice + flipped
-// this wave's work orders to `dispatched`, NO ledger action has landed yet (the implementer
-// is mid-run), and a live heartbeat shows the current stage. Before the fix this rendered
-// `pending` with currentVerticalSlice:null; now it reads active + the live stage.
-check('frozen-wave fix: write-ahead journal + live heartbeat → active slice + WO + current stage', () => {
-  const root = newEffort();
-  const NOW = Date.parse('2026-06-27T12:10:00Z');
-  // The journal state the per-wave write-ahead produces (no ledger entries yet).
-  write(root, '.reasonable/journal.json', JSON.stringify({
-    effort: 'fireside', currentVerticalSlice: 'choice-edge', phase: 'vertical-slice-execution',
-    workOrders: {
-      'WO-A': { status: 'dispatched', role: 'implementer', verticalSlice: 'choice-edge' },
-      'WO-B': { status: 'dispatched', role: 'implementer', verticalSlice: 'choice-edge' },
-    },
-  }));
-  // A live heartbeat: WO-A is mid-implement (a 6-minute implementer's Edit).
-  write(root, '.reasonable/progress-live.jsonl', liveLines(
-    { key: 'WO-A', wo: 'WO-A', stage: 'implement', role: 'implementer', tool: 'Edit', target: 'src/ChoiceEdge.tsx', ts: new Date(NOW - 4000).toISOString() },
-  ));
-  const m = buildModel(root, { now: NOW });
-  assert.equal(m.currentVerticalSlice, 'choice-edge', 'slice is current, not null');
-  const slice = m.slices.find((s) => s.id === 'choice-edge');
-  assert.equal(slice.status, 'active', 'slice reads active, NOT pending (the frozen-wave bug)');
-  const woA = slice.children.find((w) => w.id === 'WO-A');
-  assert.equal(woA.status, 'dispatched', 'WO flipped to dispatched by the write-ahead');
-  assert.ok(woA.live && woA.live.stage === 'implement', 'and shows its current stage live');
-  // The rendered mirror a pinned human sees: active slice, the WO, its pipeline scaffold,
-  // and the live tool folded into the current (implement) stage.
-  const md = renderMarkdown(m);
-  assert.match(md, /slice \*\*choice-edge\*\*/);
-  assert.match(md, /▶ \*\*choice-edge\*\*  _\(active\)_/, 'active glyph on the slice');
-  assert.match(md, /- ✓ provision/, 'a reached stage shows done in the scaffold');
-  assert.match(md, /- ▶ implement {2,}\[12:09:56\] ⟳ Edit src\/ChoiceEdge\.tsx/, 'live stage + tool folded into the active pipeline stage');
-  assert.match(md, /- · blind-test/, 'a not-yet-reached stage shows pending');
-  assert.match(md, /- · audit/, 'the final stage is pending');
-  assert.doesNotMatch(md, /choice-edge\*\*  _\(pending\)_/, 'the slice is never shown pending');
-});
-
-// I — the per-WO pipeline scaffold: a dispatched WO renders the fixed stage checklist with
-// stages before the live one DONE, the live stage ACTIVE (carrying the heartbeat), later
-// stages PENDING. Unevidenced conditional stages (characterize / intent-verify) are HIDDEN
-// (the projection never predicts a stage that may not run).
-check('pipeline: dispatched WO → done<active<pending, conditionals hidden when unevidenced', () => {
-  const root = newEffort();
-  const NOW = Date.parse('2026-06-27T12:10:00Z');
-  write(root, '.reasonable/journal.json', JSON.stringify({
-    effort: 'demo', currentVerticalSlice: 's',
-    workOrders: { 'WO-1': { status: 'dispatched', role: 'implementer', verticalSlice: 's' } },
-  }));
-  write(root, '.reasonable/progress-live.jsonl', liveLines(
-    { key: 'WO-1', wo: 'WO-1', stage: 'blind-test', role: 'blind-test-writer', tool: 'Write', target: 'edge.test.ts', ts: new Date(NOW - 1000).toISOString() },
-  ));
-  const wo = buildModel(root, { now: NOW }).slices[0].children[0];
-  assert.deepEqual(wo.pipeline.map((p) => p.stage), ['provision', 'implement', 'blind-test', 'adjudicate', 'audit'], 'backbone only — characterize/intent-verify hidden');
-  const byStage = Object.fromEntries(wo.pipeline.map((p) => [p.stage, p.status]));
-  assert.equal(byStage.provision, 'done', 'a stage before the live one is done');
-  assert.equal(byStage.implement, 'done');
-  assert.equal(byStage['blind-test'], 'active', 'the live stage is active');
-  assert.equal(byStage.adjudicate, 'pending', 'a stage after the live one is pending');
-  assert.equal(byStage.audit, 'pending');
-});
-
-// J — a merged WO: every backbone stage is done (no active, no pending).
-check('pipeline: merged WO → every backbone stage done', () => {
+// H — the acceptance scenario: an audit finds bugs, a "post-audit fixes" section is appended
+// (never rewriting the original implementation/audit sections), followed by a second "audit"
+// pass — the exact shape a rework cycle must render as.
+check('render: post-audit-fixes rework renders as new sections, never rewriting history', () => {
   const root = newEffort();
   write(root, '.reasonable/journal.json', JSON.stringify({
     effort: 'demo', currentVerticalSlice: 's',
-    workOrders: { 'WO-1': { status: 'merged', role: 'implementer', verticalSlice: 's' } },
+    workOrders: { 'WO-1': { status: 'checkpointed', role: 'implementer', verticalSlice: 's' } },
   }));
+  write(root, '.reasonable/ledger.jsonl', [
+    { seq: 1, type: 'action-started', workOrder: 'WO-1', level: 'section', label: 'implementation', ts: '2026-06-27T09:00:00Z' },
+    { seq: 2, type: 'action-started', workOrder: 'WO-1', level: 'item', kind: 'adhoc', ref: 'feature-x', label: 'feature X', ts: '2026-06-27T09:00:05Z' },
+    { seq: 3, type: 'action-finished', workOrder: 'WO-1', level: 'item', ref: 'feature-x', ts: '2026-06-27T09:10:00Z' },
+    { seq: 4, type: 'action-started', workOrder: 'WO-1', level: 'item', kind: 'adhoc', ref: 'feature-y', label: 'feature Y', ts: '2026-06-27T09:10:05Z' },
+    { seq: 5, type: 'action-finished', workOrder: 'WO-1', level: 'item', ref: 'feature-y', ts: '2026-06-27T09:20:00Z' },
+    { seq: 6, type: 'action-finished', workOrder: 'WO-1', level: 'section', label: 'implementation', ts: '2026-06-27T09:20:00Z' },
+    { seq: 7, type: 'action-started', workOrder: 'WO-1', level: 'section', label: 'audit', ts: '2026-06-27T09:20:05Z' },
+    { seq: 8, type: 'action-started', workOrder: 'WO-1', level: 'item', kind: 'step', ref: 'discriminator-check', ts: '2026-06-27T09:20:10Z' },
+    { seq: 9, type: 'action-finished', workOrder: 'WO-1', level: 'item', ref: 'discriminator-check', ts: '2026-06-27T09:21:00Z' },
+    { seq: 10, type: 'action-started', workOrder: 'WO-1', level: 'item', kind: 'step', ref: 'mutation-sampling', ts: '2026-06-27T09:21:05Z' },
+    { seq: 11, type: 'action-finished', workOrder: 'WO-1', level: 'item', ref: 'mutation-sampling', ts: '2026-06-27T09:22:00Z' },
+    { seq: 12, type: 'action-finished', workOrder: 'WO-1', level: 'section', label: 'audit', ts: '2026-06-27T09:22:00Z' },
+    { seq: 13, type: 'action-started', workOrder: 'WO-1', level: 'section', label: 'post-audit fixes', ts: '2026-06-27T09:22:05Z' },
+    { seq: 14, type: 'action-started', workOrder: 'WO-1', level: 'item', kind: 'adhoc', ref: 'bug-a', label: 'bug A', ts: '2026-06-27T09:22:10Z' },
+    { seq: 15, type: 'action-finished', workOrder: 'WO-1', level: 'item', ref: 'bug-a', ts: '2026-06-27T09:25:00Z' },
+    { seq: 16, type: 'action-started', workOrder: 'WO-1', level: 'item', kind: 'adhoc', ref: 'bug-b', label: 'bug B', ts: '2026-06-27T09:25:05Z' },
+  ].map((e) => JSON.stringify(e)).join('\n') + '\n');
   const wo = buildModel(root).slices[0].children[0];
-  assert.deepEqual(wo.pipeline.map((p) => p.stage), ['provision', 'implement', 'blind-test', 'adjudicate', 'audit']);
-  assert.ok(wo.pipeline.every((p) => p.status === 'done'), 'all stages done on a merged WO');
+  assert.deepEqual(wo.sections.map((s) => s.label), ['implementation', 'audit', 'post-audit fixes']);
+  assert.equal(wo.sections[0].status, 'done');
+  assert.equal(wo.sections[1].status, 'done');
+  assert.equal(wo.sections[2].status, 'active', 'the tail section is the one still open');
+  assert.equal(wo.sections[2].items[0].status, 'done', 'bug A finished');
+  assert.equal(wo.sections[2].items[1].status, 'active', 'bug B is the current work');
+
+  const md = renderMarkdown(buildModel(root));
+  assert.match(md, /- ✓ implementation/);
+  assert.match(md, /- ✓ audit/);
+  assert.match(md, /- ▶ post-audit fixes {2,}\[09:22:05\]/);
+  assert.match(md, /- ▶ bug B {2,}\[09:25:05\]/);
+  assert.doesNotMatch(md, /now:/, 'no floating "now" fallback line anywhere');
+  assert.doesNotMatch(md, /⟳/, 'no heartbeat glyph — the heartbeat tier is gone');
 });
 
-// K — evidence-gated conditionals: a characterization action surfaces `characterize`, a
-// verifier-verdict surfaces `intent-verify`, each at its canonical position, marked done.
-check('pipeline: conditional stages appear (in order) only when the ledger evidences them', () => {
+check('render: an obsoleted clause shows its own glyph + reason, never the done glyph', () => {
   const root = newEffort();
-  const NOW = Date.parse('2026-06-27T12:10:00Z');
-  write(root, '.reasonable/journal.json', JSON.stringify({
-    effort: 'bf', currentVerticalSlice: 's',
-    workOrders: { 'WO-1': { status: 'dispatched', role: 'implementer', verticalSlice: 's' } },
-  }));
-  write(root, '.reasonable/ledger.jsonl', liveLines(
-    { seq: 1, type: 'characterization', component: 'legacy', clause: '§1', workOrder: 'WO-1', ts: '2026-06-27T11:00:00Z' },
-    { seq: 2, type: 'enrichment', component: 'legacy', clauses: ['§2'], workOrder: 'WO-1', ts: '2026-06-27T11:05:00Z' },
-    { seq: 3, type: 'verifier-verdict', component: 'legacy', verdict: 'accept', workOrder: 'WO-1', ts: '2026-06-27T11:06:00Z' },
-  ));
-  write(root, '.reasonable/progress-live.jsonl', liveLines(
-    { key: 'WO-1', wo: 'WO-1', stage: 'adjudicate', role: 'adjudicator', tool: 'Bash', target: 'vitest', ts: new Date(NOW - 1000).toISOString() },
-  ));
-  const wo = buildModel(root, { now: NOW }).slices[0].children[0];
-  assert.deepEqual(
-    wo.pipeline.map((p) => p.stage),
-    ['provision', 'characterize', 'implement', 'intent-verify', 'blind-test', 'adjudicate', 'audit'],
-    'both conditionals woven in at their canonical positions',
-  );
-  const byStage = Object.fromEntries(wo.pipeline.map((p) => [p.stage, p.status]));
-  assert.equal(byStage.characterize, 'done', 'characterize evidenced + behind the frontier → done');
-  assert.equal(byStage['intent-verify'], 'done', 'intent-verify evidenced + behind the frontier → done');
-  assert.equal(byStage.adjudicate, 'active', 'the live stage is the frontier');
-  assert.equal(byStage.audit, 'pending');
-});
-
-// L — a spawned agent's own TodoWrite list renders as a checklist subtree under the stage
-// running it (correlated to the WO by role), updated live with no model in the loop.
-check('render: a live agent todo list renders as a checklist subtree under its active stage', () => {
-  const root = newEffort();
-  const NOW = Date.parse('2026-06-27T12:10:00Z');
   write(root, '.reasonable/journal.json', JSON.stringify({
     effort: 'demo', currentVerticalSlice: 's',
     workOrders: { 'WO-1': { status: 'dispatched', role: 'implementer', verticalSlice: 's' } },
   }));
-  write(root, '.reasonable/progress-live.jsonl', liveLines(
-    { key: 'WO-1', wo: 'WO-1', stage: 'implement', role: 'implementer', tool: 'Edit', target: 'edge.ts', ts: new Date(NOW - 2000).toISOString() },
-    { key: '@implementer', wo: null, stage: 'implement', role: 'implementer', todos: [{ content: 'add CORNER_RADIUS', status: 'completed' }, { content: 'build path', status: 'in_progress' }], ts: new Date(NOW - 1000).toISOString() },
-  ));
-  const md = renderMarkdown(buildModel(root, { now: NOW }));
-  assert.match(md, /- ▶ implement {2,}\[.*\] ⟳ Edit edge\.ts/, 'active implement stage carries the heartbeat');
-  assert.match(md, /☑ add CORNER_RADIUS/, 'a completed agent todo renders under the stage');
-  assert.match(md, /▶ build path/, 'an in-progress agent todo renders under the stage');
+  write(root, '.reasonable/ledger.jsonl', [
+    { seq: 1, type: 'action-started', workOrder: 'WO-1', level: 'section', label: 'implementation' },
+    { seq: 2, type: 'action-started', workOrder: 'WO-1', level: 'item', kind: 'clause', ref: '§4', label: 'legacy branch' },
+    { seq: 3, type: 'action-obsoleted', workOrder: 'WO-1', level: 'item', kind: 'clause', ref: '§4', reason: "covered by §3's helper" },
+  ].map((e) => JSON.stringify(e)).join('\n') + '\n');
+  const md = renderMarkdown(buildModel(root));
+  assert.match(md, /⊘ legacy branch — covered by §3's helper/);
+  assert.doesNotMatch(md, /✓ legacy branch/);
+});
+
+check('render: a started-but-never-finished item stays visibly active even after the section closes (honest gap)', () => {
+  const root = newEffort();
+  write(root, '.reasonable/journal.json', JSON.stringify({
+    effort: 'demo', currentVerticalSlice: 's',
+    workOrders: { 'WO-1': { status: 'dispatched', role: 'implementer', verticalSlice: 's' } },
+  }));
+  write(root, '.reasonable/ledger.jsonl', [
+    { seq: 1, type: 'action-started', workOrder: 'WO-1', level: 'section', label: 'implementation' },
+    { seq: 2, type: 'action-started', workOrder: 'WO-1', level: 'item', kind: 'clause', ref: '§4', label: 'left dangling' },
+    { seq: 3, type: 'action-finished', workOrder: 'WO-1', level: 'section', label: 'implementation' },
+    { seq: 4, type: 'action-started', workOrder: 'WO-1', level: 'section', label: 'audit' },
+  ].map((e) => JSON.stringify(e)).join('\n') + '\n');
+  const wo = buildModel(root).slices[0].children[0];
+  assert.equal(wo.sections[0].items[0].status, 'active', 'never silently promoted to done just because the section closed');
+});
+
+check('render: no advance preview — a section never appears before its own action-started lands', () => {
+  const root = newEffort();
+  write(root, '.reasonable/journal.json', JSON.stringify({
+    effort: 'demo', currentVerticalSlice: 's',
+    workOrders: { 'WO-1': { status: 'dispatched', role: 'implementer', verticalSlice: 's' } },
+  }));
+  write(root, '.reasonable/ledger.jsonl', JSON.stringify(
+    { seq: 1, type: 'action-started', workOrder: 'WO-1', level: 'section', label: 'implementation' },
+  ) + '\n');
+  const md = renderMarkdown(buildModel(root));
+  assert.doesNotMatch(md, /· audit/, 'audit never previews before it has started');
+  assert.doesNotMatch(md, /blind-test/, 'blind-test never previews before it has started');
 });
 
 // M — ordering & timestamp trust. The action trail is ordered by `seq` (the monotonic
@@ -378,12 +370,12 @@ check('render: actions ordered by seq; a future-dated (vs successors) ts is supp
   }));
   // ledger.jsonl deliberately appended OUT of file order to prove we sort by seq, with an
   // enrichment whose agent-authored ts (09:58) is later than the checkpoint/merge after it.
-  write(root, '.reasonable/ledger.jsonl', liveLines(
+  write(root, '.reasonable/ledger.jsonl', [
     { seq: 47, type: 'checkpoint', workOrder: 'WO-1', ts: '2026-06-30T08:27:56Z' },
     { seq: 45, type: 'commit', workOrder: 'WO-1', ts: '2026-06-30T07:47:01.379Z' },
     { seq: 46, type: 'enrichment', component: 'edge-router', clauses: ['§1'], note: 'pure autoRoute', workOrder: 'WO-1', ts: '2026-06-30T09:58:00Z' },
     { seq: 48, type: 'merge', workOrder: 'WO-1', ts: '2026-06-30T08:27:56Z' },
-  ));
+  ].map((e) => JSON.stringify(e)).join('\n') + '\n');
   const wo = buildModel(root).slices[0].children[0];
   assert.deepEqual(wo.children.map((a) => a.seq), [45, 46, 47, 48], 'sorted by seq (causal order), not file order');
   const md = renderMarkdown(buildModel(root));
