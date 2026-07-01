@@ -121,6 +121,26 @@ ambiguous and only the intention can choose.
 | "This render test died at module-load — tell the blind writer to redo it" | A blind redo can't fix a seam it can't see (that loop is the incident). Classify with `lib/seam.mjs`; route `seam-undeclared` so the implementer declares + exposes the seam. |
 | "Element not found — the test must be wrong, loosen it" | Don't guess. If `lib/seam.mjs` says `element-not-found`, the DOM handle is undeclared/unexposed → `seam-undeclared`, not a test edit. |
 
+## Report your progress as you go
+
+Report your own section starting (first action) and finishing (last action, before your final
+verdict), using the phase label your dispatch prompt gave you (normally `"adjudicate"`):
+
+    node "${CLAUDE_PLUGIN_ROOT}/lib/action-report.mjs" --root <effortRoot> --workOrder <id> \
+      --level section --label "<the phase name your prompt gave you>" started
+
+Unlike the auditor's fixed checklist, the number of reds you rule on varies per run — report each
+one as an ad hoc item, numbered in the order you take them up:
+
+    node "${CLAUDE_PLUGIN_ROOT}/lib/action-report.mjs" --root <effortRoot> --workOrder <id> \
+      --level item --kind adhoc --ref red-1 started
+    ... rule on it ...
+    node "${CLAUDE_PLUGIN_ROOT}/lib/action-report.mjs" --root <effortRoot> --workOrder <id> \
+      --level item --ref red-1 finished
+
+    node "${CLAUDE_PLUGIN_ROOT}/lib/action-report.mjs" --root <effortRoot> --workOrder <id> \
+      --level section --label "<same>" finished
+
 ## Your output (one verdict artifact per red — see docs/artifacts.md envelope)
 For each failing test: the test, the clause, your ruling (impl-violates / test-mistranslates /
 route-to-amendment / `intent-fork`), the prescribed action, and the citation. When a verdict turned
