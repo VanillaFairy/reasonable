@@ -91,16 +91,17 @@ can't lean on what it never saw).
 allowlists** (e.g. the blind-test-writer has *no Bash*, so it literally cannot see the implementation).
 
 ### Skills (`skills/`) — the procedures
-- **Entry skills** (set the run mode and route into the phases): `develop` (gated, the default) and
-  `develop-autonomously`. These are the only two ways to start an effort — invoked as
-  `/reasonable:develop` / `/reasonable:develop-autonomously`.
+- **Entry skill** (asks the two axes and routes into the phases): `develop` — the single way to start an
+  effort, invoked as `/reasonable:develop`. It asks **mode** (gated, the default, or autonomous) and
+  **tier** (full, the default, or lite) up front, both explicit and never inferred. `develop-autonomously`
+  remains as a thin alias that presets autonomous.
 - **Phase skills** (orchestration checklists, run in the main session): `analysis`, `scaffolding`,
   `vertical-slice-execution`, `retro`.
 - **Procedure skills** (the shared type system, cited by ≥2 roles): `component-contract`,
   `gate-mechanics` (+ per-stack `references/`), `contract-amendment`, `adversarial-audit`,
   `shared-context-session`.
 - **Shared reference** (loaded on demand by the model, not a user command): `using-reasonable` —
-  precedence, triage, the two run modes, the Three Laws, the phase map. The entry skills and several
+  precedence, triage, the run mode and tier axes, the Three Laws, the phase map. The entry skill and several
   agent constitutions cite it; it carries `user-invocable: false`, so it never starts an effort.
 
 ### Hooks + engine (`hooks/`, `lib/`) — the law
@@ -142,8 +143,9 @@ Git for Windows provides the `bash.exe` the polyglot wrapper needs.
 
 ## Usage
 
-Start any greenfield effort by invoking **`/reasonable:develop`** (gated, the default) or
-**`/reasonable:develop-autonomously`** (autonomous) — the choice of skill is what sets the run mode. The
+Start any greenfield effort by invoking **`/reasonable:develop`** — the single entry, which asks the two
+axes up front: **mode** (gated, the default, or autonomous) and **tier** (full, the default, or lite),
+both explicit and never inferred. The
 entry skill first triages applicability (the methodology engages when *topology is novel* OR
 *decomposition is uncertain* OR *work spans ≥2 seams*; otherwise it routes you to a lighter path) and
 then walks `analysis → scaffolding → vertical-slice-execution → retro`, looping the last two per

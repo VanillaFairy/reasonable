@@ -957,9 +957,18 @@ async function audit(prev, wo, _idx, ctx) {
   // RUNS the full lane suite at the lane tip and reports a POSITIVE suiteRan + the real
   // pass/fail counts. It is not optional even at the low floor - a regression floor that
   // is never executed is not a floor. The other leaves are the escalating mechanical teeth.
+  // Tier/floor parameterizes the audit DEPTH (never a guard): the S17 low floor (typo)
+  // collapses to suite + one discriminator; the `lite` tier drops ONLY the iterative
+  // mutation-sample (the discriminator already catches the primary lie - a test green on
+  // both the old and the new impl), keeping parity mapping + characterization teeth; `full`
+  // runs them all. An absent/unknown a.tier falls through to full (fail safe toward MORE
+  // verification, never less). The merge below is robust to a missing leaf - it aggregates
+  // over whatever reports return - so dropping mutation-sample needs no other change.
   const checks = a.lowFloor
     ? ['suite', 'discriminator'] // S17: floor case = run the floor suite + one discriminator
-    : ['suite', 'discriminator', 'bidirectional-mapping', 'mutation-sample', 'reverse-discriminator'];
+    : a.tier === 'lite'
+      ? ['suite', 'discriminator', 'bidirectional-mapping', 'reverse-discriminator'] // lite: drop the expensive iterative mutation-sample only
+      : ['suite', 'discriminator', 'bidirectional-mapping', 'mutation-sample', 'reverse-discriminator'];
 
   // Read-only escalating checks run TOGETHER (parallel barrier); gate = AND over all.
   // TWO ROOTS: every lib reads CONFIG from the effort root (--root) but runs against the CODE

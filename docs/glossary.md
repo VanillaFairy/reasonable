@@ -346,12 +346,20 @@ one of the three is probably wrong.
 - **Supervision profile** — the strict / standard / trusting dial; the finer
   control nested inside gated mode (the run mode decides *whether* the human is
   waited on; the profile decides *how often*, for between-gate judgment
-  approvals). The **initial** profile is set by the entry skill (`develop`→strict,
-  `develop-autonomously`→trusting); lower-level phases never override it; the retro
+  approvals). The **initial** profile is set by the entry skill (gated→strict,
+  autonomous→trusting); lower-level phases never override it; the retro
   tunes it thereafter. No profile ever waives a mechanical check. A config
   artifact (`supervision.json`). Control-plane/data-plane: the human is the
   control plane (vision, route, amendments, dial); agents are the data plane
   (everything between gates).
+- **Tier** — the `full` (default) / `lite` ceremony-depth axis, orthogonal to run
+  mode. An effort default in `config.json` (fence-protected), per-slice overridable
+  in `route.md` (effective tier `slice.tier ?? config.tier`, raise-only for agents;
+  absent defaults to `full`). `lite` is the low-floor audit collapse made
+  user-selectable — the vertical-slice audit drops only the iterative
+  mutation-sample; it waives **no** guard and thins nothing else. The run mode
+  decides *whether* the human is waited on; the profile, *how often*; the tier, *how
+  deep* each slice's verification runs.
 - **Effort** — one engagement of the methodology on a project, analysis →
   completion.
 - **Effort artifacts** — the durable document set of an effort (see

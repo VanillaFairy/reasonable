@@ -44,8 +44,10 @@ with what inputs, in what order) is code; model judgment lives *inside* nodes, n
   allowlist**, not by prose. Example: `blind-test-writer` has **no Bash**, so it literally cannot run
   or read the implementation — bias prevention by capability. *Preserve these allowlists when editing
   agent definitions; weakening one silently breaks an adversarial separation.*
-- **`skills/`** — entry skills (`develop`, `develop-autonomously`) are the only two ways to start an effort
-  and set its run mode; phase skills (`analysis`, `scaffolding`, `vertical-slice-execution`, `retro`)
+- **`skills/`** — the entry skill `develop` is the single way to start an effort; it *asks* the two
+  orthogonal axes up front (mode: gated|autonomous, tier: full|lite), both explicit
+  (`develop-autonomously` is a thin alias that presets autonomous). Phase skills (`analysis`,
+  `scaffolding`, `vertical-slice-execution`, `retro`)
   are orchestration checklists run in the main session; procedure skills (`component-contract`,
   `gate-mechanics`, `contract-amendment`, `adversarial-audit`, `shared-context-session`) are the
   shared type system cited by ≥2 roles. `using-reasonable` is the shared methodology reference,
@@ -100,12 +102,14 @@ above the artifact → orchestrator routes accept/reject/escalate). A proposed r
 the three is probably wrong. (As with Law 1's commit iron rule, this surface names the laws and
 leaves their corollaries to `DESIGN.md` §4.)
 
-A user starts an effort by invoking one of two entry skills — and the mode is set *only* by which:
-`reasonable:develop` (gated — every ratification gate blocks for a human) or `reasonable:develop-autonomously`
-(gates self-ratify and are logged, but no step or mechanical check is ever skipped). From there the
-flow is `analysis → scaffolding → vertical-slice-execution → retro`, looping the last two per vertical
-slice. **`/init`, doc edits, and other ordinary tasks do not enter a reasonable effort** — only those
-two skills do.
+A user starts an effort by invoking the single entry skill `reasonable:develop`, which *asks* two
+orthogonal axes up front, both explicit and never inferred: **mode** (gated — every ratification gate
+blocks for a human; or autonomous — gates self-ratify and are logged, but no step or mechanical check is
+ever skipped) and **tier** (full, the default; or lite — trims only the vertical-slice audit depth,
+waiving no guard). `reasonable:develop-autonomously` remains as a thin alias that presets autonomous.
+From there the flow is `analysis → scaffolding → vertical-slice-execution → retro`, looping the last two
+per vertical slice. **`/init`, doc edits, and other ordinary tasks do not enter a reasonable effort** —
+only that entry does.
 
 ## Where the canonical design lives
 
