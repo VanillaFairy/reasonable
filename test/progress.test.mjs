@@ -391,8 +391,31 @@ check('render: an obsoleted clause shows its own glyph + reason, never the done 
     { seq: 3, type: 'action-obsoleted', workOrder: 'WO-1', level: 'item', kind: 'clause', ref: '§4', reason: "covered by §3's helper" },
   ].map((e) => JSON.stringify(e)).join('\n') + '\n');
   const md = renderMarkdown(buildModel(root));
-  assert.match(md, /⊘ legacy branch — covered by §3's helper/);
+  assert.match(md, /⊘ §4 — legacy branch — covered by §3's helper/, 'a clause item surfaces its § ref alongside the description');
   assert.doesNotMatch(md, /✓ legacy branch/);
+});
+
+// A clause item is identified by its § ref. Surface it — `✓ §8 — <what it covers>` — so a
+// live-reported clause reads consistently with the derived checklist's bare `✓ §8`, and the
+// § numbers in an `✎ enriched …` line map to visible ticks above. A clause reported with no
+// description shows just its ref (never `§8 — §8`); non-clause items keep their plain label.
+check('render: a clause item surfaces its § ref; a bare-ref clause shows just the ref, an adhoc item its label', () => {
+  const root = newEffort();
+  write(root, '.reasonable/journal.json', JSON.stringify({
+    effort: 'demo', currentVerticalSlice: 's',
+    workOrders: { 'WO-1': { status: 'checkpointed', role: 'implementer', verticalSlice: 's' } },
+  }));
+  write(root, '.reasonable/ledger.jsonl', [
+    { seq: 1, type: 'action-started', workOrder: 'WO-1', level: 'section', label: 'implementation' },
+    { seq: 2, type: 'action-started', workOrder: 'WO-1', level: 'item', kind: 'clause', ref: '§8', label: 'auto-router bypassed for manual waypoints' },
+    { seq: 3, type: 'action-finished', workOrder: 'WO-1', level: 'item', ref: '§8' },
+    { seq: 4, type: 'action-started', workOrder: 'WO-1', level: 'item', kind: 'clause', ref: '§9' }, // reported with no description
+    { seq: 5, type: 'action-started', workOrder: 'WO-1', level: 'item', kind: 'adhoc', ref: 'extract-helper', label: 'extract the shared helper' },
+  ].map((e) => JSON.stringify(e)).join('\n') + '\n');
+  const md = renderMarkdown(buildModel(root));
+  assert.match(md, /- ✓ §8 — auto-router bypassed for manual waypoints/, 'a described clause reads "§8 — <what it covers>"');
+  assert.match(md, /- ▶ §9\n/, 'a clause reported with no description shows just its ref, never "§9 — §9"');
+  assert.match(md, /- ▶ extract the shared helper\n/, 'a non-clause (adhoc) item keeps its plain label, no ref prefix');
 });
 
 check('render: a started-but-never-finished item stays visibly active even after the section closes (honest gap)', () => {
