@@ -77,6 +77,23 @@ call, else raise an `intent-fork`), never fold it into the conservative footprin
   `node ${reasonable}/lib/redispatch-guard.mjs <wo-id>` — an identical work order is blocked until an
   input changed.
 
+### Never re-route a terminal (merged) work order
+A merged work order is **done, permanently** — its code already landed on the effort branch. Unlike a
+dead-end (which can un-bind once an input changes, `redispatch-guard.mjs`'s job above), there is no
+input change that makes re-running a merged work order's pipeline correct. The orchestrator's dispatch
+prompt carries `terminalWorkOrders` — the ids `lib/reconcile.mjs` already computed as
+`status:"merged"` or `status:"green"`-with-`merged:true` — straight from the reconcile briefing.
+**Never include one of those ids in the `ROUTE_PLAN`**, even when:
+- a stale `.reasonable/work-orders/<id>.json` spec file still sits on disk (those files are never
+  deleted on merge — presence on disk is not a dispatch candidacy signal, the journal's terminal state
+  is);
+- the orchestrator's `args.route` prose doesn't explicitly say to skip it — the terminal set is
+  authoritative and is never a hint you weigh against other signals.
+This was the exact incident this rule fixes: a merged work order got re-dispatched twice from a stale
+on-disk spec file, once wedging the run when the lane-provisioner correctly refused to provision a lane
+for it. The script also filters on `terminalWorkOrders` as a mechanical backstop — but that is a second
+line of defense, not permission to skip this filter here.
+
 ## Parallelism: spend feedback carefully
 - **Intra-vertical-slice: aggressive.** Work orders inside one vertical slice implement an already-made decision;
   adversarial fan-out (audits, skeptics, mutation) is read-only and embarrassingly parallel.
