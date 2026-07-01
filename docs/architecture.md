@@ -341,7 +341,7 @@ fires the instant a lane commit lands and appends the `{type:"commit"}` custody 
 lane **descriptor** (not the forgeable trailer), idempotent, fail-open. The commit→ledger window shrinks from
 minutes (until the agent logs it, or the next wave's journal write) to the hook's own execution and no longer
 depends on the agent; reconcile then **reclaims** the commit instead of halting. This is the recovery dual of
-the D19 progress mirror: D19's heartbeat is an ephemeral presentation *pointer*; the D20 custody line is a
+the D19 progress mirror: D19's agent-reported action event is an ephemeral presentation *pointer*; the D20 custody line is a
 durable recovery *anchor* — one observed write, two readers.
 
 ---
