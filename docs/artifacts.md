@@ -624,6 +624,14 @@ may belong to a different effort) is never consulted.
   recorded ISO `ts`, never a relative age that rots in a pinned file). A `ts` that is later
   than some higher-`seq` sibling's is *provably wrong* (an agent-authored ledger line can
   carry a guessed timestamp) and is **suppressed** — better no time than a misleading one.
+  An `enrichment` event renders as a **parent line + child bullets** rather than one flat
+  line: the parent names the component + clauses only (`enriched <component> §N,§M`), and
+  its agent-authored `note` is split — regex-only, no LLM in the loop — into one child per
+  recognizable fragment (a clause marker `§N`, a declared Input/Observable Seam, a
+  verification summary), falling back to a `clauses: …` summary child plus the note itself
+  when the note carries no such structure. In `progress.json` this is the action node's own
+  `children`, an array of plain description strings (a leaf detail list, not further nodes —
+  the only other node kinds' `children` are).
 
 The canonical index (`journal.json` / `inbox.json`) stays the lone serialized scribe's
 (D3b); the mirror is a *separate* presentation artifact with a *single* deterministic writer,
