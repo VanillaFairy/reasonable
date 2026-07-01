@@ -88,8 +88,32 @@ check('projection: slices + derived statuses', () => {
   const byId = Object.fromEntries(m.slices.map((s) => [s.id, s]));
   assert.deepEqual(Object.keys(byId).sort(), ['slice-a', 'slice-b', 'slice-c']);
   assert.equal(byId['slice-a'].status, 'green', 'not current + all WOs merged');
-  assert.equal(byId['slice-b'].status, 'active', 'is currentVerticalSlice');
+  assert.equal(byId['slice-b'].status, 'active', 'WO-3 is dispatched — real started work, not merely the cursor');
   assert.equal(byId['slice-c'].status, 'pending', 'planned, no work orders');
+});
+
+// B2 — `active` means work has actually STARTED (≥1 work order dispatched or checkpointed),
+// NOT merely that the slice is the current cursor. The cursor (currentVerticalSlice) advances
+// to the next slice at retro — BEFORE any work order or lane exists — so that slice must read
+// `pending`, never `active`. (The exact sofia-plays shape: slice 3 went `active` the instant
+// slice 2's retro moved the cursor, with zero work orders under it.) And a `checkpointed`
+// work order — started, then paused — is still started work, so its slice is `active`, never
+// silently `pending`.
+check('projection: the current cursor slice with no started work is pending, not active', () => {
+  const root = newEffort();
+  write(root, '.reasonable/journal.json', JSON.stringify({
+    effort: 'demo',
+    currentVerticalSlice: 'slice-next', // the cursor sits here…
+    workOrders: {
+      'WO-done': { status: 'merged', role: 'implementer', verticalSlice: 'slice-prev' },
+      'WO-paused': { status: 'checkpointed', role: 'implementer', verticalSlice: 'slice-work' },
+    },
+    // …but slice-next has ZERO work orders — the cursor alone must not paint it active.
+  }));
+  const byId = Object.fromEntries(buildModel(root).slices.map((s) => [s.id, s]));
+  assert.equal(byId['slice-next'].status, 'pending', 'the cursor alone never makes a slice active');
+  assert.equal(byId['slice-prev'].status, 'green', 'all work orders merged');
+  assert.equal(byId['slice-work'].status, 'active', 'a checkpointed (started, paused) work order still counts as started');
 });
 
 check('projection: work orders + atomic actions hang off the right WO', () => {
