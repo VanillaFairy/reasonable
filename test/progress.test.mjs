@@ -517,6 +517,84 @@ check('render: a dead attempt renders with the ✗ glyph + crash time, resume ho
   assert.deepEqual(wo.sections[1].items.map((i) => [i.label, i.status]), [['feature B', 'active']], 'feature B migrated to the live resume');
 });
 
+// I — the enrichment fallback checklist. A completed work order that predates live
+// action-event reporting (D19) has no `action-*` events, but its terminal `enrichment` ledger
+// event still records which contract clauses it delivered. The renderer derives a done-checklist
+// from those clauses — so every green implementer shows its items ticked, live-reported or not —
+// WITHOUT overriding a run that DID report. (The exact slice-1 / auto-route-core shape.)
+check('enrichment fallback: a no-action-event WO derives a done checklist from its enrichment clauses', () => {
+  const root = newEffort();
+  write(root, '.reasonable/journal.json', JSON.stringify({
+    effort: 'demo', currentVerticalSlice: 's',
+    workOrders: { 'WO-old': { status: 'merged', role: 'implementer', verticalSlice: 's' } },
+  }));
+  write(root, '.reasonable/ledger.jsonl', [
+    { seq: 1, type: 'enrichment', component: 'edge-path', clauses: ['§1', '§2', '§3'], workOrder: 'WO-old', note: 'orthogonal buildPath', ts: '2026-06-27T09:00:00Z' },
+    { seq: 2, type: 'merge', workOrder: 'WO-old', ts: '2026-06-27T10:00:00Z' },
+  ].map((e) => JSON.stringify(e)).join('\n') + '\n');
+  const wo = buildModel(root).slices[0].children[0];
+  assert.equal(wo.sections.length, 1, 'one derived section per enriched component');
+  assert.equal(wo.sections[0].label, 'edge-path');
+  assert.equal(wo.sections[0].status, 'done');
+  assert.deepEqual(
+    wo.sections[0].items.map((i) => [i.ref, i.status]),
+    [['§1', 'done'], ['§2', 'done'], ['§3', 'done']],
+    'each delivered clause ticked done',
+  );
+  const md = renderMarkdown(buildModel(root));
+  assert.match(md, /- ✓ edge-path/, 'derived section renders with a ✓');
+  assert.match(md, /- ✓ §1/, 'clause §1 renders as a done item');
+  assert.match(md, /- ✓ §3/);
+});
+
+check('enrichment fallback: two enriched components → two derived sections, clauses deduped in order', () => {
+  const root = newEffort();
+  write(root, '.reasonable/journal.json', JSON.stringify({
+    effort: 'demo', currentVerticalSlice: 's',
+    workOrders: { 'WO-two': { status: 'merged', role: 'implementer', verticalSlice: 's' } },
+  }));
+  write(root, '.reasonable/ledger.jsonl', [
+    { seq: 1, type: 'enrichment', component: 'edge-router', clauses: ['§1', '§2'], workOrder: 'WO-two', ts: '2026-06-30T09:00:00Z' },
+    { seq: 2, type: 'enrichment', component: 'edge-path', clauses: ['§8'], workOrder: 'WO-two', ts: '2026-06-30T09:30:00Z' },
+    { seq: 3, type: 'enrichment', component: 'edge-router', clauses: ['§2', '§3'], workOrder: 'WO-two', ts: '2026-06-30T10:00:00Z' },
+  ].map((e) => JSON.stringify(e)).join('\n') + '\n');
+  const wo = buildModel(root).slices[0].children[0];
+  assert.deepEqual(wo.sections.map((s) => s.label), ['edge-router', 'edge-path'], 'one section per component, first-seen order');
+  assert.deepEqual(wo.sections[0].items.map((i) => i.ref), ['§1', '§2', '§3'], 'clauses unioned across events, deduped, in order');
+});
+
+check('enrichment fallback: a WO with LIVE action-events is NOT overridden by the enrichment fallback', () => {
+  const root = newEffort();
+  write(root, '.reasonable/journal.json', JSON.stringify({
+    effort: 'demo', currentVerticalSlice: 's',
+    workOrders: { 'WO-live': { status: 'checkpointed', role: 'implementer', verticalSlice: 's' } },
+  }));
+  write(root, '.reasonable/ledger.jsonl', [
+    { seq: 1, type: 'action-started', workOrder: 'WO-live', level: 'section', label: 'implementation', ts: '2026-07-01T09:00:00Z' },
+    { seq: 2, type: 'action-started', workOrder: 'WO-live', level: 'item', kind: 'clause', ref: '§8', label: 'bypass', ts: '2026-07-01T09:00:05Z' },
+    { seq: 3, type: 'action-finished', workOrder: 'WO-live', level: 'item', ref: '§8', ts: '2026-07-01T09:01:00Z' },
+    { seq: 4, type: 'enrichment', component: 'edge-path', clauses: ['§8', '§9'], workOrder: 'WO-live', ts: '2026-07-01T09:02:00Z' },
+  ].map((e) => JSON.stringify(e)).join('\n') + '\n');
+  const wo = buildModel(root).slices[0].children[0];
+  assert.equal(wo.sections.length, 1);
+  assert.equal(wo.sections[0].label, 'implementation', 'the LIVE section wins; the enrichment fallback does not fire');
+  assert.deepEqual(wo.sections[0].items.map((i) => i.ref), ['§8'], 'only the live-reported items, not the enrichment clause set');
+});
+
+check('enrichment fallback: a WO with neither action-events nor enrichment clauses has no sections (no crash)', () => {
+  const root = newEffort();
+  write(root, '.reasonable/journal.json', JSON.stringify({
+    effort: 'demo', currentVerticalSlice: 's',
+    workOrders: { 'WO-bare': { status: 'merged', role: 'implementer', verticalSlice: 's' } },
+  }));
+  write(root, '.reasonable/ledger.jsonl', [
+    { seq: 1, type: 'commit', workOrder: 'WO-bare', ts: '2026-06-27T09:00:00Z' },
+    { seq: 2, type: 'merge', workOrder: 'WO-bare', ts: '2026-06-27T10:00:00Z' },
+  ].map((e) => JSON.stringify(e)).join('\n') + '\n');
+  const wo = buildModel(root).slices[0].children[0];
+  assert.deepEqual(wo.sections, [], 'nothing to derive → empty, same as before');
+});
+
 for (const t of tmps) { try { rmSync(t, { recursive: true, force: true }); } catch { /* best effort */ } }
 
 if (process.exitCode) console.error(`\nprogress: FAILURES above (${passed} passed).`);
