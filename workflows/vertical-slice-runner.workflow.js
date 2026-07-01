@@ -517,6 +517,20 @@ function toGateResult(verticalSliceGreen, state, budget) {
 // -----------------------------------------------------------------------------
 function j(value) { return JSON.stringify(value); }
 
+// callShapeReminder - the reconciler-crash fix (graph-editor-ux-overhaul, 2026-07-01):
+// the model repeatedly mis-called the forced StructuredOutput tool by JSON-stringifying
+// its ENTIRE answer into a single wrapper property named "input" (e.g. {"input":
+// "{\"halt\": false, ...}"}) instead of passing the schema's own fields as the tool
+// call's top-level arguments. Every such call fails schema validation ("must have
+// required property ...") and burns one of the 5 retries; five wrapped attempts in a
+// row exhausts the cap and throws, which is what crashed the reconciler's very first
+// step outright. Seen on two different agent types in the same run (reconciler,
+// lane-provisioner), so it is a call-shape habit, not a reconciler-specific defect -
+// every schema-forced prompt below repeats this line near its `Return the X`
+// instruction to head it off before the model ever mis-calls the tool.
+const callShapeReminder =
+  'TOOL-CALL SHAPE: call the forced tool with the schema\'s fields as the CALL\'S OWN top-level arguments (e.g. {"halt": false, "haltReason": "", ...}) - do NOT JSON-stringify the whole answer into a wrapper property (e.g. {"input": "{...}"}); that fails schema validation and burns a retry.';
+
 function reconcilePrompt(a) {
   // D18 - args may not have propagated (the scriptPath args-drop). The reconciler is the
   // run's first agent and its cwd IS the effort root, so it can always recover the canonical
@@ -542,6 +556,7 @@ function reconcilePrompt(a) {
     'Compute the trust-staleness set: trusted-green tests whose governing clause was amended/extended since last verification.',
     'Report terminalWorkOrders EXACTLY as reconcile.mjs computed it (result.terminalWorkOrders) - the ids of every work order already merged (status:"merged", or status:"green" with merged:true). Do NOT eyeball journal.workOrders yourself; copy the script\'s computed set verbatim. These are DONE, permanently - the route-planner and the script both refuse to re-dispatch them no matter what still sits in .reasonable/work-orders/*.json.',
     'Return the BRIEFING. Set halt:true with haltReason+evidence for ANY of the four first-line AMBIGUOUS classes, or for an UNEXPLAINED autonomous floor breach (haltClass:"floor-integrity-unexplained") - never guess a recovery state.',
+    callShapeReminder,
   ].join('\n');
 }
 
@@ -560,6 +575,7 @@ function routePrompt(state, a) {
     'Cite .reasonable/intention.md (the oracle) on every priority/scope fork; an unsettleable fork is an intent-fork, not a silent guess (D5b).',
     'Size waves so the slice cannot plausibly approach the 1000-agent lifetime cap (D16c).',
     'Return the ROUTE_PLAN.',
+    callShapeReminder,
   ].join('\n');
 }
 
@@ -578,6 +594,7 @@ function intentVerifyPrompt(wo, a) {
     'Judge: (1) does each new must serve a behaviour the vision + slice spec actually demand - not scope sprawl, not a sycophantic restatement of what the code happens to do? (2) is it pinned at the right component / seam, not reaching past the locus? (3) where the enrichment cites a NEIGHBOUR (a shared-contract touch), is that citation warranted by the spec, or is it smuggling coupling the spec does not sanction?',
     'PROPOSE-NOT-ACT (Law 3 corollary, D2): return the verdict as DATA; you integrate nothing and fix nothing. A narrow writer / the orchestrator appends any resulting ledger event.',
     'Return the VERIFIER_VERDICT: verdict accept|reject|escalate, oracle = "vision + vertical-slice spec", by:"intent-verifier", proposed:true, touchesSharedContract reflecting why you ran. accept = every new must is warranted by the vision + slice spec, at the right seam. reject = over- or under-claims against the spec / wrong seam / unwarranted neighbour coupling - CITE the specific over/under-claim and the spec it violates (routes back to the implementer). escalate = two defensible readings the spec cannot settle - name both (routes to the human inbox; in autonomous mode it joins the always-escalate classes). A wrong ACCEPT corrupts effort truth - say only what the reference supports; where it is silent, escalate rather than invent an accept.',
+    callShapeReminder,
   ].join('\n');
 }
 
@@ -599,6 +616,7 @@ function verdictWriterPrompt(wo, verdict, a, commit) {
       ? 'The `commit` above is the validated work-product SHA the orchestrator read from git via `git rev-parse`. COPY IT VERBATIM - do NOT re-type, complete, shorten, or alter it. You never originate a SHA (D21): a hand-restated hex is the phantom-commit bug. Add only the monotonic `seq` and the `ts` by reading the ledger tail.'
       : 'The orchestrator did not pass a commit SHA. Do NOT invent one. READ the work-product commit\'s SHA from its own accounting line already in the ledger (the implementer\'s `enrichment`/`commit` entry for this work order) and copy that literal BYTE-FOR-BYTE into a `commit` field. If no such literal exists to copy, the line cannot be written honestly - set persisted:false and HALT (D21). Add the monotonic `seq` and `ts` from the ledger tail.',
     'This verdict ANNOTATES the enrichment diff as explained-by-verdict: ADVISORY ONLY (D6). It does NOT silence any floor or reconcile guard and does NOT bless the enrichment past review - a missing or half-written verdict can only cause MORE human surfacing, never less. Write nothing but this one ledger line. Return the SCRIBE_ACK: persisted:true once the line is durably appended, persisted:false otherwise (the orchestrator surfaces it). A bare-null return is reserved for agent death/skip and also surfaces.',
+    callShapeReminder,
   ].join('\n');
 }
 
@@ -645,6 +663,7 @@ async function provisionThenImplement(wo, _orig, _idx, ctx) {
       '(3) write the one .reasonable-lane.json descriptor at the worktree root (effortRoot back-pointer + narrowed locus/role/floorImpact/contractBirth); (4) record the lane in the journal via the scribe.',
       'Do NOT seed .reasonable/ into the worktree - effort state stays canonical (gitignored), reached via the back-pointer. Ensure a checkpoint-only lane carries a trailered commit so reconcile can re-claim it.',
       'Return the PROVISION_ACK: the worktree path + confirmation the descriptor is written + depsReady.',
+      callShapeReminder,
     ].join('\n'),
     { label: `provision:${wo.id}`, phase: 'Enrich', agentType: 'reasonable:lane-provisioner', schema: PROVISION_ACK },
   ));
@@ -678,6 +697,7 @@ async function provisionThenImplement(wo, _orig, _idx, ctx) {
         `Pin current behaviour as born \`characterized\` clauses (FLOOR, untrusted), provider-first, in the fixed atomic order: the born clause + the {type:"characterization"} ledger line to ${effortRoot}/.reasonable/ (canonical, absolute); the parked test under ${worktree}, committed with git -C ${worktree}.`,
         `Stamp \`Supersession: pending\` on any clause the behaviorDelta names. Admit each pin only if it survives the BF2 reverse discriminator (config from --root, code from --tree): node ${a.reasonableRoot || '$CLAUDE_PLUGIN_ROOT'}/lib/discriminator.mjs --reverse --test <name> --locus <glob> --root ${effortRoot} --tree ${worktree} --json.`,
         'Return kind:"characterized" with the component/clauses/seam, or kind:"not-needed".',
+        callShapeReminder,
       ].join('\n'),
       { label: `characterize:${wo.id}`, phase: 'Enrich', agentType: 'reasonable:characterizer', schema: CHARACTERIZATION },
     ));
@@ -710,6 +730,7 @@ async function provisionThenImplement(wo, _orig, _idx, ctx) {
       'If you hit a wall, emit the matching OUTCOME kind (scope-expansion / ripple / jurisdiction / spike-needed / infeasible / intent-fork / other) - never thrash toward green.',
       `Cite ${effortRoot}/.reasonable/intention.md when a fork turns on a scope/priority choice; an unsettleable fork is intent-fork (BREAKING), never a silent guess.`,
       'Return the OUTCOME.',
+      callShapeReminder,
     ].filter(Boolean).join('\n'),
     { label: `implement:${wo.id}`, phase: 'Enrich', agentType: 'reasonable:implementer', schema: OUTCOME },
   ));
@@ -826,6 +847,7 @@ async function reprovisionForBlindTest(prev, wo, _idx, ctx) {
       'Steps 1/2/4 (worktree, deps, journal record) are already satisfied - skip them. Step 3 is NOT a no-op this time: overwrite the existing .reasonable-lane.json IN PLACE with role:"blind-test-writer", testEditsAllowed:true, and locus set to the effort\'s configured testGlobs. Leave every other field (workOrder, effortRoot, contracts, behaviorDelta, floorImpact, contractBirth, budget, counter) exactly as it already reads - only the per-role narrowing moves.',
       'This closes the SAME descriptor-less window the initial provision-before-fence rule closes (D7), re-applied at the role transition: the rewrite must land BEFORE the blind-test-writer\'s first tool call, never after it hits a fence denial.',
       'Return the PROVISION_ACK: the worktree path (unchanged) + confirmation the descriptor now reads role:"blind-test-writer".',
+      callShapeReminder,
     ].join('\n'),
     { label: `reprovision-blind-test:${wo.id}`, phase: 'Enrich', agentType: 'reasonable:lane-provisioner', schema: PROVISION_ACK },
   ));
@@ -856,6 +878,7 @@ async function blindTest(prev, wo, _idx, ctx) {
       `For a render-only clause, TARGET the contract's \`## Observable Seams\`: import via the DECLARED export, and query the DECLARED stable handle (\`data-testid\`/\`role\`) for each element - do not guess an export shape or an incidental attribute. If a render clause has NO declared observable seam, do NOT guess one: produce the test against the declared seam if present, else flag it - the adjudicator will route \`seam-undeclared\` deterministically (the implementer then declares + exposes it). You still NEVER read the implementation and NEVER assert what the code does.`,
       'You do not run tests (no Bash). Formalize expectations blind. Your process cwd is the effort root, so write tests by absolute path under the worktree - never into the worktree .reasonable/.',
       'Return the OUTCOME (kind:"green" if you produced the test delta cleanly; otherwise the matching trap kind).',
+      callShapeReminder,
     ].join('\n'),
     { label: `blind-test:${wo.id}`, phase: 'Enrich', agentType: 'reasonable:blind-test-writer', schema: OUTCOME },
   ));
@@ -894,6 +917,7 @@ async function adjudicate(prev, wo, _idx, ctx) {
       'Implementation violates contract (a real behavioural red the classifier calls kind:"behavior") -> verdict fix-implementation (test untouched): return kind:"jurisdiction" so the implementer is re-dispatched to satisfy the contract next pass. Test mistranslates a clause -> verdict fix-test, citing the clause; if the blind writer must redo it, return kind:"intent-fork". Green-ness is never the goal state of test-editing.',
       `A scope/priority/jurisdiction fork must cite ${a.effortRoot}/.reasonable/intention.md; an unsettleable fork is intent-fork (BREAKING).`,
       'Return the OUTCOME: kind:"green" ONLY when the suite actually executed and is fully green and the lane is consistent with its contract (set detail.suiteRan=true); a seam-observation red -> kind:"seam-undeclared"; any behavioural red -> the matching kind above (never green, never checkpoint).',
+      callShapeReminder,
     ].join('\n'),
     { label: `adjudicate:${wo.id}`, phase: 'Enrich', agentType: 'reasonable:adjudicator', schema: OUTCOME },
   ));
@@ -960,6 +984,7 @@ async function audit(prev, wo, _idx, ctx) {
         check === 'reverse-discriminator' ? `Characterization clauses only: \`node ${plug}/lib/discriminator.mjs --reverse --test <name> --locus <glob> --root ${a.effortRoot} --tree ${worktree} --json\` - require RED under a locus mutant (the dual of HEAD~). Do NOT delegate to mutation-sample.` : '',
         check === 'suite' ? '' : 'Also report: floorGreen, trustedGreen, any floorBreak {broke, floorTests, loci}, and the loci of new GROWN (RED-at-HEAD~) tests for the planned-supersession classifier.',
         'Return the OUTCOME (kind:"green" iff this check passed; for the suite leaf, green iff the suite actually ran fully green); attach evidence.',
+        callShapeReminder,
       ].filter(Boolean).join('\n'),
       { label: `audit:${check}:${wo.id}`, phase: 'Enrich', agentType: 'reasonable:auditor', schema: OUTCOME },
     ))));
@@ -1100,17 +1125,27 @@ async function journalWriteAhead(freshWorkOrders, a) {
     verticalSlice: wo.verticalSlice || a.verticalSliceId,
     status: 'dispatched',
   }));
-  return agent(
-    [
-      'Write-ahead the derived index (journal.json) - and nothing else (D3b). This is the BEFORE-the-worker program-counter advance the progress mirror projects (write-ahead dispatched, your charter).',
-      `Set journal.currentVerticalSlice = ${j(a.verticalSliceId)}.`,
-      `For EACH of these work orders, UPSERT journal.workOrders[id] (READ journal.json first, MERGE - never drop a sibling work order, never invent fields): set status:"dispatched", role, and verticalSlice. ${j(wos)}`,
-      'DO NOT DOWNGRADE: only lift a work order to "dispatched" when its current status is absent or "pending". Leave any "merged"/"checkpointed"/"dead-end" order exactly as it is (a re-pass must be idempotent).',
-      'Do NOT touch inbox.json, the ledger, contracts, or any work order not listed here. Do NOT mark anything merged/green - that is the after-the-wave transition, not this write.',
-      'Return the SCRIBE_ACK: persisted:true once journal.json is durably written faithfully against its schema; persisted:false otherwise (the script logs it and proceeds - the post-wave write is authoritative).',
-    ].join('\n'),
-    { label: 'scribe:write-ahead', phase: 'Enrich', agentType: 'reasonable:journal-writer', schema: SCRIBE_ACK },
-  );
+  try {
+    return await agent(
+      [
+        'Write-ahead the derived index (journal.json) - and nothing else (D3b). This is the BEFORE-the-worker program-counter advance the progress mirror projects (write-ahead dispatched, your charter).',
+        `Set journal.currentVerticalSlice = ${j(a.verticalSliceId)}.`,
+        `For EACH of these work orders, UPSERT journal.workOrders[id] (READ journal.json first, MERGE - never drop a sibling work order, never invent fields): set status:"dispatched", role, and verticalSlice. ${j(wos)}`,
+        'DO NOT DOWNGRADE: only lift a work order to "dispatched" when its current status is absent or "pending". Leave any "merged"/"checkpointed"/"dead-end" order exactly as it is (a re-pass must be idempotent).',
+        'Do NOT touch inbox.json, the ledger, contracts, or any work order not listed here. Do NOT mark anything merged/green - that is the after-the-wave transition, not this write.',
+        'Return the SCRIBE_ACK: persisted:true once journal.json is durably written faithfully against its schema; persisted:false otherwise (the script logs it and proceeds - the post-wave write is authoritative).',
+        callShapeReminder,
+      ].join('\n'),
+      { label: 'scribe:write-ahead', phase: 'Enrich', agentType: 'reasonable:journal-writer', schema: SCRIBE_ACK },
+    );
+  } catch (e) {
+    // A bare-null return already means "agent death/skip" to this function's caller
+    // (fail-SOFT by design, per the docstring above) - a hard StructuredOutput failure
+    // is the same kind of non-answer, so it folds into that SAME sentinel instead of
+    // crashing the whole run (the post-wave journalWrite stays authoritative either way).
+    log(`scribe:write-ahead agent failed: ${String((e && e.message) || e)}`);
+    return null;
+  }
 }
 
 // journalWrite - the script's ONE AUTHORITATIVE derived-index write, via the lone serialized
@@ -1126,19 +1161,28 @@ async function journalWrite(state, a) {
     agentsDispatched: state.agentsDispatched || 0,
     tokensSpent: (typeof budget !== 'undefined' && budget && typeof budget.spent === 'function') ? budget.spent() : null,
   };
-  const ack = await agent(
-    [
-      'Write the derived index (journal.json + inbox.json) - and nothing else (D3b).',
-      'Record the program-counter transitions write-ahead, and append the pending inbox items with their BREAKING/ADVISORY class.',
-      `Set journal.currentVerticalSlice = ${j(a && a.verticalSliceId)} (keep the slice marked active in the program counter even if the per-wave write-ahead missed).`,
-      `Also persist this descriptive cost block into journal.json as "cost" (add an updatedAt ISO timestamp): ${j(cost)}. It feeds the deterministic progress mirror (D19) - descriptive telemetry, never a gate input.`,
-      `Transitions: ${j({ greenWorkOrders: state.greenWorkOrders || [], checkpoints: (state.checkpoints || []).length, blocked: (state.blocked || []).length })}`,
-      `Pending inbox: ${j(state.pendingInbox || [])}`,
-      'Return the SCRIBE_ACK: persisted:true once journal.json + inbox.json are durably written faithfully against their schemas; persisted:false if you cannot complete a clean, faithful write (the script reads persisted:false as HALT - it must not proceed believing a transition persisted). A bare-null return is reserved for agent death/skip and also HALTs.',
-    ].join('\n'),
-    { label: 'scribe:journal', phase: 'Enrich', agentType: 'reasonable:journal-writer', schema: SCRIBE_ACK },
-  );
-  return ack;
+  try {
+    return await agent(
+      [
+        'Write the derived index (journal.json + inbox.json) - and nothing else (D3b).',
+        'Record the program-counter transitions write-ahead, and append the pending inbox items with their BREAKING/ADVISORY class.',
+        `Set journal.currentVerticalSlice = ${j(a && a.verticalSliceId)} (keep the slice marked active in the program counter even if the per-wave write-ahead missed).`,
+        `Also persist this descriptive cost block into journal.json as "cost" (add an updatedAt ISO timestamp): ${j(cost)}. It feeds the deterministic progress mirror (D19) - descriptive telemetry, never a gate input.`,
+        `Transitions: ${j({ greenWorkOrders: state.greenWorkOrders || [], checkpoints: (state.checkpoints || []).length, blocked: (state.blocked || []).length })}`,
+        `Pending inbox: ${j(state.pendingInbox || [])}`,
+        'Return the SCRIBE_ACK: persisted:true once journal.json + inbox.json are durably written faithfully against their schemas; persisted:false if you cannot complete a clean, faithful write (the script reads persisted:false as HALT - it must not proceed believing a transition persisted). A bare-null return is reserved for agent death/skip and also HALTs.',
+        callShapeReminder,
+      ].join('\n'),
+      { label: 'scribe:journal', phase: 'Enrich', agentType: 'reasonable:journal-writer', schema: SCRIBE_ACK },
+    );
+  } catch (e) {
+    // A bare-null return is ALREADY documented (above, and in the prompt) as a HALT
+    // upstream - a hard StructuredOutput failure is the same kind of non-answer, so it
+    // folds into that SAME sentinel instead of crashing the run uncaught. No truth is
+    // lost either way: reconcile rebuilds the index from git+ledger on the next run.
+    log(`scribe:journal agent failed: ${String((e && e.message) || e)}`);
+    return null;
+  }
 }
 
 // withinBudget - guard on min(per-slice-remaining, engine turn-pool remaining) (S15
@@ -1169,10 +1213,23 @@ const a = { ...(args || {}) };
 
 phase('Reconcile');
 // Reconcile prologue - unconditional, total, halting (S12). Direct agent() (not
-// guard()-wrapped): a reconcile failure is a HALT, not a budget checkpoint. The agent
+// guard()-wrapped): a reconcile failure is a HALT, not a budget checkpoint - INCLUDING a
+// hard agent() throw (the model exhausting its StructuredOutput retry cap never reaches
+// `briefing.halt`, so it must be caught here too or it crashes the whole run uncaught
+// instead of halting - the 2026-07-01 graph-editor-ux-overhaul incident). The agent
 // result (the BRIEFING) is ALSO frozen - read it, never mutate it; the mutable working
 // `state` is a fresh object seeded from it below.
-const briefing = await agent(reconcilePrompt(a), { label: 'reconcile', agentType: 'reasonable:reconciler', schema: BRIEFING });
+let briefing;
+try {
+  briefing = await agent(reconcilePrompt(a), { label: 'reconcile', agentType: 'reasonable:reconciler', schema: BRIEFING });
+} catch (e) {
+  return {
+    kind: 'halt',
+    haltClass: 'other',
+    floorUnexplained: null,
+    reason: `reconcile agent failed before producing a BRIEFING: ${String((e && e.message) || e)}`,
+  };
+}
 if (!briefing || briefing.halt) {
   // Carry the D13 distinction in the slice-runner's own halt result rather than
   // relying solely on reconcile.mjs setting halt: a floor-integrity-unexplained halt
@@ -1224,7 +1281,15 @@ let state = {
 };
 
 phase('Plan');
-const plan = await agent(routePrompt(state, a), { label: 'route-plan', agentType: 'reasonable:route-planner', schema: ROUTE_PLAN });
+let plan;
+try {
+  plan = await agent(routePrompt(state, a), { label: 'route-plan', agentType: 'reasonable:route-planner', schema: ROUTE_PLAN });
+} catch (e) {
+  // Same class of gap as the reconcile prologue above: a hard agent() throw (e.g. the
+  // StructuredOutput retry cap) never reaches the `!plan` check below, so it must be
+  // caught here too or it crashes the whole run instead of halting.
+  return { kind: 'halt', reason: `route-planner agent failed before producing a ROUTE_PLAN: ${String((e && e.message) || e)}` };
+}
 if (!plan) {
   return { kind: 'halt', reason: 'route-planner returned null - cannot plan the slice' };
 }
