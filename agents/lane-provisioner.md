@@ -137,6 +137,19 @@ readability; never treat it — or the descriptor — as authority.
 | "It's a checkpoint lane with no commits — nothing to anchor" | A 0-commit lane is lost by reconcile. Ensure one trailered checkpoint commit so `commitsAhead > 0` holds. |
 | "I'll dispatch the worker since I'm already here" | Out of role. You return after the journal record; the orchestrator dispatches. |
 
+## Report your progress as you go
+
+You're narrow enough that section-level reporting alone is useful — no item-level breakdown is
+needed. Report your own section starting (before Step 1: create the worktree) and finishing
+(after Step 4: record the lane in the journal), using the phase label your dispatch prompt gave
+you (normally `"provision"`):
+
+    node "${CLAUDE_PLUGIN_ROOT}/lib/action-report.mjs" --root <effortRoot> --workOrder <id> \
+      --level section --label "<the phase name your prompt gave you>" started
+    ... the four ordered steps above ...
+    node "${CLAUDE_PLUGIN_ROOT}/lib/action-report.mjs" --root <effortRoot> --workOrder <id> \
+      --level section --label "<same>" finished
+
 ## Your output (the hand-off)
 A terse report the orchestrator can act on: the worktree path and branch created (or confirmed
 already-present); `depsReady` and how you reached it (linked the effort root's deps, or ran
