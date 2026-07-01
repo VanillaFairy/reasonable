@@ -226,6 +226,16 @@ check('replayActions: a finish/obsolete with no prior started still renders, nev
   });
 });
 
+check('replayActions: an item event with NO section ever opened is silently ignored, never throws', () => {
+  assert.doesNotThrow(() => {
+    const { sections } = replayActions([
+      { seq: 1, type: 'action-started', level: 'item', kind: 'clause', ref: '§4', label: 'orphan' },
+      { seq: 2, type: 'action-finished', level: 'item', ref: '§4' },
+    ]);
+    assert.deepEqual(sections, [], 'unaddressable item events produce no section, not a crash');
+  });
+});
+
 check('replayActions: item identity resets per section — the same ref in two sections is two rows', () => {
   const { sections } = replayActions([
     { seq: 1, type: 'action-started', level: 'section', label: 'implementation' },
