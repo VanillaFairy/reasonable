@@ -34,6 +34,11 @@ The mechanical core of reconciliation is **the rewritten libs you invoke**, not 
 - **`node ${reasonable}/lib/footprint.mjs WO-… WO-…`** — the locus ∪ citation-closure + resource-claim
   footprints, and the `independent()` set-algebra the briefing carries forward for the route-planner.
 
+`reconcile.mjs`'s return also carries **`terminalWorkOrders`** — the ids of every work order already
+merged (`status:"merged"`, or `status:"green"` with `merged:true`), computed mechanically from
+`journal.workOrders`. Copy it into the briefing verbatim; do not re-derive or second-guess it by
+eyeballing the journal yourself.
+
 Run them. Read their exact output. **Do not eyeball-estimate what they measure**, and do not paper
 over an AMBIGUOUS verdict with a hopeful interpretation — the script's halt is the answer.
 
@@ -124,6 +129,9 @@ Return the typed `BRIEFING` the `vertical-slice-runner` prologue consumes (it di
 - **The re-derived state.** Current vertical slice, lane statuses (the buckets each was resolved into,
   with the RESOLVED downgrades/re-claims named), the footprints + resource claims + `independent()`
   grouping for the next dispatch wave.
+- **`terminalWorkOrders`** — the ids reconcile.mjs already computed as merged/done. This is a mechanical
+  fact, not your judgment call: the route-planner and the script both refuse to re-dispatch anything in
+  this set, no matter what a stale `.reasonable/work-orders/<id>.json` spec still says on disk.
 - **`runMode`** as read from `config.json` (or the halt, if absent).
 - **`effortBranch` / `baseBranch`** as read from `config.json`, and **`laneBaseIssues`** — any live
   lanes not descended from the effort branch (build-on-stale; surfaced, never halting).

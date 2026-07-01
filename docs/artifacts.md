@@ -576,6 +576,17 @@ deterministic progress mirror (D19) — best-effort, **never a gate input**, and
 **not** reconcile-rebuildable (like `lastReconciled`, it resets from the next wave
 on a cold rebuild).
 
+A work order is **terminal** once `status` is `"merged"` — its code already landed
+on the effort branch, so re-dispatching it is never correct, no matter what its
+`.reasonable/work-orders/<id>.json` spec still says on disk. Two read-side
+consumers — `lib/reconcile.mjs`'s `terminalWorkOrders` (the mechanical set the
+route-planner and the script both refuse to re-dispatch) and `lib/progress.mjs`'s
+rendering — additionally tolerate a `status:"green"` + `merged:true` shape as
+equivalent. This is a defensive **read-side** tolerance for a real drift incident
+(a work order once landed with the vertical-slice-gate's own `green` vocabulary
+instead of `merged`), not a second value anything should intentionally write —
+the sole writer still only ever produces the five statuses above.
+
 ---
 
 ## progress.json / progress.md  (derived mirror, D19)
