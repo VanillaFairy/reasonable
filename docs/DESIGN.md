@@ -312,7 +312,14 @@ backstopped by the auditor as the independent check that would catch a wrong cal
 started but never finished before its section closes stays visibly active, an honest gap rather
 than a silently manufactured completion. Only the currently-active row carries a literal
 `[YYYY-MM-DD HH:MM:SS UTC]` timestamp (its start time — duration is inferred from the gap to
-whatever started next, never stored explicitly). (Why not the model, or a timer-driven digest? An LLM tracker
+whatever started next, never stored explicitly). A resumed run — a *fresh* agent after a lost-work
+crash — re-announces its section under a bumped **dispatch epoch** (a per-work-order monotonic
+counter the write-ahead scribe raises on each `pending → dispatched` lift, stamped onto every
+action-event from the journal, never from agent memory): a same-epoch re-announce is a deterministic
+no-op (nothing the agent has to remember), while a different-epoch reopen seals the crashed attempt as
+a `dead` (`✗`) **crash boundary** — keeping only its finished work, migrating the unfinished items to
+the resume — so the history reads `…done · ✗dead · ▶active` and a `dead` row carries its crash time
+(details in `docs/artifacts.md` and the D19 design spec). (Why not the model, or a timer-driven digest? An LLM tracker
 would burn tokens and could lie; the native session-task store can't be rebuilt from the ledger
 and isn't readable from a hook — only a ledger-derived file honors both *deterministic* and
 *crash-recoverable*.)

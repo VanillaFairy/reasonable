@@ -46,10 +46,12 @@ Fields:
 
 - `workOrder` — required on every line, as today.
 - `level` — `"section"` or `"item"`. A section is a named span of work within one work order
-  (`"implementation"`, `"audit"`, `"post-audit fixes"`, a second `"audit"` — sections are never
-  deduplicated by label; the *n*-th `action-started` at `level:"section"` for a work order is
-  simply the *n*-th section, in order). An item nests inside whichever section is currently open
-  for that work order.
+  (`"implementation"`, `"audit"`, `"post-audit fixes"`, a second `"audit"`). A `level:"section"`
+  `action-started` for a *different* label, or for the same label after the previous section
+  finished, opens a fresh section in order. Reopening the *still-open* same-label section is
+  disambiguated by the `dispatch` epoch (see "Dispatch epoch & crash boundaries" below): a
+  same-epoch reopen is an idempotent no-op; a different-epoch reopen is a crash boundary. An item
+  nests inside whichever section is currently open for that work order.
 - `kind` (items only) — `"clause"` (a contract clause the work order is enriching/citing —
   `ref` is the clause id, e.g. `"§4"`), `"step"` (one entry from a small, code-defined catalog of
   a role's own fixed checklist — e.g. the auditor's `discriminator-check` /
@@ -69,7 +71,8 @@ Fields:
 projection for a work order becomes a **plain sequential replay** of that group's
 `action-started`/`action-finished`/`action-obsoleted` lines, in `seq` order:
 
-- A `level:"section"` `action-started` closes whatever section was previously open (if any) and
+- A `level:"section"` `action-started` for a NEW section (a different label, or the same label
+  after the previous section finished) closes whatever section was previously open (if any) and
   opens a new one. **Item identity resets per section** — `ref:"§4"` in the `"implementation"`
   section and `ref:"§4"` reported again in a later `"post-audit fixes"` section are two distinct
   rows in two distinct sections, never merged into one. This is the one subtlety a naive
@@ -88,10 +91,45 @@ projection for a work order becomes a **plain sequential replay** of that group'
   does not do today — deferred as a possible fast-follow, not part of this design).
 - Two corner cases the replay must handle without ever throwing: a repeated `action-started` for
   a `ref` that's already open (no matching finish yet) is a no-op re-affirmation, not a second
-  row; a `finished`/`obsoleted` naming a `ref` with no open `action-started` in the current
-  section (e.g. a section closed out from under a worker mid-report) renders best-effort as its
-  own row rather than being dropped or crashing the projection — matches the "never lie, never
-  fail closed on presentation" posture the rest of `progress.mjs` already has.
+  row — and, its section-level analog, a repeated `action-started` for the still-open *same-label
+  section under the same `dispatch` epoch* is likewise a no-op re-affirmation (see below); a
+  `finished`/`obsoleted` naming a `ref` with no open `action-started` in the current section (e.g. a
+  section closed out from under a worker mid-report) renders best-effort as its own row rather than
+  being dropped or crashing the projection — matches the "never lie, never fail closed on
+  presentation" posture the rest of `progress.mjs` already has.
+
+## Dispatch epoch & crash boundaries
+
+A resumed run is a **fresh agent**, not the revived one (the session is a cache; recovery re-derives
+from durable artifacts). So a resuming agent re-announcing the section it is taking over emits a
+second `action-started` for a section that is *still open* — indistinguishable, from the event alone,
+from the same agent redundantly re-announcing its own section after a context compaction. The
+distinguishing fact is **who** emitted it, and that is provenance the event must carry, not something
+the projection can guess.
+
+Every `action-*` line therefore carries a `dispatch` field: the work order's `dispatchEpoch` — a
+monotonic counter the write-ahead scribe bumps by one each time it lifts the order `pending →
+dispatched` (see `docs/artifacts.md`), i.e. once per genuine dispatch. `lib/action-report.mjs` reads
+it **fresh from the journal** on every call and stamps it (never the agent — a compacted agent
+re-derives the same value), which makes two behaviors deterministic in durable state rather than in
+agent memory:
+
+- **At append time** (`reportAction`): a `started` whose section/item is already active *under the
+  same epoch* is a redundant re-announce — the transition already happened, so it is suppressed (a
+  no-op that records no non-event). A `started` active under a *different* (higher) epoch is a
+  resumed run and is **not** suppressed, so it lands.
+- **At replay time** (`replayActions`): reopening a still-open same-label section under the **same**
+  epoch is the belt-and-suspenders no-op (it also collapses epoch-less legacy reopens, where both
+  sides are absent → never a spurious crash marker). Reopening under a **different** epoch is a
+  **crash boundary**: the prior attempt is sealed `dead` (`✗`, carrying a `crashedAt`), keeping only
+  its finished/obsoleted items — its unfinished items are dropped and *migrate forward*, re-reported
+  by the resuming agent under the fresh section. The render is a linear history: `…done · ✗dead ·
+  ▶active`.
+
+Only a **lost-work** crash bumps the epoch (reconcile downgraded the order `dispatched → pending`,
+so the next lift re-bumps). A same-run re-pass or a checkpoint-reclaim resume leaves the order
+`dispatched`, so the epoch is unchanged and the continuation renders seamlessly — no `dead` marker
+for work that survived in git.
 
 This **replaces `pipelineFor`'s "furthest stage reached" frontier math entirely.** The fixed
 `PIPELINE` array, `STAGE_INDEX`, `STAGE_FOR_ACTION`, and the conditional-stage-evidencing logic in

@@ -88,6 +88,64 @@ check('CLI: an obsoleted call requires --reason', () => {
   });
 });
 
+// ── dispatch epoch: deterministic, memory-free idempotence + crash-boundary provenance (D19) ──
+// The WO's monotonic `dispatchEpoch` (journal-written, bumped once per genuine dispatch) is read
+// FRESH from the journal on every call — never supplied by the agent — and stamped onto the event.
+// A `started` already active under MY OWN epoch is a redundant re-announce (statelessness / a
+// post-compaction re-report): the transition already happened, so it is a deterministic no-op. A
+// `started` active under a DIFFERENT (higher) epoch is a resumed run: it is NOT suppressed, so it
+// lands and replayActions renders it as the crash boundary.
+function readLedger(root) {
+  const p = join(root, '.reasonable', 'ledger.jsonl');
+  return existsSync(p) ? readFileSync(p, 'utf8').trim().split('\n').filter(Boolean).map((l) => JSON.parse(l)) : [];
+}
+function setEpoch(root, wo, epoch) {
+  const p = join(root, '.reasonable', 'journal.json');
+  const j = JSON.parse(readFileSync(p, 'utf8'));
+  j.workOrders[wo].dispatchEpoch = epoch;
+  writeFileSync(p, JSON.stringify(j));
+}
+
+check('reportAction: stamps the journal dispatch epoch onto the appended event', () => {
+  const root = newEffort();
+  setEpoch(root, 'WO-1', 3);
+  reportAction(root, 'started', { workOrder: 'WO-1', level: 'section', label: 'implementation' });
+  const ledger = readLedger(root);
+  assert.equal(ledger.length, 1);
+  assert.equal(ledger[0].dispatch, 3, 'the event carries the WO dispatch epoch, read from the journal (not the agent)');
+});
+
+check('reportAction: a redundant same-epoch section-started is suppressed (no second ledger line)', () => {
+  const root = newEffort();
+  setEpoch(root, 'WO-1', 1);
+  reportAction(root, 'started', { workOrder: 'WO-1', level: 'section', label: 'implementation' });
+  const r = reportAction(root, 'started', { workOrder: 'WO-1', level: 'section', label: 'implementation' });
+  assert.equal(r.suppressed, true, 'the re-announce is a deterministic no-op');
+  assert.equal(readLedger(root).length, 1, 'still one section-started, not two');
+});
+
+check('reportAction: a higher-epoch reopen of the same section DOES append (crash boundary lands)', () => {
+  const root = newEffort();
+  setEpoch(root, 'WO-1', 1);
+  reportAction(root, 'started', { workOrder: 'WO-1', level: 'section', label: 'implementation' });
+  setEpoch(root, 'WO-1', 2); // a resumed dispatch
+  const r = reportAction(root, 'started', { workOrder: 'WO-1', level: 'section', label: 'implementation' });
+  assert.notEqual(r.suppressed, true, 'a resumed-run reopen is NOT suppressed');
+  const ledger = readLedger(root);
+  assert.equal(ledger.length, 2, 'the resume start lands as the crash boundary');
+  assert.equal(ledger[1].dispatch, 2);
+});
+
+check('reportAction: a redundant same-epoch item-started is suppressed', () => {
+  const root = newEffort();
+  setEpoch(root, 'WO-1', 1);
+  reportAction(root, 'started', { workOrder: 'WO-1', level: 'section', label: 'implementation' });
+  reportAction(root, 'started', { workOrder: 'WO-1', level: 'item', kind: 'adhoc', ref: 'task-x' });
+  const r = reportAction(root, 'started', { workOrder: 'WO-1', level: 'item', kind: 'adhoc', ref: 'task-x' });
+  assert.equal(r.suppressed, true);
+  assert.equal(readLedger(root).filter((e) => e.ref === 'task-x').length, 1, 'one task-x started, not two');
+});
+
 for (const t of tmps) { try { rmSync(t, { recursive: true, force: true }); } catch { /* best effort */ } }
 
 if (process.exitCode) console.error(`\naction-report: FAILURES above (${passed} passed).`);
