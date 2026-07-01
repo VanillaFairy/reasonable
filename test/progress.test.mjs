@@ -260,8 +260,9 @@ check('replayActions: an explicitly finished section is done even as the last se
   assert.equal(sections[0].status, 'done');
 });
 
-// G2 — atomic-action lines carry the same literal [HH:MM:SS] prefix, sliced from the
-// ledger entry's ts; an action with no ts degrades to no prefix (never a crash, never NaN).
+// G2 — atomic-action lines carry the same literal human-readable UTC datetime prefix
+// (full date, no raw ISO "T…Z" notation), derived from the ledger entry's ts; an action
+// with no ts degrades to no prefix (never a crash, never NaN).
 check('render: action lines are time-prefixed from the ledger ts; tsless action → no prefix', () => {
   const root = newEffort();
   write(root, '.reasonable/journal.json', JSON.stringify({
@@ -273,7 +274,7 @@ check('render: action lines are time-prefixed from the ledger ts; tsless action 
     { seq: 2, type: 'commit', workOrder: 'WO-1' }, // no ts → graceful, no prefix
   ].map((e) => JSON.stringify(e)).join('\n') + '\n');
   const md = renderMarkdown(buildModel(root));
-  assert.match(md, /\[09:04:11\] ✎ enriched edge-path §8 — autoRoute bypass/, 'ledger ts prefixes the action line');
+  assert.match(md, /\[2026-06-27 09:04:11 UTC\] ✎ enriched edge-path §8 — autoRoute bypass/, 'ledger ts prefixes the action line with a full human-readable datetime');
   assert.match(md, /- ✎ commit/, 'a tsless action renders with no time prefix, no NaN');
   assert.doesNotMatch(md, /\[NaN/, 'never a NaN timestamp');
 });
@@ -316,8 +317,8 @@ check('render: post-audit-fixes rework renders as new sections, never rewriting 
   const md = renderMarkdown(buildModel(root));
   assert.match(md, /- ✓ implementation/);
   assert.match(md, /- ✓ audit/);
-  assert.match(md, /- ▶ post-audit fixes {2,}\[09:22:05\]/);
-  assert.match(md, /- ▶ bug B {2,}\[09:25:05\]/);
+  assert.match(md, /- ▶ post-audit fixes {2,}\[2026-06-27 09:22:05 UTC\]/);
+  assert.match(md, /- ▶ bug B {2,}\[2026-06-27 09:25:05 UTC\]/);
   assert.doesNotMatch(md, /now:/, 'no floating "now" fallback line anywhere');
   assert.doesNotMatch(md, /⟳/, 'no heartbeat glyph — the heartbeat tier is gone');
 });
@@ -389,10 +390,10 @@ check('render: actions ordered by seq; a future-dated (vs successors) ts is supp
   const wo = buildModel(root).slices[0].children[0];
   assert.deepEqual(wo.children.map((a) => a.seq), [45, 46, 47, 48], 'sorted by seq (causal order), not file order');
   const md = renderMarkdown(buildModel(root));
-  assert.match(md, /\[07:47:01\] ✎ commit/, 'a trustworthy ts is shown');
-  assert.match(md, /\[08:27:56\] ✎ checkpoint/);
+  assert.match(md, /\[2026-06-30 07:47:01 UTC\] ✎ commit/, 'a trustworthy ts is shown');
+  assert.match(md, /\[2026-06-30 08:27:56 UTC\] ✎ checkpoint/);
   assert.match(md, /- ✎ enriched edge-router/, 'the enrichment renders…');
-  assert.doesNotMatch(md, /\[09:58:00\]/, '…WITHOUT its provably future-dated 09:58 ts');
+  assert.doesNotMatch(md, /\[2026-06-30 09:58:00 UTC\]/, '…WITHOUT its provably future-dated 09:58 ts');
 });
 
 for (const t of tmps) { try { rmSync(t, { recursive: true, force: true }); } catch { /* best effort */ } }
