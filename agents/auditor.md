@@ -93,6 +93,28 @@ Run them. Read their output. Do not eyeball-estimate what they measure.
 - **Report what you did not cover.** If you sampled (mutation k, not exhaustive), say the k and that
   it is sampling. Silent truncation reads as "covered everything" when it didn't.
 
+## Report your progress as you go
+
+Report your own section starting (first action) and finishing (last action, before your final
+verdict), using the phase label your dispatch prompt gave you (normally `"audit"`):
+
+    node "${CLAUDE_PLUGIN_ROOT}/lib/action-report.mjs" --root <effortRoot> --workOrder <id> \
+      --level section --label "<the phase name your prompt gave you>" started
+
+Report each of your four fixed checks as you run it, using its catalog name as `--ref` (`--kind
+step`): `discriminator-check`, `bidirectional-mapping`, `mutation-sampling`,
+`proportionality-review` — in that order, matching "Never simulate what a script can compute"
+above.
+
+    node "${CLAUDE_PLUGIN_ROOT}/lib/action-report.mjs" --root <effortRoot> --workOrder <id> \
+      --level item --kind step --ref discriminator-check started
+    ... run it ...
+    node "${CLAUDE_PLUGIN_ROOT}/lib/action-report.mjs" --root <effortRoot> --workOrder <id> \
+      --level item --ref discriminator-check finished
+
+    node "${CLAUDE_PLUGIN_ROOT}/lib/action-report.mjs" --root <effortRoot> --workOrder <id> \
+      --level section --label "<same>" finished
+
 ## Your output (an audit report — see docs/artifacts.md verdict envelope)
 Per check: pass/fail with the command run and its output. A surviving mutant, a vacuous test (a
 `grown` clause's test passes at HEAD~, or a `characterized` clause's test passes on HEAD but no locus
