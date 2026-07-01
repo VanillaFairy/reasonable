@@ -82,6 +82,15 @@ write-ahead turn: **only lift a missing/`pending` order to `dispatched`; never d
 `merged`/`checkpointed`/`dead-end` order (a re-pass must be idempotent). The COARSE program-counter
 advance is yours; the FINE per-stage, per-tool *"now"* heartbeat is **not** — see below.
 
+**Bump `dispatchEpoch` on exactly that lift.** When (and only when) you lift an order from
+absent/`pending` to `dispatched`, also set `dispatchEpoch` to *(its current `dispatchEpoch`, or 0 if
+absent) + 1*. It is a mechanical stamp of the same transition — like the `updatedAt` on `cost` — not a
+decision you make: the epoch counts genuine dispatches so the progress mirror can tell a resumed run's
+work apart from the crashed attempt it replaced (D19). An order you leave untouched (already
+`dispatched`/`checkpointed`/`merged`/`dead-end`) keeps its `dispatchEpoch` exactly as-is — never
+re-bump on an idempotent re-pass or a checkpoint-reclaim. The field is defined in `docs/artifacts.md`
+(`journal.json`); this is the one place it is written.
+
 ## The fine-grained progress channel is NOT yours
 A separate mechanism — each dispatched agent's own `action-started`/`action-finished`/
 `action-obsoleted` reports via `lib/action-report.mjs` — carries this fine-grained progress. It

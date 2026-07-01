@@ -573,7 +573,7 @@ The program counter. Single writer: the orchestrator. Statuses:
     "WO-12": {
       "status": "dispatched", "role": "implementer", "verticalSlice": "expr-eval",
       "worktree": ".worktrees/WO-12", "branch": "lane/WO-12",
-      "contracts": ["parser"], "commits": []
+      "contracts": ["parser"], "commits": [], "dispatchEpoch": 1
     }
   },
   "lanes": { ".worktrees/WO-12": "WO-12" },
@@ -584,9 +584,18 @@ The program counter. Single writer: the orchestrator. Statuses:
 ```
 
 `commits` is the orchestrator's accounting (SHAs it has merged / lanes have
-reported) — the basis for provenance partitioning (§5.14B). `lanes` maps each
-live worktree path to its work order; reconciliation checks this against the
-actual worktrees on disk (orphan accounting). `cost` is **descriptive run
+reported) — the basis for provenance partitioning (§5.14B). `dispatchEpoch` is a
+**monotonic dispatch counter** (integer ≥ 1): the write-ahead scribe bumps it by
+one each time it lifts this order `pending → dispatched` (first dispatch → 1; each
+re-dispatch after a lost-work crash → 2, 3, …), and **never** on any other
+transition, so a same-run re-pass or a checkpoint-reclaim leaves it unchanged. It
+is preserved across a reconcile downgrade (which touches only `status`). Its sole
+consumer is the progress mirror (D19): `lib/action-report.mjs` stamps it onto every
+`action-*` ledger line (as `dispatch`), letting `lib/progress.mjs` distinguish a
+same-dispatch re-announce (idempotent no-op) from a resumed run's reopen (a `dead`
+crash boundary). Absent on a legacy journal ⇒ read as `0`; **never a gate input**.
+`lanes` maps each live worktree path to its work order; reconciliation checks this
+against the actual worktrees on disk (orphan accounting). `cost` is **descriptive run
 telemetry** (the runner's agent tally + the engine's token spend) for the
 deterministic progress mirror (D19) — best-effort, **never a gate input**, and
 **not** reconcile-rebuildable (like `lastReconciled`, it resets from the next wave
@@ -627,13 +636,19 @@ may belong to a different effort) is never consulted.
   effort-level `cost` and `counts`. A work-order node also carries `sections` — the ordered list
   of named work-spans the dispatched agents themselves reported (`action-started`/`finished`
   ledger events replayed sequentially, D19), each holding its own ordered `items`
-  (`pending|active|done|obsolete`). No fixed backbone and no monotonic frontier: a rework cycle
-  appends new sections after the old ones rather than rewriting them.
+  (`pending|active|done|obsolete`). A section is `active`, `done`, or **`dead`** — a crash
+  boundary: when a *different* `dispatch` epoch reopens a still-open section (a resumed run after a
+  lost-work crash), the prior attempt is sealed `dead` (carrying a `crashedAt` and keeping only its
+  finished/obsoleted items; the unfinished ones migrate to the resuming section, which re-reports
+  them), and a fresh section opens. Each section records the `dispatch` epoch that opened it. No
+  fixed backbone and no monotonic frontier: a rework cycle (or a crash-resume) appends new sections
+  after the old ones rather than rewriting them.
 - `progress.md` — the **pinnable** rendered tree. The orchestrator tells the human once to
   pin it (`.reasonable/progress.md`) to follow a long run live; it updates every time a work
   order reports its own progress, no token cost. Each work order renders its `sections` in
-  order, each with its `items` nested beneath — only the currently-active row carries a literal
-  timestamp (its start time; duration is inferred from the gap to whatever started next).
+  order, each with its `items` nested beneath — the currently-active row carries a literal
+  timestamp (its start time; duration is inferred from the gap to whatever started next), and a
+  `dead` section (`✗`) carries its crash time.
   Atomic actions are ordered by **`seq`** (the monotonic append clock = causal order), never
   by `ts`; each event line carries a **literal `[YYYY-MM-DD HH:MM:SS UTC]` timestamp** (the
   full date and time, human-punctuated — never the raw ISO `T…Z` form — sliced from the

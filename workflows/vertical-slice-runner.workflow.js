@@ -1141,6 +1141,7 @@ async function journalWriteAhead(freshWorkOrders, a) {
         `Set journal.currentVerticalSlice = ${j(a.verticalSliceId)}.`,
         `For EACH of these work orders, UPSERT journal.workOrders[id] (READ journal.json first, MERGE - never drop a sibling work order, never invent fields): set status:"dispatched", role, and verticalSlice. ${j(wos)}`,
         'DO NOT DOWNGRADE: only lift a work order to "dispatched" when its current status is absent or "pending". Leave any "merged"/"checkpointed"/"dead-end" order exactly as it is (a re-pass must be idempotent).',
+        'On EXACTLY that lift (absent/"pending" -> "dispatched"), also bump dispatchEpoch: set it to (its current dispatchEpoch, or 0 if absent) + 1. An order you leave untouched keeps its dispatchEpoch unchanged - never re-bump on an idempotent re-pass. The epoch counts genuine dispatches so the progress mirror separates a resumed run from the crashed attempt it replaced (D19).',
         'Do NOT touch inbox.json, the ledger, contracts, or any work order not listed here. Do NOT mark anything merged/green - that is the after-the-wave transition, not this write.',
         'Return the SCRIBE_ACK: persisted:true once journal.json is durably written faithfully against its schema; persisted:false otherwise (the script logs it and proceeds - the post-wave write is authoritative).',
         callShapeReminder,

@@ -428,6 +428,71 @@ check('render: actions ordered by seq; a future-dated (vs successors) ts is supp
   assert.doesNotMatch(md, /\[2026-06-30 09:58:00 UTC\]/, '…WITHOUT its provably future-dated 09:58 ts');
 });
 
+// N — crash-boundary rendering (the dispatch epoch, D19). A second action-started for a
+// STILL-OPEN section under a DIFFERENT dispatch epoch is a resumed run after a crash: the old
+// section is sealed `dead` (keeping ONLY its durably-finished/obsoleted items — unfinished work
+// migrates to the resumer, which re-reports it), and a fresh section opens. A SAME-epoch reopen
+// (or an epoch-less legacy reopen, where provenance is absent) is a conservative no-op — never a
+// spurious ✗. The epoch is stamped by action-report from the journal; replayActions only reads it.
+check('replayActions: a different-epoch reopen seals the old section dead, keeping only finished items', () => {
+  const { sections } = replayActions([
+    { seq: 1, type: 'action-started', level: 'section', label: 'implementation', dispatch: 1, ts: '2026-07-01T09:00:00Z' },
+    { seq: 2, type: 'action-started', level: 'item', kind: 'clause', ref: 'A', dispatch: 1 },
+    { seq: 3, type: 'action-finished', level: 'item', ref: 'A', dispatch: 1 },
+    { seq: 4, type: 'action-started', level: 'item', kind: 'clause', ref: 'B', dispatch: 1 }, // active at crash
+    { seq: 5, type: 'action-started', level: 'section', label: 'implementation', dispatch: 2, ts: '2026-07-01T09:05:00Z' }, // resume
+    { seq: 6, type: 'action-started', level: 'item', kind: 'clause', ref: 'B', dispatch: 2 },
+  ]);
+  assert.equal(sections.length, 2, 'a dead attempt + a live resume — two sections');
+  assert.equal(sections[0].status, 'dead');
+  assert.equal(sections[0].crashedAt, '2026-07-01T09:05:00Z', 'sealed at the resume point');
+  assert.deepEqual(sections[0].items.map((i) => i.ref), ['A'], 'unfinished B is dropped from the dead section');
+  assert.equal(sections[1].status, 'active');
+  assert.deepEqual(sections[1].items.map((i) => [i.ref, i.status]), [['B', 'active']], 'B migrated to the resume');
+});
+
+check('replayActions: a same-epoch reopen of an open section is a no-op, not a dead+resume split', () => {
+  const { sections } = replayActions([
+    { seq: 1, type: 'action-started', level: 'section', label: 'implementation', dispatch: 1 },
+    { seq: 2, type: 'action-started', level: 'section', label: 'implementation', dispatch: 1 },
+  ]);
+  assert.equal(sections.length, 1, 'one section, not a phantom dead+resume');
+  assert.equal(sections[0].status, 'active');
+});
+
+check('replayActions: an epoch-less (legacy) reopen of an open section collapses — never a spurious ✗', () => {
+  const { sections } = replayActions([
+    { seq: 1, type: 'action-started', level: 'section', label: 'adjudicate' },
+    { seq: 2, type: 'action-started', level: 'section', label: 'adjudicate' }, // both epoch-less → both null
+  ]);
+  assert.equal(sections.length, 1, 'absent provenance → conservative collapse');
+  assert.notEqual(sections[0].status, 'dead');
+});
+
+check('render: a dead attempt renders with the ✗ glyph + crash time, resume holds the migrated item', () => {
+  const root = newEffort();
+  write(root, '.reasonable/journal.json', JSON.stringify({
+    effort: 'demo', currentVerticalSlice: 's',
+    workOrders: { 'WO-1': { status: 'dispatched', role: 'implementer', verticalSlice: 's', dispatchEpoch: 2 } },
+  }));
+  write(root, '.reasonable/ledger.jsonl', [
+    { seq: 1, type: 'action-started', workOrder: 'WO-1', level: 'section', label: 'implementation', dispatch: 1, ts: '2026-07-01T09:00:00Z' },
+    { seq: 2, type: 'action-started', workOrder: 'WO-1', level: 'item', kind: 'adhoc', ref: 'feature-a', label: 'feature A', dispatch: 1, ts: '2026-07-01T09:00:05Z' },
+    { seq: 3, type: 'action-finished', workOrder: 'WO-1', level: 'item', ref: 'feature-a', dispatch: 1, ts: '2026-07-01T09:01:00Z' },
+    { seq: 4, type: 'action-started', workOrder: 'WO-1', level: 'item', kind: 'adhoc', ref: 'feature-b', label: 'feature B', dispatch: 1, ts: '2026-07-01T09:01:05Z' },
+    { seq: 5, type: 'action-started', workOrder: 'WO-1', level: 'section', label: 'implementation', dispatch: 2, ts: '2026-07-01T09:05:00Z' },
+    { seq: 6, type: 'action-started', workOrder: 'WO-1', level: 'item', kind: 'adhoc', ref: 'feature-b', label: 'feature B', dispatch: 2, ts: '2026-07-01T09:05:05Z' },
+  ].map((e) => JSON.stringify(e)).join('\n') + '\n');
+  const md = renderMarkdown(buildModel(root));
+  assert.match(md, /- ✗ implementation {2,}\[2026-07-01 09:05:00 UTC\]/, 'dead attempt: ✗ glyph + crash time');
+  assert.match(md, /- ✓ feature A/, 'the finished item stays under the dead attempt');
+  assert.equal((md.match(/✗ implementation/g) || []).length, 1, 'exactly one dead attempt');
+  const wo = buildModel(root).slices[0].children[0];
+  assert.equal(wo.sections.length, 2);
+  assert.equal(wo.sections[1].status, 'active');
+  assert.deepEqual(wo.sections[1].items.map((i) => [i.label, i.status]), [['feature B', 'active']], 'feature B migrated to the live resume');
+});
+
 for (const t of tmps) { try { rmSync(t, { recursive: true, force: true }); } catch { /* best effort */ } }
 
 if (process.exitCode) console.error(`\nprogress: FAILURES above (${passed} passed).`);
