@@ -688,10 +688,13 @@ The three brownfield fields (omitted / empty in a greenfield work order):
 
 ## .reasonable-lane.json *
 
-Written by the orchestrator into each lane worktree's root at dispatch. The
-fence reads it; it is the per-lane narrowing of the work order plus a mutable
-counter. The `effortRoot` points back at the main checkout's `.reasonable/` so
-hooks can read shared artifacts (ledger, config) from inside the worktree.
+Written by the lane-provisioner into each lane worktree's root at dispatch, and
+**rewritten in place** by the same lane-provisioner on a later role transition
+(e.g. `implementer` → `blind-test-writer`) — the worktree persists across the
+whole lane's life, only the per-role narrowing moves. The fence reads it; it is
+the per-lane narrowing of the work order plus a mutable counter. The `effortRoot`
+points back at the main checkout's `.reasonable/` so hooks can read shared
+artifacts (ledger, config) from inside the worktree.
 
 ```json
 {

@@ -382,6 +382,15 @@ descriptor-less window and engine-spawned worktrees, never a legitimately provis
 discriminator tests at `HEAD~`) that produces no merged commits. Using it for a lane is forbidden: "auto-
 removed if unchanged" would sweep a checkpoint-only lane.
 
+A lane can also be **re-provisioned mid-life**, on the SAME worktree, when its pipeline stage moves to a
+new role — most commonly `implementer` → `blind-test-writer` once the implementer's commit + contract
+enrichment has landed. The runner calls the lane-provisioner a second time, **unconditionally** (never a
+judgment call left to a model), to rewrite `.reasonable-lane.json`'s `role`/`testEditsAllowed`/`locus` in
+place before the new role's first tool call; the worktree, its deps, and the journal record are untouched.
+This re-applies the same provision-before-fence discipline at the transition, not only at birth — without
+it, the new role's first tool call hits the OLD role's descriptor and the fence correctly, but unhelpfully,
+denies it as if the worker had gone rogue.
+
 **Locus authority is the immutable main-checkout work-order file**, fence-protected categorically — not the
 `.reasonable-lane.json` descriptor (which a desperate worker could otherwise forge). Retained facts: a lane
 cannot self-seed its descriptor (`.reasonable-lane.json` is in `ENFORCEMENT_BUILTINS`, and a write to it by

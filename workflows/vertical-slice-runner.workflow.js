@@ -22,8 +22,14 @@
 //                                  lib/footprint.mjs independent(), D11)
 //   budget + agent-cap guarded while loop (S15, D16a/D16c)
 //     per wave: the enrichment pipeline() (S5.6, no barrier, S8)
-//        [ provisionThenImplement -> intentVerify -> blindTest -> adjudicate -> audit ]
+//        [ provisionThenImplement -> intentVerify -> reprovisionForBlindTest -> blindTest
+//          -> adjudicate -> audit ]
 //        each agent() guard()-wrapped: a budget THROW -> {kind:'checkpoint'} (D16b)
+//        reprovisionForBlindTest re-invokes the lane-provisioner on the SAME lane to move
+//        the descriptor's role/testEditsAllowed/locus from implementer to blind-test-writer
+//        BEFORE that stage's first tool call - an UNCONDITIONAL step, never a judgment call
+//        an agent might skip (the graph-editor-ux-overhaul incident: a stale implementer
+//        descriptor fence-denied the blind-test-writer and stalled the pipeline).
 //        provisionThenImplement folds in the conditional brownfield genesis prologue:
 //        the in-run `characterization-needed` agent sequence (BF7) - NOT a nested
 //        workflow() (one-level nesting forbids it, S15 D16d).
@@ -798,6 +804,38 @@ async function intentVerify(prev, wo, _idx, ctx) {
   return prev; // accepted + recorded: the enrichment stands; continue the chain.
 }
 
+// reprovisionForBlindTest - re-provision the SAME lane for the blind-test-writer stage
+// (the graph-editor-ux-overhaul incident). provisionThenImplement's lane-provisioner call
+// only ever narrows the descriptor to the IMPLEMENTER role (testEditsAllowed:false); with
+// no second provisioner call, the blind-test-writer's first tool call hits that STALE
+// descriptor and the fence correctly hard-denies it (DESIGN §6.3) - the pipeline stalls
+// into a blocked trap even though the implementer finished cleanly. This is an
+// UNCONDITIONAL pipeline stage, not a judgment call any agent makes: the engine runs it
+// for every work order, so no model ever has to "remember" to re-provision (capability
+// beats discipline). Same discipline as the initial provision-before-fence rule (D7), just
+// re-applied at the ROLE TRANSITION rather than only at lane creation.
+async function reprovisionForBlindTest(prev, wo, _idx, ctx) {
+  if (!prev || prev.kind !== 'green') return prev; // trapped lane: carry the trap forward
+  const a = ctx.args;
+  const effortRoot = a.effortRoot;
+  const ack = await guard(wo.id, () => ctx.agent(
+    [
+      'Re-provision the SAME lane for this work order for the BLIND-TEST-WRITER stage. The implementer already committed; that lane\'s worktree, deps, and journal record already exist - this is a ROLE TRANSITION on an existing lane, NOT a fresh lane.',
+      `Effort root (canonical .reasonable/ - the descriptor back-pointer target): ${effortRoot}`,
+      `Work order: ${wo.id} (new role: blind-test-writer, was implementer)`,
+      'Steps 1/2/4 (worktree, deps, journal record) are already satisfied - skip them. Step 3 is NOT a no-op this time: overwrite the existing .reasonable-lane.json IN PLACE with role:"blind-test-writer", testEditsAllowed:true, and locus set to the effort\'s configured testGlobs. Leave every other field (workOrder, effortRoot, contracts, behaviorDelta, floorImpact, contractBirth, budget, counter) exactly as it already reads - only the per-role narrowing moves.',
+      'This closes the SAME descriptor-less window the initial provision-before-fence rule closes (D7), re-applied at the role transition: the rewrite must land BEFORE the blind-test-writer\'s first tool call, never after it hits a fence denial.',
+      'Return the PROVISION_ACK: the worktree path (unchanged) + confirmation the descriptor now reads role:"blind-test-writer".',
+    ].join('\n'),
+    { label: `reprovision-blind-test:${wo.id}`, phase: 'Enrich', agentType: 'reasonable:lane-provisioner', schema: PROVISION_ACK },
+  ));
+  if (ack && ack.kind === 'checkpoint') return ack;
+  if (!ack || ack.provisioned !== true || ack.descriptorWritten !== true) {
+    return { kind: 'other', workOrder: wo.id, note: 'lane could not be re-provisioned for the blind-test-writer role transition (null / provisioned:false / descriptor not rewritten) - refusing to dispatch the blind-test-writer against a stale (implementer) descriptor.' };
+  }
+  return prev; // descriptor now names blind-test-writer; continue the chain unchanged.
+}
+
 // blindTest - fresh-context agent; receives ONLY old+new contract text, never the
 // implementation diff; translates the contract delta into test changes; no Bash
 // (cannot run tests). Carries the prior OUTCOME forward untouched if the lane already
@@ -1243,6 +1281,7 @@ while (!verticalSliceGreen && withinBudget(a, budget) && withinAgentCap(state)) 
       wave.workOrders,
       (wo, orig, i) => provisionThenImplement(wo, orig, i, ctx),
       (prev, wo, i) => intentVerify(prev, wo, i, ctx),
+      (prev, wo, i) => reprovisionForBlindTest(prev, wo, i, ctx),
       (prev, wo, i) => blindTest(prev, wo, i, ctx),
       (prev, wo, i) => adjudicate(prev, wo, i, ctx),
       (prev, wo, i) => audit(prev, wo, i, ctx),
