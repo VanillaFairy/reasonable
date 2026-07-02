@@ -321,6 +321,25 @@ const PROVISION_ACK = {
   },
 };
 
+// WORKORDER_ACK - the work-order-writer's hand-off (mirrors SCRIBE_ACK's discipline, D3b). The
+// route-planner PROPOSES the plan; a dedicated narrow writer PERSISTS each proposed work order to
+// its immutable on-disk spec (.reasonable/work-orders/<id>.json) - the propose/persist membrane.
+// This runs BEFORE any lane is provisioned because the lane-provisioner reads that file as its
+// locus license and refuses to run a fenced worker without it (D7). Because a `schema` FORCES a
+// tool call, a failed persist is reported in the explicit `persisted` field, never a bare null
+// (that is reserved for agent death/skip); the runner HALTs on (null || persisted !== true) - a
+// lane can never be licensed without its spec, so proceeding would only fail-safe at the provisioner.
+const WORKORDER_ACK = {
+  type: 'object',
+  additionalProperties: false,
+  required: ['persisted'],
+  properties: {
+    persisted: { type: 'boolean', description: 'every listed work order now has a faithful .reasonable/work-orders/<id>.json on disk (idempotent: an already-present immutable spec is confirmed, not rewritten).' },
+    written: { type: 'array', items: { type: 'string' }, description: 'the work-order ids authored this call; an already-present spec is confirmed, not re-listed here.' },
+    note: { type: ['string', 'null'] },
+  },
+};
+
 // -----------------------------------------------------------------------------
 // guard() - the budget-throw membrane (architecture S15, D16b).
 //
@@ -575,6 +594,29 @@ function routePrompt(state, a) {
     'Cite .reasonable/intention.md (the oracle) on every priority/scope fork; an unsettleable fork is an intent-fork, not a silent guess (D5b).',
     'Size waves so the slice cannot plausibly approach the 1000-agent lifetime cap (D16c).',
     'Return the ROUTE_PLAN.',
+    callShapeReminder,
+  ].join('\n');
+}
+
+// persistWorkOrdersPrompt - the work-order-writer (the PERSIST half of the propose/persist
+// membrane). The route-planner PROPOSED the plan in memory; the pure script cannot write it; this
+// narrow writer serializes each proposed work order to its immutable on-disk spec
+// (.reasonable/work-orders/<id>.json) BEFORE any lane is provisioned - the lane-provisioner reads
+// that file as its locus license and refuses to run a fenced worker without it (D7). The
+// reconciliation of the route-planner footprint into the on-disk dispatch-record schema is the
+// whole job; it invents nothing and rewrites no existing (immutable) spec.
+function persistWorkOrdersPrompt(wos, a) {
+  return [
+    'Persist each of these route-planner-PROPOSED work orders to its immutable on-disk spec so the lane-provisioner can license a lane from it. You are the narrow WRITER: the route-planner proposed, you persist (the propose/persist membrane) - you invent nothing and re-order nothing.',
+    `Effort root (canonical .reasonable/ - write the specs here, by ABSOLUTE path; your cwd is the effort root): ${a.effortRoot}`,
+    `Vertical slice: ${a.verticalSliceId}`,
+    'For EACH work order, write .reasonable/work-orders/<id>.json with EXACTLY the docs/artifacts.md dispatch-record schema:',
+    '  { id, role, verticalSlice, inputs:{ spec:"vertical-slices/<slice-id>.md", contracts:[...] }, output, gate:"vertical-slices/<slice-id>.md#gate", locus:[...], resourceClaims:[...], behaviorDelta:[...], floorImpact:[], contractBirth:false }',
+    'RECONCILE the route-planner footprint into that schema, faithfully: locus <- footprint.locus; inputs.contracts <- footprint.contracts; resourceClaims <- footprint.resources; behaviorDelta <- the work order behaviorDelta (else []). Derive inputs.spec + gate from the vertical-slice id. Set output to a short "code + contract enrichment for <primary component>" string. floorImpact is [] (the implementer declares it); contractBirth is false (the orchestrator sets it on a characterizer lane, never you). Do NOT write a `hash` - it is documentary and the redispatch-guard recomputes it; you originate no SHA.',
+    'IMMUTABLE - write-if-absent: a work-order spec is written ONCE. If .reasonable/work-orders/<id>.json ALREADY exists, DO NOT rewrite it (rewriting churns the redispatch-guard input hash and can un-bind a dead-end verdict) - confirm it and move on (idempotent; a re-pass or a slice with earlier specs already on disk must produce ZERO churn).',
+    'Write ONLY files under .reasonable/work-orders/. Touch nothing else - not the ledger, not journal.json/inbox.json, not contracts, not route.md, not config.',
+    `The work orders to persist (footprint carried verbatim): ${j(wos)}`,
+    'Return the WORKORDER_ACK: persisted:true once EVERY listed work order has a faithful spec on disk (written = the ids you authored this call; an already-present spec is confirmed, not re-listed). persisted:false with a one-line note if you cannot write one faithfully - the runner HALTs (a lane cannot be licensed without its spec).',
     callShapeReminder,
   ].join('\n');
 }
@@ -1195,6 +1237,30 @@ async function journalWrite(state, a) {
   }
 }
 
+// persistWorkOrders - the serial, non-parallel PERSIST step (D3b sibling): dispatch the narrow
+// work-order-writer to serialize the route-planner's PROPOSED plan into the immutable on-disk specs
+// (.reasonable/work-orders/<id>.json) the lane-provisioner reads as its locus license (D7). Runs
+// ONCE, right after the route-planner returns and BEFORE the wave loop, so no lane is ever
+// provisioned without its spec. A hard agent() throw folds into the same null sentinel the caller
+// HALTs on (like journalWrite) - the script must not proceed believing the specs exist.
+async function persistWorkOrders(plan, a) {
+  const wos = (plan.workOrders || []).map((wo) => ({
+    id: wo.id,
+    role: wo.role || 'implementer',
+    verticalSlice: wo.verticalSlice || a.verticalSliceId,
+    footprint: wo.footprint || { locus: [], contracts: [], resources: [] },
+    behaviorDelta: wo.behaviorDelta || [],
+  }));
+  try {
+    return await agent(persistWorkOrdersPrompt(wos, a), {
+      label: 'persist-work-orders', phase: 'Plan', agentType: 'reasonable:work-order-writer', schema: WORKORDER_ACK,
+    });
+  } catch (e) {
+    log(`persist-work-orders agent failed: ${String((e && e.message) || e)}`);
+    return null;
+  }
+}
+
 // withinBudget - guard on min(per-slice-remaining, engine turn-pool remaining) (S15
 // D16a). Per-slice budget rides in args (the engine budget spans the whole turn).
 // Guard ONLY when a ceiling exists; an absent total => Infinity => loop runs to the cap.
@@ -1315,6 +1381,19 @@ if (droppedTerminal.length > 0) {
   plan.workOrders = (plan.workOrders || []).filter((wo) => !terminal.has(wo.id));
   log(`route-planner returned ${droppedTerminal.length} already-terminal (merged) work order(s) ` +
     `[${droppedTerminal.map((wo) => wo.id).join(', ')}] - dropped before dispatch, never re-run a merged WO.`);
+}
+
+// PERSIST the route-planner's PROPOSED plan (D7): the route-planner computes the footprints in
+// memory, but the lane-provisioner reads the immutable .reasonable/work-orders/<id>.json spec as its
+// locus LICENSE and refuses to run a fenced worker without one. The pure script cannot write disk,
+// so a dedicated narrow writer serializes each work order to its spec HERE - serial, awaited, right
+// after the route-planner returns and BEFORE any wave provisions a lane. A missing spec is exactly
+// the wall the provisioner throws on the first NEW slice, so this is a HALT, not a soft miss: it
+// loses no truth (nothing is dispatched yet) and reconcile re-derives nothing that depends on it.
+state.agentsDispatched += 1;
+const woAck = await persistWorkOrders(plan, a);
+if (!woAck || woAck.kind === 'checkpoint' || woAck.persisted !== true) {
+  return { kind: 'halt', reason: 'work-order specs not persisted (null / checkpoint / persisted:false) - the lane-provisioner cannot license a lane without .reasonable/work-orders/<id>.json (D7); nothing dispatched, no truth lost.' };
 }
 
 // Pure set-algebra: pack work orders into waves of pairwise-disjoint footprints (D11).

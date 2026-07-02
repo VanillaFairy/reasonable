@@ -182,6 +182,16 @@ check('two-root: baseline.json by census → allow; config.json by any subagent 
   assert.equal(runFence(root, as(edit(root, '.reasonable/baseline.json'), 'reasonable:census')).denied, false);
   assert.ok(runFence(root, as(edit(root, '.reasonable/config.json'), 'reasonable:census')).denied);
 });
+check('two-root: work-order spec by work-order-writer → allow; by the proposing route-planner or any other role → deny', () => {
+  const { root } = newTwoRoot();
+  const wo = '.reasonable/work-orders/WO-1.json';
+  assert.equal(runFence(root, as(edit(root, wo), 'reasonable:work-order-writer')).denied, false);
+  // The propose/persist membrane: the route-planner PROPOSES the plan but must not PERSIST it.
+  assert.ok(runFence(root, as(edit(root, wo), 'reasonable:route-planner')).denied, 'the route-planner proposes; it may not write the spec');
+  assert.ok(runFence(root, as(edit(root, wo), 'reasonable:implementer')).denied, 'the implementer may not forge its own work order');
+  // And the Bash backstop closes the same forge surface for a non-owner.
+  assert.ok(runFence(root, as(bash('echo forged > .reasonable/work-orders/WO-2.json'), 'reasonable:implementer')).denied);
+});
 check('two-root: census skeleton contract via Bash (no lane at cwd) → allow', () => {
   const { root } = newTwoRoot();
   assert.equal(runFence(root, as(bash('cat /tmp/x > .reasonable/contracts/graph-canvas.md'), 'reasonable:census')).denied, false);

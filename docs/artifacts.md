@@ -70,8 +70,9 @@ role×artifact matrix (in `lib/fence.mjs`): contract-writers (implementer, chara
 scaffolder, census) write `contracts/`; contract-writers + the journal-writer append the
 ledger; the journal-writer writes the `journal.json`/`inbox.json` index; census writes
 `baseline.json`; the intention-writer writes `intention.md`; the lane-provisioner writes
-`.reasonable-lane.json`; everything else (config, supervision, vision, route,
-work-orders/, verdicts/, knowledge/, …) is **orchestrator-only**. The **main session**
+`.reasonable-lane.json`; the work-order-writer writes `work-orders/<id>.json` (persisting the
+route-planner's proposed plan); everything else (config, supervision, vision, route,
+verdicts/, knowledge/, …) is **orchestrator-only**. The **main session**
 (no `agent_type`) is the trusted control plane and may write `.reasonable/` freely.
 **Code** writes stay governed the old way — by the worktree descriptor reached via
 `findLane(target)` (locus / floor / test-path).
@@ -137,7 +138,8 @@ orchestrator's Bash:
 | Artifact | Written by | How |
 |---|---|---|
 | vision · topology · route · config · supervision · resource-lexicon · sanity-invariants · documentation-policy · test-conventions | **orchestrator** (main session, at analysis/scaffolding) | Bash (no-lane path) |
-| work-orders/`<id>`.json · vertical-slices/`<id>`.md | **orchestrator** (main session, during the run) | Bash (no-lane path) |
+| vertical-slices/`<id>`.md | **orchestrator** (main session, during the run) | Bash (no-lane path) |
+| work-orders/`<id>`.json | **work-order-writer** (persists the route-planner's proposed plan, before provisioning) | in-run `agent()` (no-lane path); write-if-absent (immutable) |
 | intention.md | **intention-writer** (after the coherence-grill ratifies) | its own atomic commit |
 | baseline.json + skeleton contracts | **census** (brownfield, at analysis) | Bash + `lib/baseline.mjs` (no-lane path) |
 | contracts/`<component>`.md | **implementer** (enrich grown) · **characterizer** (birth characterized) | in-lane; only the lane's own contracts (§5.10) |
