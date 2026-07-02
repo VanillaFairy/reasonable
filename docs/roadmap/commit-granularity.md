@@ -6,6 +6,17 @@ dedicated session.
 large commits?" probe). The methodology *produces* per-slice/per-bit history on the lane, then
 **flattens it at the commit boundary** — so the reviewer never sees it.
 
+> **Route-side complement — implemented 2026-07-02.** Work-order *decomposition* granularity now lives
+> in the route-planner constitution (`agents/route-planner.md` → "Work-order granularity: split along
+> fault lines for reviewable commits") and the `routePrompt()` in
+> `workflows/vertical-slice-runner.workflow.js`: the planner is directed to split a slice into finer
+> work orders along public-operation / file fault lines **even when they serialize**, so each work order
+> lands as its own atomic commit + `--no-ff` merge — with a hard floor that every work order stay
+> independently gate-green (no non-building fragments). That raises granularity from the **route** side
+> (more, smaller work orders). **This file remains TODO for the complementary lane side:** region-scoped
+> per-bit commits *within* a single role's output (`lib/atomic-commit.mjs`). The two levers stack; the
+> "no AND in the commit message" litmus governs both.
+
 ## What is broken
 
 The commit iron rule (§5.1) is satisfied — work product *is* committed — but at the wrong

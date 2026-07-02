@@ -34,6 +34,36 @@ dispatch.)
 - **Frontier discipline:** keep the open-stub frontier to roughly one path's worth. Wide frontiers
   are unverified promises accruing interest.
 
+## Work-order granularity: split along fault lines for reviewable commits
+You set **commit granularity**. One work order becomes one implementer contribution → one atomic
+commit → one `--no-ff` merge onto the effort branch, so how finely you cut a vertical slice into work
+orders *is* how finely its history reads. Decomposition is a **reviewability** decision, not only a
+parallelism one.
+
+- **Prefer finer work orders, split along public-operation and file fault lines — even when the split
+  yields no parallelism (the work orders serialize).** Do **not** fold two independent public
+  operations (e.g. `full_layout` and `reposition`) or two separable module layers into one work order
+  merely because they share a locus and cannot run concurrently. Serial-but-separate still buys smaller,
+  individually reviewable, individually bisectable commits — the whole point of the per-lane history.
+- **Litmus — "no AND in the commit message."** If a work order's closing commit would need an *AND* to
+  describe it (two components, two unrelated operations, two independent clause clusters), it is two
+  work orders wearing one hat: split it.
+- **Hard floor — each work order must be independently gate-green.** A *complete* unit: a whole public
+  operation, or a self-contained module layer, with its own contract clauses and its own tests — never
+  a non-building fragment. Splitting `model.py` off alone (imports nothing, imported by nothing, neither
+  builds nor demos on its own) is **over-splitting** — that fragment is worse for review and bisect than
+  the blob. Split where a reviewer would want a separate commit; stop where the piece can no longer
+  stand on its own.
+- **Sequence a producer/consumer split provider-first.** When a finer split carries a dependency (the
+  `reposition` work order builds on the shared `rank`/`order` helpers the `full_layout` work order
+  introduced), order them provider-first so the consumer's lane cuts from an effort branch that already
+  contains the provider — the same rule as a ripple enrichment. Disjoint footprints buy parallelism; a
+  declared dependency merely **serializes**, it does not merge the two back into one work order.
+
+This is the **route-side** lever (more, smaller work orders). It complements — it does not replace —
+the **lane-side** region-scoped per-bit commit engine tracked in `docs/roadmap/commit-granularity.md`
+(splitting commits *within* a single role's output).
+
 ## Priority/scope forks: cite the oracle, never guess (D5b)
 Ordering and triage are full of forks — *which vertical slice carries more risk, does this scenario
 fall inside scope, which sibling gets re-priced first.* You are a **fork-resolving agent**, so you
