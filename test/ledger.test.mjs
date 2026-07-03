@@ -19,6 +19,8 @@ import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 import { KINDS, EVENT_SCHEMAS, validateEvent, append } from '../lib/ledger.mjs';
+import { buildTree } from '../lib/progress-map.mjs';
+import { findByPath } from '../lib/progress-tree.mjs';
 
 const LIB = join(dirname(fileURLToPath(import.meta.url)), '..', 'lib', 'ledger.mjs');
 const tmps = [];
@@ -528,6 +530,63 @@ check('append: report-started against a work order that was planned but never di
 });
 
 for (const t of tmps) { try { rmSync(t, { recursive: true, force: true }); } catch { /* best effort */ } }
+
+// ── audit round 4: Family-1 direct-node resolution must be BY PATH, not by last segment ────
+// Segment ids are unique among SIBLINGS only (progress-tree contract) — e.g. every slice has a
+// `retro` child. Resolving a direct `node` path by findById on its last segment reads a
+// DIFFERENT node's attempt state: with s1/retro failed, the FIRST dispatch of s2/retro was
+// stamped attempt 2, fabricating a phantom "attempt-1 failed" subtree under s2/retro.
+
+check('append: first dispatch of s2/retro stamps attempt 1 even when s1/retro (same trailing segment) already failed', () => {
+  const root = newEffort();
+  seedLedger(root, [
+    { seq: 1, type: 'node-planned', node: 's1', kind: 'slice', title: 'slice 1' },
+    { seq: 2, type: 'node-planned', node: 's1/retro', kind: 'phase', title: 'retro 1' },
+    { seq: 3, type: 'node-planned', node: 's2', kind: 'slice', title: 'slice 2' },
+    { seq: 4, type: 'node-planned', node: 's2/retro', kind: 'phase', title: 'retro 2' },
+    { seq: 5, type: 'node-dispatched', node: 's1/retro', kind: 'phase', attempt: 1 },
+    { seq: 6, type: 'node-failed', node: 's1/retro', reason: 'gate blocked' },
+  ]);
+  const r = append(root, { type: 'node-dispatched', node: 's2/retro', kind: 'phase' });
+  assert.equal(r.ok, true, r.error);
+  assert.equal(r.event.attempt, 1, 'fresh node dispatches at attempt 1 — s1/retro\'s failure must not leak in');
+  const tree = buildTree(root);
+  const s2retro = findByPath(tree, 's2/retro');
+  assert.deepEqual(s2retro.children.map((c) => c.id), ['attempt-1'], 'no phantom sealed attempt-1 fabricated');
+});
+
+check('append: dispatching a node whose path is unplanned still fails loud even when its last segment exists elsewhere', () => {
+  const root = newEffort();
+  seedLedger(root, [
+    { seq: 1, type: 'node-planned', node: 's1', kind: 'slice', title: 'slice 1' },
+    { seq: 2, type: 'node-planned', node: 's1/retro', kind: 'phase', title: 'retro 1' },
+  ]);
+  const r = append(root, { type: 'node-dispatched', node: 's2/retro', kind: 'phase' });
+  assert.equal(r.ok, false, 's2/retro was never planned — a same-id sibling elsewhere must not vouch for it');
+  assert.match(r.error, /unplanned/);
+});
+
+check('append: a malformed Family-1 node path (whitespace segment) is rejected, never lands raw in the ledger', () => {
+  const root = newEffort();
+  const before = readLedgerLines(root).length;
+  const r = append(root, { type: 'node-planned', node: 'has space/x', kind: 'phase', title: 'bad' });
+  assert.equal(r.ok, false);
+  assert.match(r.error, /malformed node path/);
+  assert.equal(readLedgerLines(root).length, before, 'nothing appended');
+});
+
+check('append: a malformed report-* relative path (whitespace segment) is rejected, never lands raw in the ledger', () => {
+  const root = newEffort();
+  seedLedger(root, [
+    { seq: 1, type: 'node-planned', node: 's1/WO-1', kind: 'work-order', title: 'wire it' },
+    { seq: 2, type: 'node-dispatched', node: 's1/WO-1', kind: 'work-order', attempt: 1 },
+  ]);
+  const before = readLedgerLines(root).length;
+  const r = append(root, { type: 'report-started', under: 'WO-1', node: 'impl/has space' });
+  assert.equal(r.ok, false);
+  assert.match(r.error, /malformed relative node path/);
+  assert.equal(readLedgerLines(root).length, before, 'nothing appended');
+});
 
 if (process.exitCode) console.error(`\nledger: FAILURES above (${passed} passed).`);
 else console.log(`\nledger: all ${passed} checks passed. ✓`);
