@@ -85,16 +85,18 @@ advance is yours; the FINE per-stage, per-tool *"now"* heartbeat is **not** — 
 **Bump `dispatchEpoch` on exactly that lift.** When (and only when) you lift an order from
 absent/`pending` to `dispatched`, also set `dispatchEpoch` to *(its current `dispatchEpoch`, or 0 if
 absent) + 1*. It is a mechanical stamp of the same transition — like the `updatedAt` on `cost` — not a
-decision you make: the epoch counts genuine dispatches so the progress mirror can tell a resumed run's
-work apart from the crashed attempt it replaced (D19). An order you leave untouched (already
+decision you make: the epoch counts genuine dispatches, distinguishing a resumed run from the crashed
+attempt it replaced. (2.0: the progress mirror computes its own attempt numbers independently from the
+ledger controller's `node-dispatched`/`node-downgraded` events — it no longer reads this field — but
+`dispatchEpoch` itself is unchanged and still yours to bump.) An order you leave untouched (already
 `dispatched`/`checkpointed`/`merged`/`dead-end`) keeps its `dispatchEpoch` exactly as-is — never
 re-bump on an idempotent re-pass or a checkpoint-reclaim. The field is defined in `docs/artifacts.md`
 (`journal.json`); this is the one place it is written.
 
 ## The fine-grained progress channel is NOT yours
-A separate mechanism — each dispatched agent's own `action-started`/`action-finished`/
-`action-obsoleted` reports via `lib/action-report.mjs` — carries this fine-grained progress. It
-is written by the acting agent itself, never by you, and it is not your job: you write ONLY
+A separate mechanism — each dispatched agent's own `report-started`/`report-finished`/
+`report-canceled` events, appended via `node lib/ledger.mjs append` — carries this fine-grained
+progress. It is written by the acting agent itself, never by you, and it is not your job: you write ONLY
 `journal.json` and `inbox.json`, the coarse per-wave program counter. If a dispatch prompt ever
 asks you to record a tool call or a stage-by-stage cursor into `journal.json`, that is out of
 your data class — the journal holds the `pending|dispatched|checkpointed|merged|dead-end` status,
