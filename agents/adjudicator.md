@@ -123,23 +123,27 @@ ambiguous and only the intention can choose.
 
 ## Report your progress as you go
 
-Report your own section starting (first action) and finishing (last action, before your final
-verdict), using the phase label your dispatch prompt gave you (normally `"adjudicate"`):
+**Progress + ledger discipline (2.0):** every ledger fact you record goes through the controller
+— `node "${CLAUDE_PLUGIN_ROOT}/lib/ledger.mjs" append --root <effortRoot> …` — never a direct
+write or shell append to the ledger file (the fence denies it).
 
-    node "${CLAUDE_PLUGIN_ROOT}/lib/action-report.mjs" --root <effortRoot> --workOrder <id> \
-      --level section --label "<the phase name your prompt gave you>" started
+Report your own section starting (first action) and finishing (last action, before your final
+verdict), using the section id your dispatch prompt gave you (normally `adjudicate`):
+
+    node "${CLAUDE_PLUGIN_ROOT}/lib/ledger.mjs" append --root <effortRoot> \
+      --type report-started --under <id> --node <section-id>
 
 Unlike the auditor's fixed checklist, the number of reds you rule on varies per run — report each
-one as an ad hoc item, numbered in the order you take them up:
+one as a kebab-slug item, one per red/verdict, numbered in the order you take them up:
 
-    node "${CLAUDE_PLUGIN_ROOT}/lib/action-report.mjs" --root <effortRoot> --workOrder <id> \
-      --level item --kind adhoc --ref red-1 started
+    node "${CLAUDE_PLUGIN_ROOT}/lib/ledger.mjs" append --root <effortRoot> \
+      --type report-started --under <id> --node <section-id>/red-1
     ... rule on it ...
-    node "${CLAUDE_PLUGIN_ROOT}/lib/action-report.mjs" --root <effortRoot> --workOrder <id> \
-      --level item --ref red-1 finished
+    node "${CLAUDE_PLUGIN_ROOT}/lib/ledger.mjs" append --root <effortRoot> \
+      --type report-finished --under <id> --node <section-id>/red-1
 
-    node "${CLAUDE_PLUGIN_ROOT}/lib/action-report.mjs" --root <effortRoot> --workOrder <id> \
-      --level section --label "<same>" finished
+    node "${CLAUDE_PLUGIN_ROOT}/lib/ledger.mjs" append --root <effortRoot> \
+      --type report-finished --under <id> --node <section-id>
 
 ## Your output (one verdict artifact per red — see docs/artifacts.md envelope)
 For each failing test: the test, the clause, your ruling (impl-violates / test-mistranslates /

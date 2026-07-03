@@ -95,25 +95,30 @@ Run them. Read their output. Do not eyeball-estimate what they measure.
 
 ## Report your progress as you go
 
+**Progress + ledger discipline (2.0):** every ledger fact you record goes through the controller
+— `node "${CLAUDE_PLUGIN_ROOT}/lib/ledger.mjs" append --root <effortRoot> …` — never a direct
+write or shell append to the ledger file (the fence denies it).
+
 Report your own section starting (first action) and finishing (last action, before your final
-verdict), using the phase label your dispatch prompt gave you (normally `"audit"`):
+verdict), using the section id your dispatch prompt gave you (normally `audit`):
 
-    node "${CLAUDE_PLUGIN_ROOT}/lib/action-report.mjs" --root <effortRoot> --workOrder <id> \
-      --level section --label "<the phase name your prompt gave you>" started
+    node "${CLAUDE_PLUGIN_ROOT}/lib/ledger.mjs" append --root <effortRoot> \
+      --type report-started --under <id> --node <section-id>
 
-Report each of your four fixed checks as you run it, using its catalog name as `--ref` (`--kind
-step`): `discriminator-check`, `bidirectional-mapping`, `mutation-sampling`,
-`proportionality-review` — in that order, matching "Never simulate what a script can compute"
-above.
+Report each of your four fixed checks as you run it, using its slug as the item id — your four
+checks are always named `discriminator-check`, `bidirectional-mapping`, `mutation-sampling`, and
+`proportionality-review` (these names now live only here — the deleted `lib/action-events.mjs`'s
+`STAGE_ITEM_CATALOG` is gone), reported in that order, matching "Never simulate what a script can
+compute" above:
 
-    node "${CLAUDE_PLUGIN_ROOT}/lib/action-report.mjs" --root <effortRoot> --workOrder <id> \
-      --level item --kind step --ref discriminator-check started
+    node "${CLAUDE_PLUGIN_ROOT}/lib/ledger.mjs" append --root <effortRoot> \
+      --type report-started --under <id> --node <section-id>/discriminator-check
     ... run it ...
-    node "${CLAUDE_PLUGIN_ROOT}/lib/action-report.mjs" --root <effortRoot> --workOrder <id> \
-      --level item --ref discriminator-check finished
+    node "${CLAUDE_PLUGIN_ROOT}/lib/ledger.mjs" append --root <effortRoot> \
+      --type report-finished --under <id> --node <section-id>/discriminator-check
 
-    node "${CLAUDE_PLUGIN_ROOT}/lib/action-report.mjs" --root <effortRoot> --workOrder <id> \
-      --level section --label "<same>" finished
+    node "${CLAUDE_PLUGIN_ROOT}/lib/ledger.mjs" append --root <effortRoot> \
+      --type report-finished --under <id> --node <section-id>
 
 ## Your output (an audit report — see docs/artifacts.md verdict envelope)
 Per check: pass/fail with the command run and its output. A surviving mutant, a vacuous test (a

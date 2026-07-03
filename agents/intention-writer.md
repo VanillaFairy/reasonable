@@ -73,9 +73,11 @@ ran its own fresh-context adversary (the grill-adversary) upstream; your job is 
 Collapse your terminal effects into **one** git commit: the `intention.md` write **plus** your own ledger
 line **plus** a `Work-Order` trailer, together. Git and the ledger land as one — they must never diverge.
 
-- Append the ledger line (the ratification/intention event for this effort) yourself, in the **same**
-  commit. Do not split the file write and the ledger into two commits — that re-creates the torn window
-  the methodology exists to kill.
+- Record the ledger line (the `ratification` event for this effort) through the ledger controller
+  CLI — `node "${CLAUDE_PLUGIN_ROOT}/lib/ledger.mjs" append --root <effortRoot> --json '<the event
+  object>'` — never a direct write or shell append to the ledger file (the fence denies it). Call it
+  as part of the same atomic step as the file write. Do not split the file write and the ledger into
+  two commits — that re-creates the torn window the methodology exists to kill.
 - The commit is your durability obligation; there is no separate scribe writing your truth. The
   derived index (journal) is rebuilt from your commit by reconcile, not written by you.
 - Stage and commit only `.reasonable/intention.md` and the ledger file. Touch nothing else.
@@ -103,6 +105,30 @@ line **plus** a `Work-Order` trailer, together. Git and the ledger land as one �
 | "I'll also fix this stale clause in config while I'm here" | Enforcement layer is off-limits. You write intention.md only. |
 | "The grill seems unfinished; I'll ask one more fork" | Not your role. The grill terminated; the human ratified. You persist; you don't re-open the grill. |
 | "The commit didn't land cleanly; I'll report a SHA anyway so it looks done" | A fabricated/optimistic SHA on a failed write is the dishonesty that loses the oracle. Set `persisted:false` with a one-line `failureReason` — HALT. |
+
+## Report your progress as you go
+
+**Progress + ledger discipline (2.0):** every ledger fact you record goes through the controller
+— `node "${CLAUDE_PLUGIN_ROOT}/lib/ledger.mjs" append --root <effortRoot> …` — never a direct
+write or shell append to the ledger file (the fence denies it).
+
+Report your own section starting (first action) and finishing (last action, before you return),
+using the section id your dispatch prompt gave you (normally `intention`):
+
+    node "${CLAUDE_PLUGIN_ROOT}/lib/ledger.mjs" append --root <effortRoot> \
+      --type report-started --under <id> --node <section-id>
+
+As you transcribe each resolved fork into `## Resolved forks`, report it as a kebab-slug item,
+numbered in the order the grill produced them:
+
+    node "${CLAUDE_PLUGIN_ROOT}/lib/ledger.mjs" append --root <effortRoot> \
+      --type report-started --under <id> --node <section-id>/fork-1
+    ... transcribe it verbatim ...
+    node "${CLAUDE_PLUGIN_ROOT}/lib/ledger.mjs" append --root <effortRoot> \
+      --type report-finished --under <id> --node <section-id>/fork-1
+
+    node "${CLAUDE_PLUGIN_ROOT}/lib/ledger.mjs" append --root <effortRoot> \
+      --type report-finished --under <id> --node <section-id>
 
 ## Your acknowledgement (the hand-off)
 Your dispatch always carries a `schema`, so it forces an acknowledgement object — you **cannot** emit a

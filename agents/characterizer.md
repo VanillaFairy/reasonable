@@ -65,11 +65,12 @@ fence deadlock:
    consumes (demand-driven, O(seams crossed), never O(call graph)); that neighbour then earns its own
    one-clause pin. A neighbour the change does not consume stays prose-only in `## Topology` — zero
    footprint weight.
-2. **Characterization ledger event.** Append one `{"type":"characterization", ...}` line to
-   `.reasonable/ledger.jsonl` (component, clause, test, seam, workOrder, verticalSlice — see
-   `docs/artifacts.md`). You are the **one** mutator role permitted to write the ledger, and only this
-   event type; it is the carrier without which a characterized *bug*-clause would silently inherit
-   trusted-green status.
+2. **Characterization ledger event.** Record one `type:"characterization"` event (component, clause,
+   test, seam, workOrder, verticalSlice — see `docs/artifacts.md`) through the ledger controller CLI:
+   `node "${CLAUDE_PLUGIN_ROOT}/lib/ledger.mjs" append --root <effortRoot> --json '<the event
+   object>'` — never a direct write or shell append to the ledger file (the fence denies it). You are
+   the **one** mutator role permitted to record this event type; it is the carrier without which a
+   characterized *bug*-clause would silently inherit trusted-green status.
 3. **Parked characterization test.** Write the test that pins the clause, **parked** (ignore-marked
    with a reason; see `gate-mechanics` for the stack's park primitive). It must compile / import — a
    parked test that doesn't compile pins nothing. Cite the clause it characterizes (a `// store §3`
@@ -80,23 +81,28 @@ yet exist.
 
 ## Report your progress as you go
 
-Report your own section starting (first action) and finishing (last action, before you return),
-using the phase label your dispatch prompt gave you (normally `"characterize"`):
+**Progress + ledger discipline (2.0):** every ledger fact you record goes through the controller
+— `node "${CLAUDE_PLUGIN_ROOT}/lib/ledger.mjs" append --root <effortRoot> …` — never a direct
+write or shell append to the ledger file (the fence denies it).
 
-    node "${CLAUDE_PLUGIN_ROOT}/lib/action-report.mjs" --root <effortRoot> --workOrder <id> \
-      --level section --label "<the phase name your prompt gave you>" started
+Report your own section starting (first action) and finishing (last action, before you return),
+using the section id your dispatch prompt gave you (normally `characterize`):
+
+    node "${CLAUDE_PLUGIN_ROOT}/lib/ledger.mjs" append --root <effortRoot> \
+      --type report-started --under <id> --node <section-id>
 
 For each observed behaviour you pin, report it starting when you begin the atomic
-contract→event→test write order, and finishing once all three land:
+contract→event→test write order, and finishing once all three land — item ids are the clause
+refs (e.g. `§<n>`):
 
-    node "${CLAUDE_PLUGIN_ROOT}/lib/action-report.mjs" --root <effortRoot> --workOrder <id> \
-      --level item --kind clause --ref '§<n>' --label '<short description>' started
+    node "${CLAUDE_PLUGIN_ROOT}/lib/ledger.mjs" append --root <effortRoot> \
+      --type report-started --under <id> --node <section-id>/§<n>
     ... born clause, characterization ledger event, parked test ...
-    node "${CLAUDE_PLUGIN_ROOT}/lib/action-report.mjs" --root <effortRoot> --workOrder <id> \
-      --level item --ref '§<n>' finished
+    node "${CLAUDE_PLUGIN_ROOT}/lib/ledger.mjs" append --root <effortRoot> \
+      --type report-finished --under <id> --node <section-id>/§<n>
 
-    node "${CLAUDE_PLUGIN_ROOT}/lib/action-report.mjs" --root <effortRoot> --workOrder <id> \
-      --level section --label "<same>" finished
+    node "${CLAUDE_PLUGIN_ROOT}/lib/ledger.mjs" append --root <effortRoot> \
+      --type report-finished --under <id> --node <section-id>
 
 ## Admit each pin via the BF2 reverse discriminator
 A characterization clause is **admissible only if** its test, run **alone**, (a) **passes on unmutated

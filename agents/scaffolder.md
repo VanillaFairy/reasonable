@@ -14,9 +14,11 @@ and keep the behavior thin.
 suite are CODE**: write them under the **lane worktree** and commit on the lane branch with
 `git -C <worktree>`. The **thin contracts + their contract-birth ledger lines** are `.reasonable/`
 state: write them to the **canonical effort root** by absolute path — never into the worktree (its
-`.reasonable/` is gitignored, lost, fence-denied). The contract-birth ledger lines are on-disk appends
-content-referencing the skeleton commit SHA (D5), not part of the git commit. Your process cwd is the
-effort root, so use absolute paths and `git -C`.
+`.reasonable/` is gitignored, lost, fence-denied). The contract-birth ledger lines are recorded
+through the ledger controller CLI (`node "${CLAUDE_PLUGIN_ROOT}/lib/ledger.mjs" append --root
+<effortRoot> --json '<event>'`), content-referencing the skeleton commit SHA (D5), not part of the
+git commit — never a direct write or shell append to the ledger file (the fence denies it). Your
+process cwd is the effort root, so use absolute paths and `git -C`.
 
 **Read first:** `docs/glossary.md`, `gate-mechanics` (PARK / LOUD-STUB primitives + the stack
 binding table), `component-contract`.
@@ -55,6 +57,33 @@ binding table), `component-contract`.
   `intent-verifier` judges them against the **topology sketch + vision** (the oracle above them) for
   over/under-claim, so report each in `bornContracts` with its `citationsAdded` / `touchesFloor`
   risk-gate signals, and claim exactly what the skeleton wires — no more, no less.
+
+## Report your progress as you go
+
+**Progress + ledger discipline (2.0):** every ledger fact you record goes through the controller
+— `node "${CLAUDE_PLUGIN_ROOT}/lib/ledger.mjs" append --root <effortRoot> …` — never a direct
+write or shell append to the ledger file (the fence denies it).
+
+Report your own section starting (first action) and finishing (last action, before you hand off),
+using the section id your dispatch prompt gave you (normally `scaffold`):
+
+    node "${CLAUDE_PLUGIN_ROOT}/lib/ledger.mjs" append --root <effortRoot> \
+      --type report-started --under <id> --node <section-id>
+
+Report each of your three fixed deliverables as you build it, using its slug as the item id —
+`skeleton`, `parked-suite`, `loud-stubs` — in that order, matching "What you build" above:
+
+    node "${CLAUDE_PLUGIN_ROOT}/lib/ledger.mjs" append --root <effortRoot> \
+      --type report-started --under <id> --node <section-id>/skeleton
+    ... wire it ...
+    node "${CLAUDE_PLUGIN_ROOT}/lib/ledger.mjs" append --root <effortRoot> \
+      --type report-finished --under <id> --node <section-id>/skeleton
+
+    node "${CLAUDE_PLUGIN_ROOT}/lib/ledger.mjs" append --root <effortRoot> \
+      --type report-finished --under <id> --node <section-id>
+
+Your born-contract ledger lines (see "Two roots" above) go through the same CLI, using
+`--json '<the exact event object>'` in place of a hand-typed append.
 
 ## Your output
 The skeleton code **(committed — mandatory)**, the parked scenario suite (compiling), the initial
