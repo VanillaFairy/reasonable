@@ -286,7 +286,30 @@ check('renderMarkdown: glyph+label, 2-space-per-depth indent, detail suffix, sta
   assert.ok(noteWithoutTs.includes('✎'));
   assert.equal(indentOf(noteWithTs) - indentOf(lineA), 2, 'note bullet is one level deeper than its node');
   assert.ok(noteWithTs.includes('['), 'a note WITH a ts renders a bracketed timestamp');
+  assert.ok(noteWithTs.includes('[2026-07-02 09:00:00 UTC]'),
+    'a note ts renders in the SAME human "YYYY-MM-DD HH:MM:SS UTC" form as a node statusTs — not raw ISO-Z');
   assert.ok(!noteWithoutTs.includes('['), 'a note WITHOUT a ts renders no bracket at all');
+});
+
+// ── 20. status recursive:'active' — sweeps ONLY active descendants, spares pending ───
+
+check("recursive:'active' status sweeps ONLY active descendants (orphaned in-flight), spares pending, and passes through terminal nodes", () => {
+  const t = createTree('fx');
+  apply(t, { op: 'status', path: 'p/active-kid', status: 'active' });
+  apply(t, { op: 'status', path: 'p/pending-kid', status: 'pending' });
+  apply(t, { op: 'status', path: 'p/done-kid', status: 'done' });
+  apply(t, { op: 'status', path: 'p/done-kid/active-grandkid', status: 'active' });
+
+  apply(t, { op: 'status', path: 'p', status: 'done', recursive: 'active' });
+
+  assert.equal(findByPath(t, 'p').status, 'done', 'target set');
+  assert.equal(findByPath(t, 'p/active-kid').status, 'done',
+    'an ACTIVE descendant (orphaned in-flight) is swept to the terminal status');
+  assert.equal(findByPath(t, 'p/pending-kid').status, 'pending',
+    'a PENDING descendant is SPARED — a completed node must not fake-complete a step that never ran (this is what distinguishes \'active\' from true)');
+  assert.equal(findByPath(t, 'p/done-kid').status, 'done', 'a terminal descendant is spared');
+  assert.equal(findByPath(t, 'p/done-kid/active-grandkid').status, 'done',
+    'the sweep passes THROUGH a terminal node to reach its active grandchild');
 });
 
 // ── 16. [audit finding #1 — DEFECT] inject must not mutate ahead of validation ────

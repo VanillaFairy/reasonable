@@ -300,6 +300,47 @@ check('legacy: an unknown type with no node and no workOrder notes the root with
   assert.ok(root.notes.some((n) => n.text === 'totally-unknown'));
 });
 
+// ═══ Orphan sweep — a terminal transition closes stray ACTIVE descendants (lost-finish) ══
+// A sub-report starts but its own finish event is lost (e.g. node-path drift stamps the finish
+// onto a differently-pathed twin), so it lingers ▶active under a node that later completes. The
+// parent's terminal transition must sweep the orphan closed — no stale "active 4h ago" leaf under
+// a ✓done parent — while SPARING pending (never-run) descendants.
+check('orphan sweep: report-finished closes a stray ACTIVE descendant whose own finish was lost', () => {
+  const tree = foldEvents([
+    { seq: 1, type: 'node-planned', node: 'x', kind: 'work-order', title: 'T' },
+    { seq: 2, type: 'node-dispatched', node: 'x', kind: 'work-order', attempt: 1 },
+    { seq: 3, type: 'report-started', node: 'x/attempt-1/audit/mutation-sampling', label: 'mutation-sampling' },
+    { seq: 4, type: 'report-started', node: 'x/attempt-1/audit/mutation-sampling/run', label: 'run', ts: '2026-07-01T15:01:00Z' },
+    { seq: 5, type: 'report-finished', node: 'x/attempt-1/audit/mutation-sampling', ts: '2026-07-01T15:10:00Z' },
+  ], 'demo');
+  assert.equal(findByPath(tree, 'x/attempt-1/audit/mutation-sampling').status, 'done', 'the finished node is done');
+  assert.equal(findByPath(tree, 'x/attempt-1/audit/mutation-sampling/run').status, 'done',
+    'the orphaned in-flight `run` child (its own finish lost) is swept done — no stale ▶active leaf under a ✓done parent');
+});
+
+check('orphan sweep spares a PENDING descendant: node-completed must not fake-complete a never-run step', () => {
+  const tree = foldEvents([
+    { seq: 1, type: 'node-planned', node: 'x', kind: 'work-order', title: 'T' },
+    { seq: 2, type: 'report-started', node: 'x/live', label: 'live' },              // active, finish lost
+    { seq: 3, type: 'node-planned', node: 'x/todo', kind: 'step', title: 'Todo' },  // pending, never started
+    { seq: 4, type: 'node-completed', node: 'x', ts: '2026-07-01T16:00:00Z' },
+  ], 'demo');
+  assert.equal(findByPath(tree, 'x').status, 'done');
+  assert.equal(findByPath(tree, 'x/live').status, 'done', 'an orphaned ACTIVE child is swept done');
+  assert.equal(findByPath(tree, 'x/todo').status, 'pending', 'a PENDING child is SPARED — never-run work is not fake-completed');
+});
+
+check('orphan sweep: node-failed sweeps its stray ACTIVE descendants to failed', () => {
+  const tree = foldEvents([
+    { seq: 1, type: 'node-planned', node: 'x', kind: 'slice', title: 'Slice' },
+    { seq: 2, type: 'report-started', node: 'x/wo/attempt-1', label: 'wo' },        // active
+    { seq: 3, type: 'node-failed', node: 'x', reason: 'slice failed', ts: '2026-07-01T16:51:00Z' },
+  ], 'demo');
+  assert.equal(findByPath(tree, 'x').status, 'failed');
+  assert.equal(findByPath(tree, 'x/wo/attempt-1').status, 'failed',
+    'an in-flight descendant of a FAILED node is swept failed, not left ▶active');
+});
+
 // ═══ Case 8 — fold order-independence (sorts a COPY, never mutates the input) ══════
 check('out-of-order seq: a shuffled input array folds to the IDENTICAL tree, and is left unmutated', () => {
   const inOrder = reopenEvents();

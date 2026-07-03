@@ -30,7 +30,9 @@ export function renderMarkdown(tree)     // → markdown of the tree BODY only (
                                          //   per depth; detail rendered as '  _(detail)_' suffix;
                                          //   active/failed nodes with statusTs get a literal
                                          //   '   [YYYY-MM-DD HH:MM:SS UTC]' suffix; notes render
-                                         //   as child bullets '- ✎ [ts?] text' under their node
+                                         //   as child bullets '- ✎ [ts?] text' under their node,
+                                         //   the note ts in the SAME 'YYYY-MM-DD HH:MM:SS UTC'
+                                         //   form (raw fallback if unparseable; no bracket if absent)
 ```
 
 ### Path & segment grammar
@@ -53,6 +55,10 @@ export function renderMarkdown(tree)     // → markdown of the tree BODY only (
 // ALWAYS sets the target node's status (+ detail if provided, + statusTs = ts if provided).
 // recursive: true → every DESCENDANT whose status is not in TERMINAL is also set to `status`
 //   (their detail/statusTs untouched). The target itself is always set, terminal or not.
+// recursive: 'active' → sweeps ONLY descendants whose status is 'active' (orphaned in-flight
+//   nodes whose own finish event was lost), leaving pending ones untouched — used by the
+//   terminal transitions (node-completed/report-finished/node-failed) so a completed parent
+//   never leaves a stale ▶active leaf, yet never fake-completes a step that never ran.
 // Missing node → auto-created then set.
 { op: 'note', path, text, ts? }
 // Pushes { text, ts: ts ?? null } onto node.notes. Missing node → auto-created.
@@ -78,8 +84,8 @@ UTC, controller's clock — an agent-supplied ts is OVERWRITTEN). Additional per
 | `node-dispatched` | `node`, `kind` | `attempt` (see arithmetic) | if `attempt>1`: `status {path: node+'/attempt-'+(attempt-1), status:'failed', recursive:true}` (NO detail — preserves a crash detail already there); always: `inject {path: node+'/attempt-'+attempt, label:'attempt '+attempt}`, `status {path:node, status:'active', ts}` |
 | `node-checkpointed` | `node` | — | `status {path:node, status:'pending', detail:'checkpointed'}` |
 | `node-downgraded` | `node` | `attempt` (current) | `status {path: node+'/attempt-'+attempt, status:'failed', recursive:true, detail:'lost-work crash'}`, `status {path:node, status:'pending', detail:'downgraded — awaiting redispatch'}` |
-| `node-completed` | `node` | — | `status {path:node, status:'done', ts}` |
-| `node-failed` | `node` (`reason` optional) | — | `status {path:node, status:'failed', detail:reason, ts}` |
+| `node-completed` | `node` | — | `status {path:node, status:'done', detail:null, ts, recursive:'active'}` (sweeps orphaned in-flight descendants closed) |
+| `node-failed` | `node` (`reason` optional) | — | `status {path:node, status:'failed', detail:reason, ts, recursive:'active'}` |
 | `node-canceled` | `node`, `reason` | — | `status {path:node, status:'canceled', recursive:true, detail:reason}` |
 | `approval-resolved` | `id` | — | `note {path:'', text:'approval resolved: '+id}` (banner fold arrives in Plan 2) |
 | `concluded` (existing) | — | — | `status {path:'', status:'done'}` |
@@ -95,7 +101,7 @@ tree is thin).
 | type | agent supplies | controller stamps | EVENT_MAP ops |
 |---|---|---|---|
 | `report-started` | `under` (node id), `node` (RELATIVE path), `label?` | absolute `node` = path(under) + '/attempt-N/' + relative | `inject {path:node, label}`, `status {path:node, status:'active', ts}` |
-| `report-finished` | `under`, `node` (relative) | same | `inject {path:node}`, `status {path:node, status:'done', ts}` |
+| `report-finished` | `under`, `node` (relative) | same | `inject {path:node}`, `status {path:node, status:'done', ts, recursive:'active'}` (sweeps orphaned in-flight descendants closed) |
 | `report-canceled` | `under`, `node` (relative), `reason` | same | `inject {path:node}`, `status {path:node, status:'canceled', detail:reason}` |
 
 After stamping, the event on disk carries the ABSOLUTE `node`; `under` is kept as provenance.
