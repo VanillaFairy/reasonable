@@ -51,6 +51,13 @@ directory — `$CLAUDE_PLUGIN_ROOT` in hooks; substitute the installed absolute 
 
 ### Greenfield path (build the walking skeleton)
 
+**Open the scaffold node before dispatch.** The walking skeleton is the effort's first real build node
+in the tree, so plant and dispatch it before the scaffolder starts, not after:
+```
+node ${reasonable}/lib/ledger.mjs append --root <effortRoot> --type node-planned --node scaffolding --kind scaffold --title 'walking skeleton'
+node ${reasonable}/lib/ledger.mjs append --root <effortRoot> --type node-dispatched --node scaffolding --kind scaffold
+```
+
 1. **Dispatch the `scaffolder` agent** (a fresh subagent) with: the topology sketch, the vision's user
    stories, and the stack binding. Its job: real wiring end-to-end with trivial behavior, the parked
    scenario suite (compiling), thin initial contracts, loud stubs everywhere off the skeleton path. The
@@ -97,6 +104,13 @@ directory — `$CLAUDE_PLUGIN_ROOT` in hooks; substitute the installed absolute 
 There is no skeleton to build; the system already walks. Record a thin frontier inventory of the
 route-intended / integration-risk scenarios as the baseline for the vertical-slice loop.
 
+**Open the scaffolding node before the frontier pass.** The brownfield inventory is this phase's node
+in the tree just as the walking skeleton is greenfield's — plant and dispatch it before launching:
+```
+node ${reasonable}/lib/ledger.mjs append --root <effortRoot> --type node-planned --node scaffolding --kind scaffold --title 'frontier inventory'
+node ${reasonable}/lib/ledger.mjs append --root <effortRoot> --type node-dispatched --node scaffolding --kind scaffold
+```
+
 1. **Confirm the floor exists.** `census` (run in `analysis`) has emitted the topology census and written
    `.reasonable/baseline.json` (the existing suite partitioned into the FLOOR — untrusted, per-test
    `{id, locus, fileHash}`). If `baseline.json` is missing, return to `analysis`; the frontier inventory
@@ -140,6 +154,11 @@ so the human can confirm the FLOOR stands and review the thin scenario map befor
 begins. There is no tooth-bearing corpus at this stage — pins are born lazily at first touch inside the
 runner. The human ratifies (the last one-time ratification before the vertical-slice loop).
 **Silence never ratifies.**
+
+**Close the scaffold node (both paths).** Once the human signs off, this phase's node — the walking
+skeleton (greenfield) or the frontier inventory (brownfield) — is actually done; close it before the
+vertical-slice loop opens its own nodes:
+`node ${reasonable}/lib/ledger.mjs append --root <effortRoot> --type node-completed --node scaffolding`
 
 ## Discipline
 

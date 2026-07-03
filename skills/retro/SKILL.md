@@ -104,6 +104,12 @@ D12 scope-out). Everything else self-ratifies and is logged as above.
    in the next vertical slice's work orders — no blanket re-check, just the affected ones. The human
    ratifies the frontier. The **vision** never changes here — only the **route**. The route file is
    human-editable any time; you pick it up at the next dispatch wave.
+   - **Once ratified, reconcile the ledger's node set against the new route.** For every node the
+     re-sort **drops** that was previously planned, cancel it so the tree stops showing it as pending:
+     `node ${reasonable}/lib/ledger.mjs append --root <effortRoot> --type node-canceled --node <path> --reason 'route re-sort <date>'`.
+     For every **new** slice, spike, or work order the re-sort **adds**, plant it exactly as analysis
+     does at ratification (`analysis` skill, step 10a) — e.g.
+     `node ${reasonable}/lib/ledger.mjs append --root <effortRoot> --type node-planned --node <sliceId>/<woId> --kind work-order --title '<output>'`.
 6. **Clear the approval inbox (BREAKING first, ADVISORY counted).** Resolve queued items in class order:
    **BREAKING** items (intent-fork, vision amendment, second budget extension, reconcile HALT, and — in
    autonomous mode — each born `characterized` classification that raised a **positive conflict signal**
@@ -115,10 +121,15 @@ D12 scope-out). Everything else self-ratifies and is logged as above.
    individually — even in autonomous mode. Unfreeze the lanes each item was freezing. **Inbox-load
    tripwire:** if this vertical slice's BREAKING items exceed the threshold, surface *that* as a meta-signal
    that the intention is under-specified — route back to enrich the oracle, not suppress the items.
+   - **Log the resolution as you clear each item.** Whichever class it was, the moment you resolve an
+     inbox item append `node ${reasonable}/lib/ledger.mjs append --root <effortRoot> --type approval-resolved --id <itemId>`,
+     so the tree's approval banner drops it the instant it is actually cleared, not just when
+     `inbox.json` happens to shrink.
 7. **Record intent-check-failures (D18, the falsifiable defeater).** For **every** non-breaking choice the
-   human corrected this vertical slice that the agent did **not** escalate, append a ledger entry
-   `{type:"intent-check-failure", verticalSlice:<id>, correctedChoice:<what>, shouldHavePinged:true,
-   retro:<id>}` (`contract-amendment` skill / `docs/artifacts.md` ledger grammar). This is the only thing
+   human corrected this vertical slice that the agent did **not** escalate, append the ledger entry
+   via the controller CLI (like every other ledger write — the controller stamps `seq`/`ts`):
+   `node ${reasonable}/lib/ledger.mjs append --root <effortRoot> --json '{"type":"intent-check-failure","verticalSlice":"<id>","correctedChoice":"<what>","shouldHavePinged":true,"retro":"<id>"}'`
+   (`contract-amendment` skill / `docs/artifacts.md` ledger grammar). This is the only thing
    that makes "never policing" falsifiable — a human silently fixing the agent's call *is* a recorded
    miss. A **rising** intent-check-failure count is the observable signal the intention is too weak an
    oracle → route back to enrich `intention.md`. *Do not skip this because "the fix was small" — the small

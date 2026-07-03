@@ -132,8 +132,14 @@ The vision you are extracting has three parts:
      **approach-level** decisions first — they can dissolve whole layers of detail forks — and fold each
      answer into the draft policy and its *Resolved forks* trail. Every fork settled here is a full
      fresh-context grill round **not** spent (the single biggest cost saver).
-   - **9b. Adversarial coherence-grill (the authority — never skipped, both modes).** Launch
-     `coherence-grill.workflow.js` against the strengthened draft. The pre-drain does **not** replace it
+   - **9b. Adversarial coherence-grill (the authority — never skipped, both modes).** The grill is the
+     tree's node beneath `analysis` (the whole-effort tree has no unrecorded phases) — plant and
+     dispatch it once, before the first launch:
+     ```
+     node ${reasonable}/lib/ledger.mjs append --root <effortRoot> --type node-planned --node analysis/grill --kind grill-pass --title 'coherence grill'
+     node ${reasonable}/lib/ledger.mjs append --root <effortRoot> --type node-dispatched --node analysis/grill --kind grill-pass
+     ```
+     Launch `coherence-grill.workflow.js` against the strengthened draft. The pre-drain does **not** replace it
      — Law 3 (external verification): the pre-drain is *you*, the worker, drafting; the fresh-context
      `grill-adversary` is the independent verifier whose **adversarial** stop (`no-fork-found` from a
      genuine attack) must still hold. Each `fork-for-human` it returns is a **batch** of mutually-
@@ -142,11 +148,24 @@ The vision you are extracting has three parts:
      (autonomous, per the note below), enrich the draft with the resolutions, and **re-launch** against
      the strengthened draft. Repeat until the workflow returns `intention-persisted` — an
      `intention-writer` has landed `.reasonable/intention.md` in one atomic commit. Add `intention.md`
-     to `enforcementPaths`.
+     to `enforcementPaths`, and close the grill node — the oracle it existed to produce is durable:
+     `node ${reasonable}/lib/ledger.mjs append --root <effortRoot> --type node-completed --node analysis/grill`
 10. **Human ratification (blocking).** Present vision, topology, initial route, the **ratified
    intention** (the oracle), and the standing artifacts. The human ratifies each — these are one-time
    ratifications (vision, topology, initial route, intention, scaffold-to-come). **Silence never
    ratifies.** Nothing proceeds to scaffolding without it.
+10a. **Open the route's nodes in the ledger (after ratification).** The `analysis` phase node opened in
+   `develop` step 0 is done, and the ratified route is now the tree's frontier — close the one, plant the
+   other, so the mirror shows the plan before the first slice ever dispatches:
+   - Close the phase: `node ${reasonable}/lib/ledger.mjs append --root <effortRoot> --type node-completed --node analysis`
+   - For **every vertical slice on the ratified route**, plant the slice and each of its already-known
+     work orders (repeat the second line once per known work order under that slice):
+     ```
+     node ${reasonable}/lib/ledger.mjs append --root <effortRoot> --type node-planned --node <sliceId> --kind slice --title '<slice title>'
+     node ${reasonable}/lib/ledger.mjs append --root <effortRoot> --type node-planned --node <sliceId>/<woId> --kind work-order --title '<output>'
+     ```
+   - For **every spike on the route**, plant it the same way:
+     `node ${reasonable}/lib/ledger.mjs append --root <effortRoot> --type node-planned --node <spikeId> --kind spike --title '<spike question>'`
 
 ## Brownfield branch (BF7) — runs only when `config.brownfield = true`
 

@@ -69,6 +69,10 @@ ledger.
 - Record the slice opening in the journal (the last write you own before the run takes over the index).
 
 ## 1. Launch the vertical-slice-runner workflow
+- **Mark the slice dispatched before the launch call.** The slice node was planted `pending` at
+  ratification (analysis step 10a, or a retro route re-sort) — flip it active now, so the tree shows
+  work in flight the instant the run starts, not after it returns:
+  `node ${reasonable}/lib/ledger.mjs append --root <effortRoot> --type node-dispatched --node <S> --kind slice`
 - Launch it **by name** — `Workflow({ name: 'vertical-slice-runner', args: {...} })` — not by
   `scriptPath`. The registered-name path passes `args` reliably; **`scriptPath` drops `args`** (the
   run then sees an empty `args` global). Pass `args`: `effortRoot` (the main checkout, native path),
@@ -175,6 +179,9 @@ agent's ten tries).
 
 ### 3b. `blocked` — a trap needs a human decision (the runner's BREAKING crossings)
 The runner returns `blocked` when a trap arm hit a wall it cannot cross from inside a single run.
+**Record the wall against the slice node before you triage it** — whatever `outcome.kind` turns out to
+be, the slice stopped short of green, so mark that first with the wall as the reason:
+`node ${reasonable}/lib/ledger.mjs append --root <effortRoot> --type node-failed --node <S> --reason '<the wall/blocker>'`.
 Inspect `outcome.kind` and act:
 - **`spike-needed`** → the runner cannot call `workflow()` (one-level nesting). **You launch
   `workflows/spike.workflow.js`** in a quarantine workspace. Harvest its knowledge artifact through the
@@ -201,8 +208,10 @@ crossings it returns.
 
 ### 3c. `halt` — durability / reconcile halt → human
 The reconcile prologue found an **AMBIGUOUS** configuration (or the scribe could not persist the
-index). Truth is intact — reconcile rebuilds the derived index from git + ledger + contracts. Present
-`reason` to the human; do **not** guess a recovery state (defaulting to a "safer" mode is a forbidden
+index). Truth is intact — reconcile rebuilds the derived index from git + ledger + contracts. **Record
+the halt against the slice node** before presenting it, so the tree shows exactly where the run
+stopped: `node ${reasonable}/lib/ledger.mjs append --root <effortRoot> --type node-failed --node <S> --reason '<the wall/blocker>'`.
+Present `reason` to the human; do **not** guess a recovery state (defaulting to a "safer" mode is a forbidden
 inference). Resolve the ambiguity, then re-launch.
 
 **The floor-integrity backstop is the fifth always-escalate class (D6 + D13).** The byte-level
@@ -229,6 +238,9 @@ explained or not; an `accept` only ever causes **more** surfacing, never less.
   tried, binding constraint named, minimal repro). Dispatch a fresh **`skeptic`** (timeboxed) to
   refute. Only a **refutation-surviving** verdict binds → append a `verdict`/`dead-end` to the ledger
   **with the work-order hash** (the redispatch guard keys on it); the route-planner re-prices siblings.
+  A bound dead end also marks the work-order **node** failed (Family 1 — you are the emitter here):
+  `node ${reasonable}/lib/ledger.mjs append --root <effortRoot> --type node-failed --workOrder <woId> --reason '<binding constraint>'`
+  (a later ratified redispatch reopens it as a fresh attempt; a ratified drop cancels it — never delete).
   Before re-dispatching any previously dead-ended work order, the runner's route-planner runs
   `node ${reasonable}/lib/redispatch-guard.mjs <wo-id>` — blocked unless an input changed.
 
@@ -281,11 +293,23 @@ it at the membrane before merging and closing:
   missing citation. Log it (it debugs the spec layer); fix the footprint. Record every merge SHA in the
   journal (provenance accounting; `lib/commit-accounting.mjs`). The base branch is **never written**
   here.
+- **Close each merged work order's node.** The instant a lane's merge lands cleanly on the effort
+  branch, its work order is actually done — repeat once per lane merged this wave:
+  `node ${reasonable}/lib/ledger.mjs append --root <effortRoot> --type node-completed --workOrder <woId> --kind work-order`
 - **Update the journal** (work orders `merged`; vertical slice closing) — a write you own again now the
   run has returned.
-- **Invoke the `retro` skill** — the mandatory blocking heartbeat. The run ended **at** the retro gate,
-  never through it; the human-blocking retro runs here, in the main session. Do not open the next
-  vertical slice before the retro runs.
+- **Open the retro node, then invoke the `retro` skill** — the mandatory blocking heartbeat. The retro
+  is a node beneath its slice (the whole-effort tree has no unrecorded phases), and you drive it, so you
+  emit its lifecycle (Family 1):
+  `node ${reasonable}/lib/ledger.mjs append --root <effortRoot> --type node-planned --node <S>/retro --kind phase --title 'retro <S>'`
+  `node ${reasonable}/lib/ledger.mjs append --root <effortRoot> --type node-dispatched --node <S>/retro --kind phase`
+  The run ended **at** the retro gate, never through it; the human-blocking retro runs here, in the main
+  session. Do not open the next vertical slice before the retro runs.
+- **Close the retro node, then the slice node, once retro returns.** The retro is what actually settles
+  the slice, so mark them done only after that heartbeat completes, not the instant the gate result
+  arrived — retro child first, then its slice:
+  `node ${reasonable}/lib/ledger.mjs append --root <effortRoot> --type node-completed --node <S>/retro`
+  `node ${reasonable}/lib/ledger.mjs append --root <effortRoot> --type node-completed --node <S>`
 
 ## 7a. Effort end — merge the effort branch to the base (the single human gate)
 Per-slice integration never reaches the base branch — green lanes accumulate on the **effort branch**

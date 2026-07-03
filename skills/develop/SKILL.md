@@ -31,6 +31,14 @@ Write the resolved values into `.reasonable/config.json`:
 - `"runMode"` ∈ `"gated" | "autonomous"` (fence-protected — an agent cannot self-promote the mode).
 - `"tier"` ∈ `"full" | "lite"` (the effort default; fence-protected — an agent cannot self-lower it).
 
+**Open the execution tree's first node.** The instant config is durable, plant `analysis` as the tree's
+root phase node and mark it running, so the progress tree has real content from step 0 — not just once
+analysis gets around to writing its own artifacts:
+```
+node ${reasonable}/lib/ledger.mjs append --root <effortRoot> --type node-planned --node analysis --kind phase --title 'analysis'
+node ${reasonable}/lib/ledger.mjs append --root <effortRoot> --type node-dispatched --node analysis --kind phase
+```
+
 Write the supervision posture into `.reasonable/supervision.json` (D10): `"profile": "strict"` for
 gated (maximum oversight), `"profile": "trusting"` for autonomous (autonomy pre-approves between
 gates). The entry skill *owns* these values; lower phases must **not** override the profile — they may

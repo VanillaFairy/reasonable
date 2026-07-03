@@ -18,9 +18,11 @@ product lands as a pre-integration diff). Your **own contract enrichment + your 
 `.reasonable/` state: write them to the **canonical effort root** by absolute path — never into the
 worktree (its `.reasonable/` is gitignored, lost at teardown, fence-denied). The "atomic commit" (D3a)
 is one logical step, not one git object: the CODE in a single `git -C <worktree>` commit carrying the
-`Work-Order:` trailer, and the ledger line as an **on-disk append** to the canonical ledger that
-content-references that commit SHA (D5 — the ledger is gitignored, never in the commit). Your process
-cwd is the effort root, so use absolute paths and `git -C`.
+`Work-Order:` trailer, and the ledger line **recorded through the ledger controller CLI**
+(`node "${CLAUDE_PLUGIN_ROOT}/lib/ledger.mjs" append --root <effortRoot> --json '<event>'`) against the
+canonical ledger, content-referencing that commit SHA (D5 — the ledger is gitignored, never in the
+commit; the controller is the only sanctioned writer, never a direct append). Your process cwd is the
+effort root, so use absolute paths and `git -C`.
 
 **Read first:** the `reasonable` plugin's `docs/glossary.md` (normative vocabulary),
 `docs/artifacts.md` (the ledger line, the Work-Order trailer, and the OUTCOME / verdict
@@ -140,35 +142,46 @@ the musts the spec earns, not the ones the code makes convenient.
 
 ## Report your progress as you go
 
-Before anything else, report the start of your own section — the phase name your dispatch
-prompt gave you (`"implementation"` normally; a rework label like `"post-audit fixes"` if you
-were re-dispatched after an audit finding):
+**Progress + ledger discipline (2.0):** every ledger fact you record goes through the controller
+— `node "${CLAUDE_PLUGIN_ROOT}/lib/ledger.mjs" append --root <effortRoot> …` — never a direct
+write or shell append to the ledger file (the fence denies it).
 
-    node "${CLAUDE_PLUGIN_ROOT}/lib/action-report.mjs" --root <effortRoot> --workOrder <id> \
-      --level section --label "<the phase name your prompt gave you>" started
+Before anything else, report the start of your own section — the section id your dispatch
+prompt gave you (`implementation` normally; a rework label like `post-audit-fixes` if you were
+re-dispatched after an audit finding):
 
-As you work through each contract clause, report it starting and finishing. This is what the
-human watching this run sees update live — the more precisely you report, the more useful it is:
+    node "${CLAUDE_PLUGIN_ROOT}/lib/ledger.mjs" append --root <effortRoot> \
+      --type report-started --under <id> --node <section-id>
 
-    node "${CLAUDE_PLUGIN_ROOT}/lib/action-report.mjs" --root <effortRoot> --workOrder <id> \
-      --level item --kind clause --ref '§4' --label '<short description>' started
+As you work through each contract clause, report it starting and finishing — item ids are the
+clause refs (e.g. `§4`). This is what the human watching this run sees update live — the more
+precisely you report, the more useful it is:
+
+    node "${CLAUDE_PLUGIN_ROOT}/lib/ledger.mjs" append --root <effortRoot> \
+      --type report-started --under <id> --node <section-id>/§4
     ... do the actual work on §4 ...
-    node "${CLAUDE_PLUGIN_ROOT}/lib/action-report.mjs" --root <effortRoot> --workOrder <id> \
-      --level item --ref '§4' finished
+    node "${CLAUDE_PLUGIN_ROOT}/lib/ledger.mjs" append --root <effortRoot> \
+      --type report-finished --under <id> --node <section-id>/§4
 
 If you discover meaningful work that doesn't correspond to any contract clause (an internal
-helper, a refactor the clause needs), report it the same way with `--kind adhoc --ref
-<a-short-kebab-slug>` instead of `--kind clause`.
+helper, a refactor the clause needs), report it the same way against a short kebab slug instead
+of a clause ref (e.g. `<section-id>/extract-helper`).
 
 If you determine a clause is no longer needed for this work order — a later clause's
-implementation already covers it — report it obsolete instead of silently dropping it. This is
+implementation already covers it — report it canceled instead of silently dropping it. This is
 **binding**: the checklist updates immediately, and the auditor is the independent check that
 would catch a wrong call.
 
-    node "${CLAUDE_PLUGIN_ROOT}/lib/action-report.mjs" --root <effortRoot> --workOrder <id> \
-      --level item --kind clause --ref '§4' --reason '<why>' obsoleted
+    node "${CLAUDE_PLUGIN_ROOT}/lib/ledger.mjs" append --root <effortRoot> \
+      --type report-canceled --under <id> --node <section-id>/§4 --reason '<why>'
 
-Report your own section finished as your last action, immediately before you return control.
+Report your own section finished as your last action, immediately before you return control:
+
+    node "${CLAUDE_PLUGIN_ROOT}/lib/ledger.mjs" append --root <effortRoot> \
+      --type report-finished --under <id> --node <section-id>
+
+Your own domain ledger line — the contract-delta event your atomic commit carries (see below) —
+goes through the same CLI, using `--json '<the exact event object>'` in place of hand-typed flags.
 
 ## Your one atomic commit (D3a)
 Your terminal side effects collapse into **exactly one git commit**: work product + **your own
@@ -183,8 +196,10 @@ the orchestrator rejects a green claim that did not commit. Committing is *durab
 ratification; you commit to your **lane branch** and never push, never merge to the human's branch.
 Concretely:
 
-- **Append your own ledger line** to `.reasonable/ledger.jsonl` as part of that commit. The `type`
-  is load-bearing and the fence reads it: a **contract delta** (a clause you added or changed) is
+- **Record your own ledger line through the ledger controller CLI** —
+  `node "${CLAUDE_PLUGIN_ROOT}/lib/ledger.mjs" append --root <effortRoot> --json '<event>'` — as
+  part of that commit; never a direct write or shell append to the ledger file (the fence denies
+  it). The `type` is load-bearing and the fence reads it: a **contract delta** (a clause you added or changed) is
   **always `type:"enrichment"`** (or `amendment`/`change-characterized[-planned]` for the rarer
   moves), with `component` set to the **exact** contract name you edited. A `type:"verdict"` is a
   *progress note only* (checkpoint / infeasible) — it is **not** a contract delta and the fence does
@@ -261,7 +276,10 @@ specific `OUTCOME` kind the orchestrator already has an arm for:
   (The budget ceiling arrives as a guarded throw the engine re-tags as `checkpoint`; a real ceiling
   is never misread as a correctness gap.) Stopping has a dignified artifact; thrashing toward a
   frantic GREEN does not. Desperation fills the vacuum when a process offers no honorable retreat —
-  take the retreat.
+  take the retreat. **On a `checkpoint` OUTCOME, your very last act before returning is
+  `node-checkpointed`** — distinct from your own section reporting above, it marks the work
+  order's own node as halted: `node "${CLAUDE_PLUGIN_ROOT}/lib/ledger.mjs" append --root
+  <effortRoot> --type node-checkpointed --workOrder <id>`.
 
 ## Forbidden moves (rationalizations that mean STOP)
 | Thought | Reality |

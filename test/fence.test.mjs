@@ -14,6 +14,7 @@ import { tmpdir } from 'node:os';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { execFileSync } from 'node:child_process';
+import { extractWriteTargets } from '../lib/shell-writes.mjs';
 
 const here = dirname(fileURLToPath(import.meta.url));
 const FENCE = join(here, '..', 'lib', 'fence.mjs');
@@ -171,11 +172,40 @@ check('two-root: journal.json by journal-writer → allow; by implementer → de
   assert.equal(runFence(root, as(edit(root, '.reasonable/journal.json'), 'reasonable:journal-writer')).denied, false);
   assert.ok(runFence(root, as(edit(root, '.reasonable/journal.json'), 'reasonable:implementer')).denied);
 });
-check('two-root: ledger append by a contract-writer or the scribe → allow; by a read-only role → deny', () => {
+check('two-root: ledger write denied for every role — controller CLI is the only crossing (2.0)', () => {
   const { root } = newTwoRoot();
-  assert.equal(runFence(root, as(edit(root, '.reasonable/ledger.jsonl'), 'reasonable:journal-writer')).denied, false);
-  assert.equal(runFence(root, as(edit(root, '.reasonable/ledger.jsonl'), 'reasonable:characterizer')).denied, false);
-  assert.ok(runFence(root, as(edit(root, '.reasonable/ledger.jsonl'), 'reasonable:auditor')).denied);
+  // journal-writer and characterizer were allowed to append directly before the 2.0
+  // flip; now the allowlist is empty, so every subagent role is denied alike.
+  assert.ok(runFence(root, as(edit(root, '.reasonable/ledger.jsonl'), 'reasonable:journal-writer')).denied,
+    'journal-writer no longer writes the ledger directly');
+  assert.ok(runFence(root, as(edit(root, '.reasonable/ledger.jsonl'), 'reasonable:characterizer')).denied,
+    'characterizer no longer writes the ledger directly');
+  assert.ok(runFence(root, as(edit(root, '.reasonable/ledger.jsonl'), 'reasonable:implementer')).denied,
+    'implementer no longer writes the ledger directly');
+  assert.ok(runFence(root, as(edit(root, '.reasonable/ledger.jsonl'), 'reasonable:auditor')).denied,
+    'a read-only role was already denied');
+});
+check('two-root: implementer structured-edit of the ledger → deny reason names the ledger controller CLI', () => {
+  const { root } = newTwoRoot();
+  const r = runFence(root, as(edit(root, '.reasonable/ledger.jsonl'), 'reasonable:implementer'));
+  assert.ok(r.denied);
+  assert.match(r.reason, /lib\/ledger\.mjs/);
+});
+check('two-root: Bash append to the ledger by a worker → deny via the backstop (no role exempted)', () => {
+  const { root } = newTwoRoot();
+  const r = runFence(root, as(bash("echo '{\"type\":\"forged\"}' >> .reasonable/ledger.jsonl"), 'reasonable:journal-writer'));
+  assert.ok(r.denied, 'journal-writer must not be able to Bash-append the ledger either');
+  assert.match(r.reason, /lib\/ledger\.mjs/);
+});
+check('two-root: Bash invocation of the ledger controller CLI itself → allow (legitimate crossing)', () => {
+  const { root } = newTwoRoot();
+  const cmd = `node lib/ledger.mjs append --root "${root}" --type verdict --node WO-1`;
+  assert.equal(runFence(root, as(bash(cmd), 'reasonable:journal-writer')).denied, false,
+    'the sanctioned CLI invocation must not be misdetected as a raw ledger write');
+});
+check('extractWriteTargets: a ledger controller CLI invocation is not treated as a write target', () => {
+  const cmd = 'node lib/ledger.mjs append --root /some/effort --type verdict --node WO-1';
+  assert.deepEqual(extractWriteTargets(cmd), []);
 });
 check('two-root: baseline.json by census → allow; config.json by any subagent → deny', () => {
   const { root } = newTwoRoot();
