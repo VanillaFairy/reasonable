@@ -126,6 +126,32 @@ check('status on a missing path auto-creates ancestors then sets the target', ()
   assert.equal(leaf.status, 'active');
 });
 
+// ── 6b. status guardPending — applies only while the node is still 'pending' ─
+
+check('status guardPending: flips a pending node to the given status, auto-creating first', () => {
+  const t = createTree('fx');
+  apply(t, { op: 'status', path: 'a/b', status: 'active', guardPending: true });
+  const b = findByPath(t, 'a/b');
+  assert.equal(b.status, 'active', 'a brand-new (thus pending) auto-created node is still eligible');
+});
+
+check('status guardPending: a no-op against a node that is already NOT pending — active, done, or failed alike', () => {
+  const t = createTree('fx');
+  apply(t, { op: 'inject', path: 'already-active', status: 'active' });
+  apply(t, { op: 'status', path: 'already-active', status: 'active', guardPending: true, detail: 'should not land' });
+  assert.equal(findByPath(t, 'already-active').detail, null, 'guarded call is a full no-op — detail is not touched either');
+
+  apply(t, { op: 'inject', path: 'already-done', status: 'active' });
+  apply(t, { op: 'status', path: 'already-done', status: 'done' });
+  apply(t, { op: 'status', path: 'already-done', status: 'active', guardPending: true });
+  assert.equal(findByPath(t, 'already-done').status, 'done', 'guardPending must never resurrect a terminal node back to active');
+
+  apply(t, { op: 'inject', path: 'already-failed', status: 'active' });
+  apply(t, { op: 'status', path: 'already-failed', status: 'failed' });
+  apply(t, { op: 'status', path: 'already-failed', status: 'active', guardPending: true });
+  assert.equal(findByPath(t, 'already-failed').status, 'failed', 'guardPending must never resurrect a failed node back to active');
+});
+
 // ── 7. status recursive — skips terminal descendants, always sets the target ─
 
 check('recursive status sets every non-terminal descendant, spares terminal ones, and ALWAYS sets the target (even if the target itself was terminal)', () => {

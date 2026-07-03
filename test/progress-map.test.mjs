@@ -196,6 +196,29 @@ check('family-2: report-started → injects + active, label + statusTs from the 
   assert.equal(leaf.statusTs, '2026-07-01T12:00:00Z');
 });
 
+check('family-2: report-started activates every ancestor container along the way, not just the leaf', () => {
+  const tree = foldEvents([
+    { seq: 1, type: 'node-planned', node: 'x', kind: 'work-order', title: 'T' },
+    { seq: 2, type: 'node-dispatched', node: 'x', kind: 'work-order', attempt: 1 },
+    { seq: 3, type: 'report-started', node: 'x/attempt-1/implementation/§7', label: '§7' },
+  ], 'demo');
+  assert.equal(findByPath(tree, 'x').status, 'active', 'the work order itself');
+  assert.equal(findByPath(tree, 'x/attempt-1').status, 'active',
+    'the attempt-1 container — this is the reported bug: it used to stay "· pending" while real work ran underneath it');
+  assert.equal(findByPath(tree, 'x/attempt-1/implementation').status, 'active', 'the intermediate section folder too');
+});
+
+check('family-2: ancestor activation never resurrects an ancestor that has already reached a terminal status', () => {
+  const tree = foldEvents([
+    { seq: 1, type: 'node-planned', node: 'x', kind: 'work-order', title: 'T' },
+    { seq: 2, type: 'node-dispatched', node: 'x', kind: 'work-order', attempt: 1 },
+    { seq: 3, type: 'node-downgraded', node: 'x', attempt: 1 }, // seals x/attempt-1 failed
+    { seq: 4, type: 'report-started', node: 'x/attempt-1/late-straggler', label: 'late' },
+  ], 'demo');
+  assert.equal(findByPath(tree, 'x/attempt-1').status, 'failed',
+    'a sealed attempt must stay failed — ancestor activation only ever promotes a PENDING ancestor, never a terminal one');
+});
+
 check('family-2: report-finished → done', () => {
   const tree = foldEvents([
     { seq: 1, type: 'node-planned', node: 'x', kind: 'work-order', title: 'T' },
@@ -390,7 +413,9 @@ check('writeMirror: writes progress.json (tree + counts) and progress.md (header
   const j = JSON.parse(readFileSync(join(root, '.reasonable', 'progress.json'), 'utf8'));
   assert.ok(j.counts, 'progress.json carries a counts object');
   assert.equal(j.counts.done, 1, 'slice-1 is done');
-  assert.equal(j.counts.active, 1, 'slice-2 is active');
+  // slice-2 AND its freshly-opened slice-2/attempt-1 are both active — a container is never
+  // left showing pending while the attempt underneath it is doing real work.
+  assert.equal(j.counts.active, 2, 'slice-2 is active, and so is its attempt-1 child');
   assert.equal(j.counts.failed, 0);
   // Tree data lives either spread at the top level or nested under .tree — interfaces.md's
   // phrasing ("the tree, plus {counts}") does not pin which, so tolerate either reading.
@@ -400,7 +425,7 @@ check('writeMirror: writes progress.json (tree + counts) and progress.md (header
   const md = readFileSync(join(root, '.reasonable', 'progress.md'), 'utf8');
   assert.match(md, /^# reasonable · acme.*~5 agents.*tok/m, 'header carries the effort name and, since journal.cost is set, a cost segment');
   assert.match(md, /1\/3 done/, 'counts line: 1 of 3 non-root nodes done');
-  assert.match(md, /1 active/, 'counts line: 1 active');
+  assert.match(md, /2 active/, 'counts line: 2 active (slice-2 + its attempt-1 child)');
   assert.match(md, /0 failed/, 'counts line: 0 failed');
   assert.match(md, /Slice One/);
   assert.match(md, /Slice Two/);

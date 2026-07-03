@@ -51,7 +51,7 @@ export function renderMarkdown(tree)     // → markdown of the tree BODY only (
 //   status is NOT touched on merge (only a brand-new node takes op.status, default 'pending').
 { op: 'update', path, label?, detail? }
 // Sets provided fields. Missing node/ancestors auto-created (pending stubs) first.
-{ op: 'status', path, status, detail?, recursive?, ts? }
+{ op: 'status', path, status, detail?, recursive?, ts?, guardPending? }
 // ALWAYS sets the target node's status (+ detail if provided, + statusTs = ts if provided).
 // recursive: true → every DESCENDANT whose status is not in TERMINAL is also set to `status`
 //   (their detail/statusTs untouched). The target itself is always set, terminal or not.
@@ -59,6 +59,10 @@ export function renderMarkdown(tree)     // → markdown of the tree BODY only (
 //   nodes whose own finish event was lost), leaving pending ones untouched — used by the
 //   terminal transitions (node-completed/report-finished/node-failed) so a completed parent
 //   never leaves a stale ▶active leaf, yet never fake-completes a step that never ran.
+// guardPending: true → the ENTIRE op (status/detail/ts) is skipped unless the node's CURRENT
+//   status is 'pending'. Used by progress-map.mjs to nudge a container (attempt-N folder,
+//   implementation/section folder, ...) to 'active' the moment work starts under it, without
+//   ever demoting an already-active node or resurrecting a terminal one back to active.
 // Missing node → auto-created then set.
 { op: 'note', path, text, ts? }
 // Pushes { text, ts: ts ?? null } onto node.notes. Missing node → auto-created.
@@ -81,7 +85,7 @@ UTC, controller's clock — an agent-supplied ts is OVERWRITTEN). Additional per
 | type | required fields | controller stamps | EVENT_MAP ops |
 |---|---|---|---|
 | `node-planned` | `node`, `kind`, `title` | — | `inject {path:node, label:title, status:'pending'}` |
-| `node-dispatched` | `node`, `kind` | `attempt` (see arithmetic) | if `attempt>1`: `status {path: node+'/attempt-'+(attempt-1), status:'failed', recursive:true}` (NO detail — preserves a crash detail already there); always: `inject {path: node+'/attempt-'+attempt, label:'attempt '+attempt}`, `status {path:node, status:'active', ts}` |
+| `node-dispatched` | `node`, `kind` | `attempt` (see arithmetic) | if `attempt>1`: `status {path: node+'/attempt-'+(attempt-1), status:'failed', recursive:true}` (NO detail — preserves a crash detail already there); always: `inject {path: node+'/attempt-'+attempt, label:'attempt '+attempt, status:'active'}` (the fresh attempt folder itself opens active, not pending), a `status {..., status:'active', guardPending:true}` per proper ancestor of `node` (so a containing slice/phase shows active too), `status {path:node, status:'active', ts}` |
 | `node-checkpointed` | `node` | — | `status {path:node, status:'pending', detail:'checkpointed'}` |
 | `node-downgraded` | `node` | `attempt` (current) | `status {path: node+'/attempt-'+attempt, status:'failed', recursive:true, detail:'lost-work crash'}`, `status {path:node, status:'pending', detail:'downgraded — awaiting redispatch'}` |
 | `node-completed` | `node` | — | `status {path:node, status:'done', detail:null, ts, recursive:'active'}` (sweeps orphaned in-flight descendants closed) |
@@ -100,9 +104,9 @@ tree is thin).
 
 | type | agent supplies | controller stamps | EVENT_MAP ops |
 |---|---|---|---|
-| `report-started` | `under` (node id), `node` (RELATIVE path), `label?` | absolute `node` = path(under) + '/attempt-N/' + relative | `inject {path:node, label}`, `status {path:node, status:'active', ts}` |
-| `report-finished` | `under`, `node` (relative) | same | `inject {path:node}`, `status {path:node, status:'done', ts, recursive:'active'}` (sweeps orphaned in-flight descendants closed) |
-| `report-canceled` | `under`, `node` (relative), `reason` | same | `inject {path:node}`, `status {path:node, status:'canceled', detail:reason}` |
+| `report-started` | `under` (node id), `node` (RELATIVE path), `label?` | absolute `node` = path(under) + '/attempt-N/' + relative | a `status {..., status:'active', guardPending:true}` per proper ancestor of `node` (attempt-N, section folders, ...), `inject {path:node, label}`, `status {path:node, status:'active', ts}` |
+| `report-finished` | `under`, `node` (relative) | same | same ancestor-activation ops, `inject {path:node}`, `status {path:node, status:'done', ts, recursive:'active'}` (sweeps orphaned in-flight descendants closed) |
+| `report-canceled` | `under`, `node` (relative), `reason` | same | same ancestor-activation ops, `inject {path:node}`, `status {path:node, status:'canceled', detail:reason}` |
 
 After stamping, the event on disk carries the ABSOLUTE `node`; `under` is kept as provenance.
 The mapper never sees a relative path.
