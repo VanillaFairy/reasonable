@@ -51,11 +51,11 @@ const PROVISION_RESULT = {
   additionalProperties: false,
   required: ['ok', 'quarantineRoot', 'worktreePath', 'branch', 'recordedInJournal', 'descriptorWritten', 'idempotentNoops'],
   properties: {
-    ok: { type: 'boolean', description: 'true only if a fenced quarantine worktree + .reasonable-lane.json descriptor (quarantineOnly:true) + journal lane record all exist before any worker runs.' },
+    ok: { type: 'boolean', description: 'true only if a fenced quarantine worktree + .reasonable-lane.json descriptor (quarantineOnly:true) exist before any worker runs. Does NOT bundle recordedInJournal - the lane-provisioner has no Agent tool to dispatch the journal-writer scribe that lands that record, so it can only confirm, never make true, that step.' },
     quarantineRoot: { type: 'string', description: 'Absolute path of the law-free quarantine workspace the spike-runner is path-fenced to. The spike-runner is cwd\'d here; all its writes must land under it.' },
     worktreePath: { type: 'string', description: 'The registered git worktree path (a real lane worktree, NOT an engine isolation throwaway).' },
     branch: { type: 'string', description: 'The lane branch name.' },
-    recordedInJournal: { type: 'boolean', description: 'The lane was recorded via the scribe at status:dispatched BEFORE the spike-runner runs (closes the descriptor-less window).' },
+    recordedInJournal: { type: 'boolean', description: 'true iff reading journal.json confirmed the lane already shows status:dispatched (landed by the orchestrator\'s own scribe call before this agent ran). A confirmation, never a write - false is a handoff gap, not a provisioning failure, and never blocks the spike-runner from entering the quarantine.' },
     descriptorWritten: { type: 'boolean', description: 'The single .reasonable-lane.json descriptor (quarantineOnly:true, quarantineRoot set, effortRoot back-pointer) is written into the worktree root.' },
     idempotentNoops: { type: 'array', items: { type: 'string' }, description: 'Which provisioning steps were skipped because the lane already existed (idempotent re-run after a crash).' },
     failureReason: { type: 'string', description: 'Present iff ok is false: why provisioning could not complete (e.g. worktree add failed, fence-protected descriptor write denied).' },
@@ -189,8 +189,12 @@ export default async function run() {
     `Order is the safety property: \`git -C ${a.effortRoot} worktree add <worktree-path> -b ${quarantine.branch}\``,
     `(the worktree NESTED under the effort root, so findEffortRoot resolves the canonical .reasonable/ from`,
     `inside it and reconcile's effort-scoped scan re-claims it) -> write the single .reasonable-lane.json (with`,
-    `the effortRoot back-pointer) -> record the lane via the scribe at status:'dispatched'. All BEFORE any`,
-    `spike-runner runs. Idempotent on re-run after a crash: a present matching descriptor is a no-op.`,
+    `the effortRoot back-pointer) -> CONFIRM (read journal.json - you have no Agent tool to dispatch the`,
+    `journal-writer scribe yourself) whether this lane already shows status:'dispatched', landed by the`,
+    `orchestrator's own write-ahead scribe call before you ran. All BEFORE any spike-runner runs. Idempotent`,
+    `on re-run after a crash: a present matching descriptor is a no-op. Return \`ok\` covering ONLY the`,
+    `worktree + descriptor - report \`recordedInJournal\` separately and never fold a missing journal`,
+    `record into ok:false; you cannot write or dispatch that record, only confirm it.`,
     callShapeReminder,
   ].join('\n')
 
@@ -205,8 +209,15 @@ export default async function run() {
     // null = user-skip or terminal API error: a provisioning gap, not a verdict.
     return done({ kind: 'blocked', outcome: 'lane-provisioner returned null (skipped or died); quarantine not provisioned, spike not run.' })
   }
-  if (!provision.ok) {
+  // D7 keys on the PHYSICAL lane (worktree + descriptor), never the bundled self-reported `ok`
+  // boolean - the lane-provisioner has no Agent tool to dispatch the journal-writer scribe, so
+  // whether it can personally vouch for the write-ahead journal record is a capability question,
+  // not a provisioning fact (see PROVISION_RESULT.recordedInJournal).
+  if (!provision.descriptorWritten || !provision.worktreePath) {
     return done({ kind: 'blocked', outcome: `quarantine provisioning failed: ${provision.failureReason || 'unknown'}. Spike not run (a spike-runner with no fenced quarantine is exactly the descriptor-less window the design forbids).` })
+  }
+  if (provision.recordedInJournal === false) {
+    log(`quarantine provisioned but the lane-provisioner could not confirm the write-ahead journal record (it has no Agent tool to dispatch the scribe itself) - the post-wave authoritative scribe write is what closes this; continuing.`)
   }
 
   // ---- Phase 2: run the timeboxed spike inside the quarantine (spike-runner) ----

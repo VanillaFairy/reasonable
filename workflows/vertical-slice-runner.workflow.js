@@ -310,11 +310,12 @@ const PROVISION_ACK = {
   additionalProperties: false,
   required: ['provisioned'],
   properties: {
-    provisioned: { type: 'boolean', description: 'worktree + .reasonable-lane.json descriptor + journal record all present, in that order (idempotent on re-run).' },
+    provisioned: { type: 'boolean', description: 'worktree + deps + .reasonable-lane.json descriptor present (steps 1-3, idempotent on re-run). Does NOT bundle the journal record - see journalRecorded - the lane-provisioner has no Agent tool to dispatch the scribe that writes it, so it can only confirm, never make true, that step.' },
     worktree: { type: ['string', 'null'], description: 'the lane worktree path (nested under the effort root) - CODE + git -C land here; NEVER the main checkout.' },
     branch: { type: ['string', 'null'], description: 'the lane branch.' },
     descriptorWritten: { type: 'boolean', description: 'the .reasonable-lane.json descriptor exists at the worktree root (the fence is armed).' },
     depsReady: { type: 'boolean', description: 'the worktree can run its suite - installed deps are present (linked from the effort root or installed via config.setupCommand). false = the suite-running roles must install first.' },
+    journalRecorded: { type: 'boolean', description: 'true iff reading journal.json confirmed this work order already shows status:"dispatched" (landed by the orchestrators own write-ahead scribe call for this wave, before this agent ran). A confirmation, never a write - false is a handoff gap for the post-wave authoritative scribe write to close, and never blocks dispatch (D7 keys on the physical lane: worktree + descriptorWritten).' },
     noOp: { type: 'boolean', description: 'true iff the lane already existed and provisioning was an idempotent no-op.' },
     kind: { type: ['string', 'null'], description: 'set to "checkpoint" by guard() on a budget ceiling.' },
     note: { type: ['string', 'null'] },
@@ -703,17 +704,25 @@ async function provisionThenImplement(wo, _orig, _idx, ctx) {
       baseNote,
       `Do exactly four things in order: (1) git -C ${effortRoot} worktree add ${effortRoot}/.worktrees/${wo.id} -b lane/${wo.id}${laneBase} (a real registered worktree NESTED UNDER the effort root, cut from the effort branch when one is given, NOT an engine throwaway);`,
       '(2) make the worktree able to RUN ITS SUITE - a git worktree is a fresh checkout with no gitignored deps, so the adjudicator/auditor would otherwise be unable to run: link the effort root\'s already-installed dependency dir(s) (node_modules / .venv / target / vendor ...) into the worktree (fast, stack-agnostic), or if none exist run config.setupCommand there; idempotent. Set depsReady accordingly;',
-      '(3) write the one .reasonable-lane.json descriptor at the worktree root (effortRoot back-pointer + narrowed locus/role/floorImpact/contractBirth); (4) record the lane in the journal via the scribe.',
+      '(3) write the one .reasonable-lane.json descriptor at the worktree root (effortRoot back-pointer + narrowed locus/role/floorImpact/contractBirth); (4) CONFIRM (read journal.json - you have no Agent tool to dispatch the scribe yourself) whether this work order already shows status:\'dispatched\', landed by the orchestrator\'s own write-ahead scribe call for this wave before you were dispatched.',
       'Do NOT seed .reasonable/ into the worktree - effort state stays canonical (gitignored), reached via the back-pointer. Ensure a checkpoint-only lane carries a trailered commit so reconcile can re-claim it.',
-      'Return the PROVISION_ACK: the worktree path + confirmation the descriptor is written + depsReady.',
+      'Return the PROVISION_ACK: `provisioned` covers ONLY steps 1-3 (worktree, deps, descriptor) - report `journalRecorded` separately for step 4 and never fold a missing journal record into provisioned:false; you cannot write or dispatch that record, only confirm it.',
       callShapeReminder,
     ].join('\n'),
     { label: `provision:${wo.id}`, phase: 'Enrich', agentType: 'reasonable:lane-provisioner', schema: PROVISION_ACK },
   ));
   if (ack && ack.kind === 'checkpoint') return ack;
-  if (!ack || ack.provisioned !== true || ack.descriptorWritten !== true || !ack.worktree) {
+  // D7 keys on the PHYSICAL lane (worktree + descriptor), never the bundled self-reported
+  // `provisioned` boolean: the lane-provisioner has no Agent tool to dispatch the journal-writer
+  // scribe, so whether it can personally vouch for the write-ahead journal record is a capability
+  // question, not a provisioning fact - conflating the two produced a false-negative D7 block on an
+  // otherwise fully-armed lane (two identical work orders, one provisioner said true, the other false).
+  if (!ack || !ack.worktree || ack.descriptorWritten !== true) {
     // No armed worktree to direct the worker into -> refuse to run a fenced worker lane-less (D7).
-    return { kind: 'other', workOrder: wo.id, note: 'lane not provisioned (null / provisioned:false / descriptor absent / no worktree path) - refusing to run a fenced worker without a lane (D7).' };
+    return { kind: 'other', workOrder: wo.id, note: 'lane not provisioned (no worktree path / descriptor absent) - refusing to run a fenced worker without a lane (D7).' };
+  }
+  if (ack.journalRecorded === false) {
+    log(`provision: ${wo.id} lane-provisioner could not confirm the write-ahead journal record (it has no Agent tool to dispatch the scribe itself) - the post-wave authoritative scribe write is what closes this; continuing.`);
   }
   const worktree = ack.worktree;
   ctx.worktrees = ctx.worktrees || {};
@@ -897,8 +906,10 @@ async function reprovisionForBlindTest(prev, wo, _idx, ctx) {
     { label: `reprovision-blind-test:${wo.id}`, phase: 'Enrich', agentType: 'reasonable:lane-provisioner', schema: PROVISION_ACK },
   ));
   if (ack && ack.kind === 'checkpoint') return ack;
-  if (!ack || ack.provisioned !== true || ack.descriptorWritten !== true) {
-    return { kind: 'other', workOrder: wo.id, note: 'lane could not be re-provisioned for the blind-test-writer role transition (null / provisioned:false / descriptor not rewritten) - refusing to dispatch the blind-test-writer against a stale (implementer) descriptor.' };
+  // Same D7 discipline as the initial provision: key on the physical descriptor rewrite, never the
+  // bundled self-reported `provisioned` boolean (see provisionThenImplement's gate for why).
+  if (!ack || ack.descriptorWritten !== true) {
+    return { kind: 'other', workOrder: wo.id, note: 'lane could not be re-provisioned for the blind-test-writer role transition (null / descriptor not rewritten) - refusing to dispatch the blind-test-writer against a stale (implementer) descriptor.' };
   }
   return prev; // descriptor now names blind-test-writer; continue the chain unchanged.
 }

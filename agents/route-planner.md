@@ -59,6 +59,24 @@ parallelism one.
   introduced), order them provider-first so the consumer's lane cuts from an effort branch that already
   contains the provider — the same rule as a ripple enrichment. Disjoint footprints buy parallelism; a
   declared dependency merely **serializes**, it does not merge the two back into one work order.
+  **This ordering rule only closes the gap ACROSS vertical slices.** The effort branch only gains the
+  provider's commit at the per-slice merge (the orchestrator's, after the whole slice gates GREEN) — so
+  a provider in vertical-slice N and its consumer in slice N+1 are safe: the merge boundary between the
+  two runner invocations guarantees the base is current. **Inside one vertical slice, no such boundary
+  exists between waves** — a lane is cut from the effort branch's HEAD at provisioning time, and a green
+  wave's work-product commit sits unmerged on its own lane branch until the *whole slice* gates, so a
+  same-slice consumer's lane can be (and was, in the incident below) cut before the provider's commit is
+  reachable from anywhere the consumer's worktree can see. **If a same-slice consumer's code must
+  actually build against the provider's new code — call it, import it, recurse into it — rather than
+  merely be reviewed or audited alongside it, do not split them across work orders; keep them one work
+  order.** (The `validate_sequence`/`validate_story` incident: split provider-first across two work
+  orders in the same slice on the reasonable expectation that "provider-first" made the base current;
+  `validate_story` could not recurse into `validate_sequence` because the consumer's lane predated the
+  provider's merge. The slice-3 precedent — folding a tightly-coupled recursive pair back into one
+  whole-module work order — is the correct call here for the same reason.) A same-slice split remains
+  fine when the dependency is soft enough that the consumer's *own* pipeline run never needs the
+  provider's code physically present — e.g. two call sites of a not-yet-existing shared contract clause
+  that the audit reconciles at the slice gate, not at build time.
 
 This is the **route-side** lever (more, smaller work orders). It complements — it does not replace —
 the **lane-side** region-scoped per-bit commit engine tracked in `docs/roadmap/commit-granularity.md`

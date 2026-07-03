@@ -104,10 +104,11 @@ const PROVISION_ACK = {
   additionalProperties: false,
   required: ['provisioned'],
   properties: {
-    provisioned: { type: 'boolean', description: 'worktree + .reasonable-lane.json descriptor + journal record all present, in that order (idempotent on re-run)' },
+    provisioned: { type: 'boolean', description: 'worktree + .reasonable-lane.json descriptor present (idempotent on re-run). Does NOT bundle the journal record - see journalRecorded - the lane-provisioner has no Agent tool to dispatch the scribe that writes it, so it can only confirm, never make true, that step.' },
     worktree: { type: ['string', 'null'], description: 'the lane worktree path the scaffolder must cwd into - a real registered worktree, NEVER the main checkout' },
     branch: { type: ['string', 'null'], description: 'the lane branch' },
     descriptorWritten: { type: 'boolean', description: 'the .reasonable-lane.json descriptor exists at the worktree root so the fence is armed (no fail-open-in-main-checkout window)' },
+    journalRecorded: { type: 'boolean', description: 'true iff reading journal.json confirmed this lane already has a dispatched record. A confirmation, never a write - false is a gap for the scribe to close later and never blocks the scaffolder from entering the lane (D7 keys on the physical lane: worktree + descriptorWritten).' },
     noOp: { type: 'boolean', description: 'true iff the lane already existed and provisioning was an idempotent no-op' },
     reason: { type: 'string', description: 'on a false/absent provision, the one-line reason (read as HALT)' },
   },
@@ -278,12 +279,12 @@ function lanePrompt(a) {
     'effort root (so findEffortRoot resolves the canonical .reasonable/ from inside it), cut from the effort branch when one is given, NOT an engine throwaway;',
     '(2) write the one `.reasonable-lane.json` descriptor at the new worktree root, narrowed for the scaffolder',
     'role (contractBirth:true, the scaffold locus), with the `effortRoot` back-pointer = ' + (a.effortRoot || '.') + ';',
-    '(3) record the lane in the journal via the scribe - all before the scaffolder is dispatched. Idempotent: an',
-    'existing registered worktree + present correct descriptor + recorded journal lane is a no-op success.',
+    '(3) CONFIRM (read journal.json - you have no Agent tool to dispatch the journal-writer scribe yourself) whether this lane already has a dispatched record. Idempotent: an',
+    'existing registered worktree + present correct descriptor is a no-op success regardless of what step 3 finds.',
     'TWO-ROOT SPLIT: the worktree holds CODE only; do NOT seed `.reasonable/` into it - effort state stays',
     'canonical at the effort root (gitignored), reached from the worktree via the descriptor back-pointer.',
-    'Return the PROVISION_ACK: the worktree path (the scaffolder writes code there via `git -C` + absolute paths),',
-    'and confirmation the descriptor is written. A false/absent descriptor is a HALT - never build lane-less.',
+    'Return the PROVISION_ACK: `provisioned` covers ONLY steps 1-2 (worktree + descriptor) - report `journalRecorded` separately for step 3 and never fold a missing journal record into provisioned:false; you cannot write or dispatch that record, only confirm it.',
+    'A false/absent descriptor is a HALT - never build lane-less.',
     callShapeReminder,
   ].join('\n')
 }
@@ -444,10 +445,17 @@ if (lane === null) {
 if (lane.kind === 'checkpoint') {
   return { kind: 'budget-exhausted', stage: 'provision', reason: lane.reason }
 }
-if (lane.provisioned !== true || lane.descriptorWritten !== true || !lane.worktree) {
+// D7 keys on the PHYSICAL lane (worktree + descriptor), never the bundled self-reported `provisioned`
+// boolean - the lane-provisioner has no Agent tool to dispatch the journal-writer scribe, so whether
+// it can personally vouch for the write-ahead journal record is a capability question, not a
+// provisioning fact (see PROVISION_ACK.journalRecorded).
+if (lane.descriptorWritten !== true || !lane.worktree) {
   // No armed worktree path to direct the scaffolder into; falling back to a.effortRoot would build
   // in the main checkout - the exact lane-less hazard. Refuse rather than silently mutate it.
-  return { kind: 'halt', reason: 'lane not provisioned (provisioned:false / descriptor absent / no worktree path): ' + (lane.reason || 'refusing to fall back to the main checkout where the fence fails open (D7)') }
+  return { kind: 'halt', reason: 'lane not provisioned (descriptor absent / no worktree path): ' + (lane.reason || 'refusing to fall back to the main checkout where the fence fails open (D7)') }
+}
+if (lane.journalRecorded === false) {
+  log('Provision: lane-provisioner could not confirm the write-ahead journal record (it has no Agent tool to dispatch the scribe itself) - the scribe stage later in this run is what closes it; continuing.')
 }
 // The scaffolder (fenced mutator) is governed by the lane it just provisioned: narrow its effort
 // root to the worktree where the fence is armed. Read-only roles keep the un-narrowed args.

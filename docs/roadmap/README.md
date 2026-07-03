@@ -26,6 +26,12 @@ its problem file.
   instead of passing schema fields as top-level args; each fails validation and burns a retry, five in a
   row crash the agent (the reconciler-crash class). Root fix is engine-side unwrap-before-validate; the
   `callShapeReminder` prompt mitigation now covers all six workflows (2026-07-03).
+- [intra-slice-provider-merge.md](intra-slice-provider-merge.md) — **a same-slice producer→consumer
+  split has no merge boundary to cut the consumer from.** The effort-branch merge only lands a green
+  lane between vertical-slice runs, not between waves inside one run — a same-slice consumer's lane can
+  be cut before its provider's commit is reachable. Interim mitigation: the route-planner folds a
+  same-slice hard dependency into one work order instead of splitting (2026-07-03); the real fix is
+  wave-granularity merging gated on each work order's own green OUTCOME.
 
 ## Anticipated next (not yet defined)
 
