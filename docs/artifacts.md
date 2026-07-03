@@ -67,8 +67,9 @@ descriptor), and a subagent's cwd is the effort root, the fence cannot resolve t
 for such a write by path. It governs them instead by the **harness agent-role stamp**
 (`agent_type`, present on every subagent tool call; absent for the main session). The
 role×artifact matrix (in `lib/fence.mjs`): contract-writers (implementer, characterizer,
-scaffolder, census) write `contracts/`; contract-writers + the journal-writer append the
-ledger; the journal-writer writes the `journal.json`/`inbox.json` index; census writes
+scaffolder, census) write `contracts/`; **no role** writes the ledger directly (2.0 — every
+append goes through the ledger controller CLI, a Bash invocation the fence does not classify
+as a file write); the journal-writer writes the `journal.json`/`inbox.json` index; census writes
 `baseline.json`; the intention-writer writes `intention.md`; the lane-provisioner writes
 `.reasonable-lane.json`; the work-order-writer writes `work-orders/<id>.json` (persisting the
 route-planner's proposed plan); everything else (config, supervision, vision, route,
@@ -144,7 +145,7 @@ orchestrator's Bash:
 | baseline.json + skeleton contracts | **census** (brownfield, at analysis) | Bash + `lib/baseline.mjs` (no-lane path) |
 | contracts/`<component>`.md | **implementer** (enrich grown) · **characterizer** (birth characterized) | in-lane; only the lane's own contracts (§5.10) |
 | ledger.jsonl | initialized empty at analysis; thereafter **each worker** appends its own line | via the **ledger controller** (`node lib/ledger.mjs append …` — the sole write path), content-referencing that worker's D3a code commit — *not* part of the git tree (D4/D5) |
-| ledger.jsonl `verifier-verdict` line | **adversary** proposes (read-only, returns it as data); the **orchestrator** or a narrow writer appends it | via the **ledger controller**, content-referencing the judged commit — **not** a git commit of state (D4/D5) |
+| ledger.jsonl `verifier-verdict` line | **adversary** proposes (read-only, returns it as data); the narrow **verdict-writer** appends it | via the **ledger controller CLI**, content-referencing the judged commit — **not** a git commit of state (D4/D5) |
 | journal.json · inbox.json | **journal-writer** (the single serialized scribe, D3b) | the derived index (rebuildable by reconcile) |
 | progress.{json,md} | the **ledger controller** (`lib/ledger.mjs`, via `lib/progress-map.mjs`'s `writeMirror` — no model in the loop), regenerated after every append | derived presentation mirror, a full replay of `ledger.jsonl` — not via a tool, never canonical |
 | .reasonable-lane.json | **lane-provisioner** (before any fenced worker is dispatched) | `git worktree add` + the one descriptor write |
@@ -556,10 +557,10 @@ its resolved node (or the effort root, if it has none) — domain color, never s
 {"seq":2,"ts":"...","type":"node-dispatched","node":"expr-eval","kind":"slice","attempt":1}
 {"seq":3,"ts":"...","type":"node-planned","node":"expr-eval/WO-12","kind":"work-order","title":"parser: precedence"}
 {"seq":4,"ts":"...","type":"node-dispatched","node":"expr-eval/WO-12","kind":"work-order","attempt":1}
-{"seq":5,"ts":"...","type":"report-started","under":"WO-12","node":"implementation","label":"implementation"}
-{"seq":6,"ts":"...","type":"enrichment","component":"parser","clauses":["§4"],"workOrder":"WO-12","verticalSlice":"expr-eval","note":"learned precedence needs a clause"}
-{"seq":7,"ts":"...","type":"report-finished","under":"WO-12","node":"implementation"}
-{"seq":8,"ts":"...","type":"commit","workOrder":"WO-12","commit":"sha256:…","role":"implementer","by":"commit-record"}
+{"seq":5,"ts":"...","type":"report-started","under":"WO-12","attempt":1,"node":"expr-eval/WO-12/attempt-1/implementation","label":"implementation"}
+{"seq":6,"ts":"...","type":"enrichment","component":"parser","clauses":["§4"],"workOrder":"WO-12","node":"expr-eval/WO-12","verticalSlice":"expr-eval","note":"learned precedence needs a clause"}
+{"seq":7,"ts":"...","type":"report-finished","under":"WO-12","attempt":1,"node":"expr-eval/WO-12/attempt-1/implementation"}
+{"seq":8,"ts":"...","type":"commit","workOrder":"WO-12","node":"expr-eval/WO-12","commit":"sha256:…","role":"implementer","by":"commit-record"}
 {"seq":9,"ts":"...","type":"node-completed","node":"expr-eval/WO-12"}
 {"seq":10,"ts":"...","type":"amendment","component":"parser","clause":"§2","direction":"weaken","retro":"R3","approvedBy":"human","reason":"clause over-specified"}
 {"seq":11,"ts":"...","type":"verdict","kind":"infeasible","workOrder":"WO-9","bindingConstraint":"vision:offline-only","survivedSkeptic":true,"knowledge":"knowledge/k7.md"}

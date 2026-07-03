@@ -279,9 +279,9 @@ const OUTCOME = {
   },
 };
 
-// SCRIBE_ACK - the lone serialized journal-writer's acknowledgement (D3b), shared by
-// BOTH journal-writer dispatches in this file (the verifier-verdict append and the
-// derived-index scribe). The top-level type MUST be the literal 'object': the Messages
+// SCRIBE_ACK - the narrow-writer acknowledgement (D3b), shared by the verdict-writer
+// dispatch (the verifier-verdict CLI append) and the journal-writer derived-index
+// scribe dispatches in this file. The top-level type MUST be the literal 'object': the Messages
 // API rejects a forced-tool input_schema whose top-level type is an array
 // ({type:['object','null']} => 'tools.N.custom.input_schema.type: Input should be object').
 // Because a `schema` FORCES a tool call, the scribe CANNOT emit a bare JSON null to mean
@@ -653,7 +653,7 @@ function verdictWriterPrompt(wo, verdict, a, commit) {
     'You are a NARROW WRITER. The intent-verifier ADVERSARY proposed an `accept` verdict on a contract enrichment as data; it is read-only and never integrates its own verdict (Law 3 corollary). You perform the one resulting act: append ONE verifier-verdict event to the append-only ledger, content-referencing the enrichment it judged. Nothing else.',
     `Effort root: ${a.effortRoot}`,
     `Work order: ${wo.id}.`,
-    `Append exactly this event via the controller CLI - \`node lib/ledger.mjs append --root ${a.effortRoot} --json '<event>'\` (never a direct file append to .reasonable/ledger.jsonl - the fence denies it; on-disk append durability is unchanged, NOT a git commit of orchestration state - D5):`,
+    `Append exactly this event via the controller CLI - \`node ${a.reasonableRoot || '$CLAUDE_PLUGIN_ROOT'}/lib/ledger.mjs append --root ${a.effortRoot} --json '<event>'\` (never a direct file append to .reasonable/ledger.jsonl - the fence denies it; on-disk append durability is unchanged, NOT a git commit of orchestration state - D5). That CLI call is your ONLY command - never git, never anything else (your constitution bars it, D21):`,
     '  ' + j(event),
     commit
       ? 'The `commit` above is the validated work-product SHA the orchestrator read from git via `git rev-parse`. COPY IT VERBATIM into the JSON payload - do NOT re-type, complete, shorten, or alter it. You never originate a SHA (D21): a hand-restated hex is the phantom-commit bug. The controller stamps `seq` and `ts` itself - do NOT add them.'
@@ -737,7 +737,7 @@ async function provisionThenImplement(wo, _orig, _idx, ctx) {
         `Lane worktree (parked test here; cwd for git): ${worktree}`,
         `Work order: ${wo.id}; seam first touched by this slice.`,
         `Declared behaviorDelta (the observable behaviours this change INTENDS to move): ${j(wo.behaviorDelta || [])}`,
-        `Pin current behaviour as born \`characterized\` clauses (FLOOR, untrusted), provider-first, in the fixed atomic order: the born clause (canonical, absolute, under ${effortRoot}/.reasonable/) + the {type:"characterization"} ledger line via \`node lib/ledger.mjs append --root ${effortRoot} --json '<event>'\`; the parked test under ${worktree}, committed with git -C ${worktree}.`,
+        `Pin current behaviour as born \`characterized\` clauses (FLOOR, untrusted), provider-first, in the fixed atomic order: the born clause (canonical, absolute, under ${effortRoot}/.reasonable/) + the {type:"characterization"} ledger line via \`node ${a.reasonableRoot || '$CLAUDE_PLUGIN_ROOT'}/lib/ledger.mjs append --root ${effortRoot} --json '<event>'\`; the parked test under ${worktree}, committed with git -C ${worktree}.`,
         `Stamp \`Supersession: pending\` on any clause the behaviorDelta names. Admit each pin only if it survives the BF2 reverse discriminator (config from --root, code from --tree): node ${a.reasonableRoot || '$CLAUDE_PLUGIN_ROOT'}/lib/discriminator.mjs --reverse --test <name> --locus <glob> --root ${effortRoot} --tree ${worktree} --json.`,
         'Section id for progress reporting: "characterization".',
         'Return kind:"characterized" with the component/clauses/seam, or kind:"not-needed".',
@@ -764,13 +764,13 @@ async function provisionThenImplement(wo, _orig, _idx, ctx) {
       `Work order: ${wo.id}`,
       `Vertical slice: ${wo.verticalSlice || a.verticalSliceId}`,
       `TWO ROOTS, by DOMAIN: write code under the worktree (${worktree}) and stay within your declared locus (request scope expansion from the orchestrator rather than editing out of locus). Write \`.reasonable/\` state to the CANONICAL effort root by ABSOLUTE path - never into the worktree (gitignored, lost, fence-denied). Your process cwd is the effort root; use absolute paths + git -C.`,
-      `Enrich your OWN contract with newly-learned musts. Your component(s): ${j((wo.footprint && wo.footprint.contracts) || wo.contracts || [])} - edit ${effortRoot}/.reasonable/contracts/<that-component>.md and append the ledger line via the controller CLI - \`node lib/ledger.mjs append --root ${effortRoot} --json '<event>'\` - with EXACTLY type:"enrichment" and component set to that SAME name.`,
+      `Enrich your OWN contract with newly-learned musts. Your component(s): ${j((wo.footprint && wo.footprint.contracts) || wo.contracts || [])} - edit ${effortRoot}/.reasonable/contracts/<that-component>.md and append the ledger line via the controller CLI - \`node ${a.reasonableRoot || '$CLAUDE_PLUGIN_ROOT'}/lib/ledger.mjs append --root ${effortRoot} --json '<event>'\` - with EXACTLY type:"enrichment" and component set to that SAME name.`,
       'CRITICAL (ratchet + fence): a contract delta is type:"enrichment" - NEVER type:"verdict" (a verdict is only a progress note for checkpoint/infeasible) - and its component MUST match your contract name above EXACTLY. The blind-test-writer\'s tests are fence-gated on a logged enrichment/amendment/characterization for THIS component; a verdict-typed or wrong-component entry leaves the gate seeing no delta, blocks the tests, and spins the wave. Log it right the first time, in this same atomic commit, BEFORE the blind-test stage.',
       `OBSERVABLE SEAMS (render-coupled clauses): a clause whose only observation is via rendering needs a declared seam so the blind-writer can target it instead of guessing. PREFER a function-level clause where the observable is a pure value (a path string, a coordinate) - test the exported function, not the DOM. ONLY for a genuinely render-only observable, declare a \`## Observable Seams\` bullet in your contract (the export to import + a stable \`data-testid\`/\`role\` per element) and EXPOSE it in the DOM you render. Follow the repo TEST CONVENTIONS (${effortRoot}/.reasonable/test-conventions.md, if present) for the module system / export shape / render lib - never invent them.`,
       seamDirective,
       'Report your enrichment in the OUTCOME detail as detail.enrichment = { enriched, clauses:[ids you added], touchesSharedContract (true iff a new Citations bullet to a neighbour) } so the contract-enrichment adversary can risk-gate and judge the PROPOSED diff against the vision + slice spec BEFORE tests derive from it. Report any observable seams you declared/exposed as detail.seamsExposed = [keys].',
-      'Report the validated work-product commit SHA as detail.commit (the EXACT `git rev-parse HEAD` output you just validated). The orchestrator passes it VERBATIM to the verifier-verdict scribe, which has no Bash and must copy a provided literal - never restate a SHA from context (D21).',
-      `Land your terminal effects as ONE logical step (D3a/D5): the work-product CODE in a single \`git -C ${worktree}\` commit carrying a \`Work-Order: ${wo.id}\` trailer. Then READ that commit's SHA from git - \`git -C ${worktree} rev-parse HEAD\` - and VALIDATE it with \`git -C ${worktree} cat-file -e <sha>^{commit}\` (it must succeed). NEVER type a 40-char hex from memory: a hand-restated SHA is the phantom-commit bug that wedges reconcile (D21). Your ledger line lands via \`node lib/ledger.mjs append --root ${effortRoot} --json '<event>'\` whose \`commit\` field is that EXACT rev-parse output - the ledger stays gitignored and the append is NEVER part of the git commit.`,
+      'Report the validated work-product commit SHA as detail.commit (the EXACT `git rev-parse HEAD` output you just validated). The orchestrator passes it VERBATIM to the verdict-writer, which is barred from running git and must copy a provided literal - never restate a SHA from context (D21).',
+      `Land your terminal effects as ONE logical step (D3a/D5): the work-product CODE in a single \`git -C ${worktree}\` commit carrying a \`Work-Order: ${wo.id}\` trailer. Then READ that commit's SHA from git - \`git -C ${worktree} rev-parse HEAD\` - and VALIDATE it with \`git -C ${worktree} cat-file -e <sha>^{commit}\` (it must succeed). NEVER type a 40-char hex from memory: a hand-restated SHA is the phantom-commit bug that wedges reconcile (D21). Your ledger line lands via \`node ${a.reasonableRoot || '$CLAUDE_PLUGIN_ROOT'}/lib/ledger.mjs append --root ${effortRoot} --json '<event>'\` whose \`commit\` field is that EXACT rev-parse output - the ledger stays gitignored and the append is NEVER part of the git commit.`,
       'If you hit a wall, emit the matching OUTCOME kind (scope-expansion / ripple / jurisdiction / spike-needed / infeasible / intent-fork / other) - never thrash toward green.',
       `Cite ${effortRoot}/.reasonable/intention.md when a fork turns on a scope/priority choice; an unsettleable fork is intent-fork (BREAKING), never a silent guess.`,
       `Section id for progress reporting: "${seamTask ? (ctx.seamRedeclares[wo.id] > 1 ? `post-audit-fixes-${ctx.seamRedeclares[wo.id]}` : 'post-audit-fixes') : 'implementation'}".`,
@@ -860,7 +860,7 @@ async function intentVerify(prev, wo, _idx, ctx) {
   // Bash-less scribe copies a provided literal verbatim rather than restating a SHA from context (D21).
   const enrichmentCommit = (prev.detail && prev.detail.commit) || null;
   const ack = await guard(wo.id, () => ctx.agent(verdictWriterPrompt(wo, verdict, a, enrichmentCommit), {
-    label: `verdict-write:${wo.id}`, phase: 'Enrich', agentType: 'reasonable:journal-writer', schema: SCRIBE_ACK,
+    label: `verdict-write:${wo.id}`, phase: 'Enrich', agentType: 'reasonable:verdict-writer', schema: SCRIBE_ACK,
   }));
   if (!ack || ack.kind === 'checkpoint' || ack.persisted !== true) {
     return { kind: 'intent-fork', workOrder: wo.id, verticalSlice: wo.verticalSlice || a.verticalSliceId,

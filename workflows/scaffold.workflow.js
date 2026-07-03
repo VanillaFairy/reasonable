@@ -294,13 +294,13 @@ function scaffolderPrompt(a) {
     '- Vision user stories (for the scenario suite): ' + (a.visionPath || (a.effortRoot || '.') + '/.reasonable/vision.md') + '.',
     '- Stack binding from ' + (a.configPath || (a.effortRoot || '.') + '/.reasonable/config.json') + ' (test command, park primitive, loud-stub primitive).',
     'Land your work as ONE logical step (D3a/D5): the CODE in a single `git -C ' + laneDir(a) + '` commit carrying a',
-    '`Work-Order:` trailer; the contract-birth ledger lines via the controller CLI (`node lib/ledger.mjs append --root ' + (a.effortRoot || '.') + ' --json \'<event>\'`), content-referencing',
+    '`Work-Order:` trailer; the contract-birth ledger lines via the controller CLI (`node ' + (a.reasonableRoot || '$CLAUDE_PLUGIN_ROOT') + '/lib/ledger.mjs append --root ' + (a.effortRoot || '.') + ' --json \'<event>\'`), content-referencing',
     'that commit SHA - the ledger stays gitignored, the append is NEVER part of the git commit:',
     '1. The walking skeleton - real wiring end-to-end (genuine function calls across real module boundaries, a real composition root), behavior trivial. This is the chosen direction and it SHIPS; it is NOT a spike.',
     '2. The parked top-level scenario suite - user-visible phrasing, ignore-marked "pending: vertical-slice N, <what>", and it MUST still compile / import-check (a parked test that does not compile pins nothing).',
     '3. Loud stubs everywhere off the skeleton path (panic/throw), NEVER canned data.',
     '4. Thin contracts - each component a CANONICAL `' + (a.effortRoot || '.') + '/.reasonable/contracts/<component>.md` whose clauses state ONLY what the skeleton makes real (topology + the trivial behavior). Add NO behavioral musts beyond what the skeleton wires; behavior accrues later from gates.',
-    'Append the contract births via the controller CLI - `node lib/ledger.mjs append --root ' + (a.effortRoot || '.') + ' --json \'<event>\'` for each birth (never a direct file append to the CANONICAL `' + (a.effortRoot || '.') + '/.reasonable/ledger.jsonl` - the fence denies it), each content-referencing the skeleton commit SHA (D5) - NOT inside the git commit (the ledger is gitignored).',
+    'Append the contract births via the controller CLI - `node ' + (a.reasonableRoot || '$CLAUDE_PLUGIN_ROOT') + '/lib/ledger.mjs append --root ' + (a.effortRoot || '.') + ' --json \'<event>\'` for each birth (never a direct file append to the CANONICAL `' + (a.effortRoot || '.') + '/.reasonable/ledger.jsonl` - the fence denies it), each content-referencing the skeleton commit SHA (D5) - NOT inside the git commit (the ledger is gitignored).',
     'The suite is green at every commit: the one promoted scenario the skeleton satisfies (if any) is green; the rest are parked, never failing.',
     'Report each born contract in `bornContracts` (component, path, clause ids) AND its two D7 risk-gate',
     'signals - `citationsAdded` (the contract added a `## Citations` bullet, i.e. it enriches/depends on a',
@@ -369,7 +369,7 @@ function verdictWriterPrompt(a, verdict, contract, build) {
     'never integrates its own verdict (Law 3 corollary). You perform the one resulting act: append ONE',
     'verifier-verdict event to the append-only ledger, content-referencing the born contract it judged.',
     'Effort root: ' + (a.effortRoot || '(the target project root)') + '. reasonable plugin root: ' + (a.reasonableRoot || '$CLAUDE_PLUGIN_ROOT') + '.',
-    'Append exactly this event via the controller CLI - `node lib/ledger.mjs append --root ' + (a.effortRoot || '.') + ' --json \'<event>\'` (never a direct file append to the CANONICAL `' + (a.effortRoot || '.') + '/.reasonable/ledger.jsonl` - the fence denies it; on-disk append durability is unchanged, NOT a git commit of orchestration state - D5):',
+    'Append exactly this event via the controller CLI - `node ' + (a.reasonableRoot || '$CLAUDE_PLUGIN_ROOT') + '/lib/ledger.mjs append --root ' + (a.effortRoot || '.') + ' --json \'<event>\'` (never a direct file append to the CANONICAL `' + (a.effortRoot || '.') + '/.reasonable/ledger.jsonl` - the fence denies it; on-disk append durability is unchanged, NOT a git commit of orchestration state - D5). That CLI call is your ONLY command - never git, never anything else (your constitution bars it, D21):',
     '  ' + JSON.stringify({
       type: 'verifier-verdict',
       component: contract.component,
@@ -560,7 +560,7 @@ for (let i = 0; i < bornContracts.length; i++) {
     agent(verdictWriterPrompt(laneArgs, verdict, contract, build), {
       label: 'verdict-write:' + contract.component,
       phase: 'Verify born contracts',
-      agentType: 'reasonable:journal-writer',
+      agentType: 'reasonable:verdict-writer',
       schema: SCRIBE_ACK,
     })
   )
