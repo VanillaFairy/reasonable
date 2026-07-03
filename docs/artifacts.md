@@ -143,10 +143,10 @@ orchestrator's Bash:
 | intention.md | **intention-writer** (after the coherence-grill ratifies) | its own atomic commit |
 | baseline.json + skeleton contracts | **census** (brownfield, at analysis) | Bash + `lib/baseline.mjs` (no-lane path) |
 | contracts/`<component>`.md | **implementer** (enrich grown) · **characterizer** (birth characterized) | in-lane; only the lane's own contracts (§5.10) |
-| ledger.jsonl | initialized empty at analysis; thereafter **each worker** appends its own line | atomic **on-disk** append, **content-referencing** that worker's D3a code commit — *not* part of the git tree (D4/D5) |
-| ledger.jsonl `verifier-verdict` line | **adversary** proposes (read-only, returns it as data); the **orchestrator** or a narrow writer appends it | atomic **on-disk** append, content-referencing the judged commit — **not** a git commit of state (D4/D5) |
+| ledger.jsonl | initialized empty at analysis; thereafter **each worker** appends its own line | via the **ledger controller** (`node lib/ledger.mjs append …` — the sole write path), content-referencing that worker's D3a code commit — *not* part of the git tree (D4/D5) |
+| ledger.jsonl `verifier-verdict` line | **adversary** proposes (read-only, returns it as data); the **orchestrator** or a narrow writer appends it | via the **ledger controller**, content-referencing the judged commit — **not** a git commit of state (D4/D5) |
 | journal.json · inbox.json | **journal-writer** (the single serialized scribe, D3b) | the derived index (rebuildable by reconcile) |
-| progress.{json,md} | the **`progress` hook** (`lib/progress.mjs`, no model) | derived presentation mirror, replayed from agent-reported action events already in the ledger — not via a tool, never canonical |
+| progress.{json,md} | the **ledger controller** (`lib/ledger.mjs`, via `lib/progress-map.mjs`'s `writeMirror` — no model in the loop), regenerated after every append | derived presentation mirror, a full replay of `ledger.jsonl` — not via a tool, never canonical |
 | .reasonable-lane.json | **lane-provisioner** (before any fenced worker is dispatched) | `git worktree add` + the one descriptor write |
 | knowledge/`<id>`.md | **spike-runner** (or a dead-end ceremony) | from the quarantine |
 | progress-verdicts/ · ripple-manifests/ | **implementer** (checkpoint / escalation) | in-lane |
@@ -467,44 +467,130 @@ Parsing rules (exact):
 
 ## ledger.jsonl *
 
-Append-only. One JSON object per line. Written by the orchestrator, by each worker
-(its own enrichment/verdict line), by the `contract-amendment` ceremony, and by the
-**commit-record** hook (a lane commit's `commit` custody line, D20); the redispatch
-guard and test-parity fence read it. `seq` is monotonic; `ts` is an ISO-8601 timestamp.
-**No actor ever types a commit SHA from memory** — a `commit`/`sha`/`diffRef` hash is
-always the literal output of `git rev-parse` on the lane (read + validated by a
-Bash-capable role), never restated from context (D21).
+Append-only. One JSON object per line. The **ledger controller** (`lib/ledger.mjs`) is the
+**sole write path** onto this file — every event, from every actor (orchestrator, worker,
+hook), goes in through `node lib/ledger.mjs append …` (CLI) or its `append(root, event)` JS
+API (used by library callers like `lib/reconcile.mjs` and `lib/commit-record.mjs`). Nothing
+else may touch this file: an agent can *propose* what an event says, but it cannot author the
+coordinates it lands at. On every append the controller:
+
+1. **Validates** the event's shape against a per-type schema — an unknown type is **rejected
+   outright** (a clean break, not a lenient pass-through).
+2. **Stamps** the fields no caller may author, discarding anything the caller supplied for
+   them: `seq` (monotonic, from the same append lock `lib/effort.mjs` already provides), `ts`
+   (ISO-8601, the controller's own clock — an agent-supplied timestamp is always overwritten),
+   and — for the two families below that carry them — `attempt` and the resolved absolute
+   `node`.
+3. **Appends** the stamped line, then regenerates the progress mirror (below) unless the
+   caller opted out.
+
+**No actor ever types a commit SHA from memory** — a `commit`/`sha`/`diffRef` hash is always
+the literal output of `git rev-parse` on the lane (read + validated by a Bash-capable role),
+never restated from context (D21).
+
+There are three families of event. All three are validated and stamped by the one controller;
+they differ in what they mean and how their `node` gets resolved.
+
+### Family 1 — node lifecycle
+
+`kind` ∈ `work-order | spike | scaffold | grill-pass | slice | phase` names what's being
+dispatched; it rides on every Family-1 event that has a node.
+
+| type | required fields | controller stamps | meaning |
+|---|---|---|---|
+| `node-planned` | `node`, `kind`, `title` | — | the node enters the tree, `pending` |
+| `node-dispatched` | `node`, `kind` | `attempt` | the node goes `active`; opens a fresh attempt subtree, or reopens one (see below) |
+| `node-checkpointed` | `node` | — | budget exhaustion — back to `pending`, detail `"checkpointed"` |
+| `node-downgraded` | `node` | `attempt` | reconcile's crash-recovery downgrade — the current attempt is sealed `failed`, the node goes back to `pending` |
+| `node-completed` | `node` | — | `done` |
+| `node-failed` | `node` (`reason` optional) | — | `failed` |
+| `node-canceled` | `node`, `reason` | — | `canceled`, recursively |
+| `approval-resolved` | `id` | — | annotates the effort root; the inbox banner's own fold is future work |
+| `concluded` (existing) | — | — | the whole effort root goes `done` |
+
+Any Family-1 event may name its node by **`workOrder`** (a bare node id) instead of `node` —
+the controller resolves it against the live tree and stamps the absolute path itself. An
+unresolvable `workOrder` fails the append: agents treat that as fatal (fail loud);
+`reconcile.mjs` tolerates it as non-fatal, since recovery must not die just because the
+progress tree happens to be thin.
+
+**Attempt arithmetic**, computed fresh from the tree at append time — never carried by the
+caller. For a node's existing `attempt-N` children, let `latest` be the highest N (0 if
+none). `node-dispatched` stamps `1` when there's no prior attempt; `latest + 1` — a
+**reopen** — when the latest attempt (or the node itself) is already `failed`; otherwise
+`latest` — a **continuation**, e.g. a checkpoint reclaim picking the same attempt back up.
+`node-downgraded` always stamps `max(latest, 1)`. A reopen seals the prior attempt's subtree
+`failed`, recursively, so nothing is left dangling `active` — but it never deletes anything:
+that subtree's own already-`done`/`canceled` children stay exactly as they were, so the tree
+still shows precisely what that attempt finished before it died — and opens a fresh
+`attempt-N+1` beside it.
+
+### Family 2 — worker reports
+
+`report-started {under, node, label?}`, `report-finished {under, node}`,
+`report-canceled {under, node, reason}` — a dispatched worker's own narration of the work it
+is doing, addressed **relative to itself**: `under` names the worker's own node (its work
+order, its slice, …), and `node` is a relative path under that (`implementation`,
+`audit-2/mutation-sample`). The controller looks up `under` in the tree, reads that node's
+current attempt, and stamps the absolute address itself —
+`path(under) + '/attempt-' + attempt + '/' + node` — so a worker never has to know or track
+which attempt it is currently in. An unresolvable `under` fails the append: a worker report
+with no home is a bug, not something to render around.
+
+### Family 3 — domain events
+
+The rest of the vocabulary is unchanged by this refactor — same types, same fields, same
+meaning: `enrichment`, `amendment`, `characterization`, `characterization-promotion`,
+`change-characterized`, `change-characterized-planned`, `verdict`, `verifier-verdict`,
+`scope-expansion`, `budget-extension`, `dead-end`, `ratification`, `intent-check-failure`,
+`commit` (plus the pre-existing `correction`, D21, orthogonal to this vocabulary). They are
+validated loosely — a known type is accepted; `enrichment`/`characterization` additionally
+require `component`. The only thing that changed is where they land: if the event carries a
+`workOrder` and no `node`, the controller stamps `node` when the id resolves (best-effort
+here, unlike Family 1/2 — an unresolvable `workOrder` just leaves the event node-less rather
+than failing the append). Every Family-3 event folds to **exactly one annotation note** on
+its resolved node (or the effort root, if it has none) — domain color, never structure.
 
 ```jsonl
-{"seq":1,"ts":"2026-06-12T10:00:00Z","type":"enrichment","component":"parser","clauses":["§3"],"workOrder":"WO-12","verticalSlice":"expr-eval","note":"learned precedence needs a clause"}
-{"seq":2,"ts":"...","type":"amendment","component":"parser","clause":"§2","direction":"weaken","retro":"R3","approvedBy":"human","reason":"clause over-specified"}
-{"seq":3,"ts":"...","type":"verdict","kind":"infeasible","workOrder":"WO-9","bindingConstraint":"vision:offline-only","survivedSkeptic":true,"knowledge":"knowledge/k7.md"}
-{"seq":4,"ts":"...","type":"scope-expansion","workOrder":"WO-12","addedLocus":["src/ast/span.rs"],"approvedBy":"orchestrator"}
-{"seq":5,"ts":"...","type":"budget-extension","workOrder":"WO-12","extension":1,"approvedBy":"orchestrator"}
-{"seq":6,"ts":"...","type":"dead-end","workOrder":"WO-9","knowledge":"knowledge/k7.md","reprice":["WO-10","WO-11"]}
-{"seq":7,"ts":"...","type":"characterization","component":"store","clause":"§3","test":"store::delete_returns_ok","seam":"src/store/delete.rs","workOrder":"WO-21","verticalSlice":"confirm-delete"}
-{"seq":8,"ts":"...","type":"characterization-promotion","component":"store","clause":"§3","test":"store::delete_returns_ok","workOrder":"WO-21","note":"survived reverse discriminator; FLOOR→TRUSTED"}
-{"seq":9,"ts":"...","type":"change-characterized","component":"store","clause":"§3","floorTest":"store::delete_returns_ok","grownTest":"store::delete_defers","workOrder":"WO-21"}
-{"seq":10,"ts":"...","type":"change-characterized-planned","component":"store","clause":"§3","behaviorDelta":"delete now defers until confirmed","grownTest":"store::delete_defers","workOrder":"WO-21","approvedBy":"orchestrator"}
-{"seq":11,"ts":"...","type":"ratification","gate":"analysis","runMode":"autonomous","approvedBy":"autonomous"}
-{"seq":12,"ts":"...","type":"intent-check-failure","verticalSlice":"confirm-delete","correctedChoice":"used spinner instead of stale-badge","shouldHavePinged":true,"retro":"R4"}
-{"seq":13,"ts":"...","type":"verifier-verdict","component":"store","diffRef":"src/store/delete.rs","verdict":"accept","oracle":"baseline-intent","by":"intent-verifier","proposed":true,"commit":"sha256:…"}
-{"seq":14,"ts":"...","type":"commit","workOrder":"WO-12","commit":"sha256:…","role":"implementer","by":"commit-record"}
-{"seq":15,"ts":"...","type":"correction","supersedes":14,"workOrder":"WO-12","commit":"sha256:…","reason":"seq 14 recorded a SHA that does not resolve in git"}
-{"seq":16,"ts":"...","type":"action-started","workOrder":"WO-12","level":"section","label":"implementation"}
-{"seq":17,"ts":"...","type":"action-started","workOrder":"WO-12","level":"item","kind":"clause","ref":"§4","label":"precedence handling"}
-{"seq":18,"ts":"...","type":"action-finished","workOrder":"WO-12","level":"item","ref":"§4"}
-{"seq":19,"ts":"...","type":"action-obsoleted","workOrder":"WO-12","level":"item","kind":"clause","ref":"§4","reason":"covered by §3's helper"}
+{"seq":1,"ts":"2026-07-02T10:00:00Z","type":"node-planned","node":"expr-eval","kind":"slice","title":"expr-eval"}
+{"seq":2,"ts":"...","type":"node-dispatched","node":"expr-eval","kind":"slice","attempt":1}
+{"seq":3,"ts":"...","type":"node-planned","node":"expr-eval/WO-12","kind":"work-order","title":"parser: precedence"}
+{"seq":4,"ts":"...","type":"node-dispatched","node":"expr-eval/WO-12","kind":"work-order","attempt":1}
+{"seq":5,"ts":"...","type":"report-started","under":"WO-12","node":"implementation","label":"implementation"}
+{"seq":6,"ts":"...","type":"enrichment","component":"parser","clauses":["§4"],"workOrder":"WO-12","verticalSlice":"expr-eval","note":"learned precedence needs a clause"}
+{"seq":7,"ts":"...","type":"report-finished","under":"WO-12","node":"implementation"}
+{"seq":8,"ts":"...","type":"commit","workOrder":"WO-12","commit":"sha256:…","role":"implementer","by":"commit-record"}
+{"seq":9,"ts":"...","type":"node-completed","node":"expr-eval/WO-12"}
+{"seq":10,"ts":"...","type":"amendment","component":"parser","clause":"§2","direction":"weaken","retro":"R3","approvedBy":"human","reason":"clause over-specified"}
+{"seq":11,"ts":"...","type":"verdict","kind":"infeasible","workOrder":"WO-9","bindingConstraint":"vision:offline-only","survivedSkeptic":true,"knowledge":"knowledge/k7.md"}
+{"seq":12,"ts":"...","type":"dead-end","workOrder":"WO-9","knowledge":"knowledge/k7.md","reprice":["WO-10","WO-11"]}
+{"seq":13,"ts":"...","type":"node-canceled","node":"expr-eval/WO-9","reason":"dead end: no offline CRDT library round-trips our model"}
+{"seq":14,"ts":"...","type":"scope-expansion","workOrder":"WO-13","addedLocus":["src/ast/span.rs"],"approvedBy":"orchestrator"}
+{"seq":15,"ts":"...","type":"budget-extension","workOrder":"WO-13","extension":1,"approvedBy":"orchestrator"}
+{"seq":16,"ts":"...","type":"node-downgraded","node":"expr-eval/WO-13","attempt":1}
+{"seq":17,"ts":"...","type":"node-dispatched","node":"expr-eval/WO-13","kind":"work-order","attempt":2}
+{"seq":18,"ts":"...","type":"node-completed","node":"expr-eval/WO-13"}
+{"seq":19,"ts":"...","type":"characterization","component":"store","clause":"§3","test":"store::delete_returns_ok","seam":"src/store/delete.rs","workOrder":"WO-21","verticalSlice":"confirm-delete"}
+{"seq":20,"ts":"...","type":"characterization-promotion","component":"store","clause":"§3","test":"store::delete_returns_ok","workOrder":"WO-21","note":"survived reverse discriminator; FLOOR→TRUSTED"}
+{"seq":21,"ts":"...","type":"change-characterized","component":"store","clause":"§3","floorTest":"store::delete_returns_ok","grownTest":"store::delete_defers","workOrder":"WO-21"}
+{"seq":22,"ts":"...","type":"change-characterized-planned","component":"store","clause":"§3","behaviorDelta":"delete now defers until confirmed","grownTest":"store::delete_defers","workOrder":"WO-21","approvedBy":"orchestrator"}
+{"seq":23,"ts":"...","type":"ratification","gate":"analysis","runMode":"autonomous","approvedBy":"autonomous"}
+{"seq":24,"ts":"...","type":"intent-check-failure","verticalSlice":"confirm-delete","correctedChoice":"used spinner instead of stale-badge","shouldHavePinged":true,"retro":"R4"}
+{"seq":25,"ts":"...","type":"verifier-verdict","component":"store","diffRef":"src/store/delete.rs","verdict":"accept","oracle":"baseline-intent","by":"intent-verifier","proposed":true,"commit":"sha256:…"}
+{"seq":26,"ts":"...","type":"correction","supersedes":25,"workOrder":"WO-21","commit":"sha256:…","reason":"seq 25 recorded a SHA that does not resolve in git"}
+{"seq":27,"ts":"...","type":"concluded"}
 ```
 
-Event `type` values: `enrichment`, `amendment`, `verdict`, `scope-expansion`,
-`budget-extension`, `dead-end`, and the brownfield / run-mode additions
-`characterization`, `characterization-promotion`, `change-characterized`,
-`change-characterized-planned`, `ratification`, `intent-check-failure`,
-`verifier-verdict`, `commit`, `correction`, and the D19 action-event trio
-`action-started`, `action-finished`, `action-obsoleted`. The
-ratchet's invariant: an `amendment` with `direction:"weaken"` requires
-`approvedBy:"human"` (or `"retro"`) — the engine flags any weakening lacking it.
+Event `type` values, by family — **Family 1:** `node-planned`, `node-dispatched`,
+`node-checkpointed`, `node-downgraded`, `node-completed`, `node-failed`, `node-canceled`,
+`approval-resolved`, `concluded`. **Family 2:** `report-started`, `report-finished`,
+`report-canceled`. **Family 3:** `enrichment`, `amendment`, `characterization`,
+`characterization-promotion`, `change-characterized`, `change-characterized-planned`,
+`verdict`, `verifier-verdict`, `scope-expansion`, `budget-extension`, `dead-end`,
+`ratification`, `intent-check-failure`, `commit`, and the pre-existing `correction` (D21,
+untouched by this vocabulary). The ratchet's invariant carries over unchanged: an `amendment`
+with `direction:"weaken"` requires `approvedBy:"human"` (or `"retro"`) — the engine flags any
+weakening lacking it.
 
 The additions:
 
@@ -575,16 +661,16 @@ The additions:
   flagged). Fields: `supersedes` (the seq), `workOrder`, `commit` (the real SHA),
   `reason`.
 
-- `action-started` / `action-finished` / `action-obsoleted` — a dispatched agent's own progress
-  report (D19), replacing the retired per-tool-call heartbeat. `level` is `"section"` (a named
-  span of work — `"implementation"`, `"audit"`, a rework label like `"post-audit fixes"`) or
-  `"item"` (a contract clause, a role's fixed step catalog entry, or ad hoc work) nested inside
-  whichever section is currently open for that work order. `action-obsoleted` is **binding** —
-  it drops the item from the work order's checklist immediately, backstopped by the auditor as
-  the independent check that would catch a wrong call — and is terminal (no later event revives
-  it). `lib/progress.mjs` replays these sequentially (never accumulated by hand) into the
-  section/item tree `progress.md` renders; see
-  `docs/superpowers/specs/2026-07-01-progress-action-events-design.md` for the full design.
+- **Retired: `action-started` / `action-finished` / `action-obsoleted`.** The old
+  per-work-order heartbeat trio — and its CLI, `lib/action-report.mjs` — no longer exists.
+  Family 1 (node lifecycle) and Family 2 (worker reports) above replace it. The **write** side
+  is a clean break: the ledger controller **rejects** these types outright, so a new run can
+  never produce one. The **read** side stays honest about the past: `lib/progress-map.mjs`'s
+  fold recognizes any event type it has no mapping for — this trio included — and turns it into
+  a single plain annotation note (`<type> · <workOrder>`) on the nearest resolvable node, or the
+  effort root if none resolves. A pre-2.0 ledger therefore still **renders** (degraded, as flat
+  notes instead of the section/item tree it used to produce) rather than erroring or losing
+  history; that is backward-viewability, not reconstruction.
 
 ---
 
@@ -619,24 +705,23 @@ reported) — the basis for provenance partitioning (§5.14B). `dispatchEpoch` i
 one each time it lifts this order `pending → dispatched` (first dispatch → 1; each
 re-dispatch after a lost-work crash → 2, 3, …), and **never** on any other
 transition, so a same-run re-pass or a checkpoint-reclaim leaves it unchanged. It
-is preserved across a reconcile downgrade (which touches only `status`). Its sole
-consumer is the progress mirror (D19): `lib/action-report.mjs` stamps it onto every
-`action-*` ledger line (as `dispatch`), letting `lib/progress.mjs` distinguish a
-same-dispatch re-announce (idempotent no-op) from a resumed run's reopen (a `dead`
-crash boundary). Absent on a legacy journal ⇒ read as `0`; **never a gate input**.
-`lanes` maps each live worktree path to its work order; reconciliation checks this
-against the actual worktrees on disk (orphan accounting). `cost` is **descriptive run
-telemetry** (the runner's agent tally + the engine's token spend) for the
-deterministic progress mirror (D19) — best-effort, **never a gate input**, and
-**not** reconcile-rebuildable (like `lastReconciled`, it resets from the next wave
-on a cold rebuild).
+is preserved across a reconcile downgrade (which touches only `status`). The progress
+mirror no longer reads it: the ledger controller now derives a node's attempt/reopen
+state directly from the ledger-built tree itself (its own `attempt-N` children — see
+`ledger.jsonl` above), so `dispatchEpoch` is journal-only bookkeeping today. Absent on
+a legacy journal ⇒ read as `0`; **never a gate input**. `lanes` maps each live worktree
+path to its work order; reconciliation checks this against the actual worktrees on disk
+(orphan accounting). `cost` is **descriptive run telemetry** (the runner's agent tally +
+the engine's token spend) — best-effort, **never a gate input**, and **not**
+reconcile-rebuildable (like `lastReconciled`, it resets from the next wave on a cold
+rebuild); it is also the one thing the progress mirror's header line reads from outside
+the ledger (see below).
 
 A work order is **terminal** once `status` is `"merged"` — its code already landed
 on the effort branch, so re-dispatching it is never correct, no matter what its
-`.reasonable/work-orders/<id>.json` spec still says on disk. Two read-side
-consumers — `lib/reconcile.mjs`'s `terminalWorkOrders` (the mechanical set the
-route-planner and the script both refuse to re-dispatch) and `lib/progress.mjs`'s
-rendering — additionally tolerate a `status:"green"` + `merged:true` shape as
+`.reasonable/work-orders/<id>.json` spec still says on disk. `lib/reconcile.mjs`'s
+`terminalWorkOrders` (the mechanical set the route-planner and the script both refuse
+to re-dispatch) additionally tolerates a `status:"green"` + `merged:true` shape as
 equivalent. This is a defensive **read-side** tolerance for a real drift incident
 (a work order once landed with the vertical-slice-gate's own `green` vocabulary
 instead of `merged`), not a second value anything should intentionally write —
@@ -646,57 +731,70 @@ the sole writer still only ever produces the five statuses above.
 
 ## progress.json / progress.md  (derived mirror, D19)
 
-The **progress mirror** — a *pure projection* of the canonical truth
-(`work-orders/` ∪ `journal.json` ∪ `ledger.jsonl` ∪ `inbox.json`) into a nested tree:
-effort → vertical slice → work order → atomic action. It carries **no `*`**: nothing
-parses it back as authoritative input. It is written **only** by the deterministic
-regenerator (`lib/progress.mjs`, no model in the loop), triggered by a `PostToolUse`
-hook whenever the journal/ledger/inbox is written. Read by no enforcement logic;
-rebuildable from canonical state at any instant; safe to delete.
+The **progress mirror** — a generic status tree, folded from `ledger.jsonl` and nothing
+else. It carries **no `*`**: nothing parses it back as authoritative input. It is written
+**only** by `lib/progress-map.mjs`'s `writeMirror`, called by the **ledger controller**
+after every append, plus a narrowed `PostToolUse` hook that watches `ledger.jsonl` alone as
+a belt-and-suspenders regen (the journal and inbox no longer drive the tree, so writing them
+no longer triggers one). Read by no enforcement logic; rebuildable from the ledger at any
+instant; safe to delete.
 
-It is **effort-scoped**: it lives in *this* effort's `.reasonable/`, and the regenerator
-resolves the effort from the **changed artifact's path** (`findEffortRoot` on the written
-`journal.json`/`ledger.jsonl`/`inbox.json`), *never* from cwd. So in a repo hosting several
-efforts — each its own `.reasonable/`, non-overlap being the operator's responsibility — a
-write to one effort's journal regenerates only that effort's mirror; the scribe's cwd (which
-may belong to a different effort) is never consulted.
+**Full replay, always — never a patch.** Every regen rebuilds the tree from scratch by
+folding *every* event in `ledger.jsonl`, in `seq` order, through `lib/progress-tree.mjs`'s
+`apply()`. Nothing is mutated incrementally. This is what makes the interpretation table
+(`lib/progress-map.mjs`'s `EVENT_MAP`, ledger event type → tree operation) safe to fix after
+the fact: correct a mis-mapped type and the very next append re-renders **all** history
+through the corrected rule — no migration, no backfill script, nothing left dangling from
+the old interpretation.
 
-- `progress.json` — the **structured** tree (for graphical rendering later): each node is
-  `{ kind: effort|slice|work-order|action, id, status, title, children, … }` plus
-  effort-level `cost` and `counts`. A work-order node also carries `sections` — the ordered list
-  of named work-spans the dispatched agents themselves reported (`action-started`/`finished`
-  ledger events replayed sequentially, D19), each holding its own ordered `items`
-  (`pending|active|done|obsolete`). A section is `active`, `done`, or **`dead`** — a crash
-  boundary: when a *different* `dispatch` epoch reopens a still-open section (a resumed run after a
-  lost-work crash), the prior attempt is sealed `dead` (carrying a `crashedAt` and keeping only its
-  finished/obsoleted items; the unfinished ones migrate to the resuming section, which re-reports
-  them), and a fresh section opens. Each section records the `dispatch` epoch that opened it. No
-  fixed backbone and no monotonic frontier: a rework cycle (or a crash-resume) appends new sections
-  after the old ones rather than rewriting them.
-- `progress.md` — the **pinnable** rendered tree. The orchestrator tells the human once to
-  pin it (`.reasonable/progress.md`) to follow a long run live; it updates every time a work
-  order reports its own progress, no token cost. Each work order renders its `sections` in
-  order, each with its `items` nested beneath — the currently-active row carries a literal
-  timestamp (its start time; duration is inferred from the gap to whatever started next), and a
-  `dead` section (`✗`) carries its crash time.
-  Atomic actions are ordered by **`seq`** (the monotonic append clock = causal order), never
-  by `ts`; each event line carries a **literal `[YYYY-MM-DD HH:MM:SS UTC]` timestamp** (the
-  full date and time, human-punctuated — never the raw ISO `T…Z` form — sliced from the
-  recorded ISO `ts`, never a relative age that rots in a pinned file). A `ts` that is later
-  than some higher-`seq` sibling's is *provably wrong* (an agent-authored ledger line can
-  carry a guessed timestamp) and is **suppressed** — better no time than a misleading one.
-  An `enrichment` event renders as a **parent line + child bullets** rather than one flat
-  line: the parent names the component + clauses only (`enriched <component> §N,§M`), and
-  its agent-authored `note` is split — regex-only, no LLM in the loop — into one child per
-  recognizable fragment (a clause marker `§N`, a declared Input/Observable Seam, a
-  verification summary), falling back to a `clauses: …` summary child plus the note itself
-  when the note carries no such structure. In `progress.json` this is the action node's own
-  `children`, an array of plain description strings (a leaf detail list, not further nodes —
-  the only other node kinds' `children` are).
+**The tree is generic**, not a fixed effort→slice→work-order→action backbone. Any
+dispatchable thing — a slice, a work order, a spike, a scaffold, a worker's own reported span
+of work — is a **node**, addressed by a `/`-joined path from the root, and it carries exactly:
 
-The canonical index (`journal.json` / `inbox.json`) stays the lone serialized scribe's
-(D3b); the mirror is a *separate* presentation artifact with a *single* deterministic writer,
-so no concurrent-writer hazard is introduced.
+```json
+{ "id": "WO-12", "label": "parser: precedence", "status": "active",
+  "detail": null, "statusTs": "2026-07-02T10:04:00Z",
+  "notes": [{ "text": "enriched parser §4", "ts": "..." }],
+  "children": [ /* nested nodes, same shape — including any attempt-N subtrees */ ] }
+```
+
+Five statuses only, one glyph each, the same vocabulary at every depth: `pending ·`,
+`active ▶`, `done ✓`, `failed ✗`, `canceled ⊘`. `detail` is an optional free-text gloss
+(`"checkpointed"`, `"lost-work crash"`, `"downgraded — awaiting redispatch"`); `notes[]`
+holds annotations folded from Family-3 domain events (`{ text, ts }`) and from
+`approval-resolved`. A node's own children include its `attempt-N` subtrees where it has
+them — the reopen semantics from `ledger.jsonl` above, rendered as tree structure.
+
+- **`progress.json`** — the tree object itself, spread with one extra key: `counts`, one
+  integer per status (`{ pending, active, done, failed, canceled }`, from `countByStatus` —
+  every node except the root). The file *is* the root node plus `counts`, never a
+  `{ tree, counts }` wrapper — this is the shape a future graphical view reads.
+- **`progress.md`** — the pinnable rendered form: a header line naming the effort, with an
+  optional cost suffix (`~<agents> agents · <tok> tok`) appended **only** when
+  `journal.cost` is present; a one-line summary (`<done>/<total> done · <active> active ·
+  <failed> failed`, from the same `counts`); a note that the file regenerates on every
+  ledger append and that times are UTC; the rendered tree body (nested
+  `- <glyph> <label>` bullets, two spaces of indent per depth, a trailing `_(detail)_`
+  wherever a detail is set, and a literal `[YYYY-MM-DD HH:MM:SS UTC]` suffix on `active`/
+  `failed` nodes that carry a `statusTs`; each note renders as its own child bullet,
+  `- ✎ [ts?] text`); and, only when `inbox.json` has open items, a trailing
+  `> ⚠ **inbox: N awaiting you** — <kinds>` banner.
+
+**The two documented presentation exceptions.** Everything else in the mirror comes from
+`ledger.jsonl` alone. The header's cost line (`journal.cost`) and the inbox banner
+(`inbox.json`) are the *only* two fields read from anywhere else — named here so "the ledger
+is the only truth" stays a checkable claim, not just an assertion. Neither is a gate input;
+both are best-effort presentation, and their absence degrades the mirror gracefully (no cost
+suffix; no banner) rather than failing it.
+
+It is **effort-scoped**: `writeMirror` takes the effort root explicitly and never infers it
+from cwd, so in a repo hosting several efforts — each its own `.reasonable/`, non-overlap
+being the operator's responsibility — an append to one effort's ledger regenerates only that
+effort's mirror.
+
+The canonical index (`journal.json` / `inbox.json`) stays the lone serialized scribe's write
+(D3b); the mirror is a *separate* presentation artifact with its own *single* deterministic
+writer (the ledger controller), so no concurrent-writer hazard is introduced.
 
 ---
 
