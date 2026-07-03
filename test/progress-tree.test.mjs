@@ -289,5 +289,75 @@ check('renderMarkdown: glyph+label, 2-space-per-depth indent, detail suffix, sta
   assert.ok(!noteWithoutTs.includes('['), 'a note WITHOUT a ts renders no bracket at all');
 });
 
+// ── 16. [audit finding #1 — DEFECT] inject must not mutate ahead of validation ────
+
+check('inject atomicity: a thrown TypeError (bad op.status) leaves the tree byte-identical to before the call', () => {
+  // Scenario A: merge into an EXISTING node — the label must not be mutated ahead of the
+  // op.status validation. A thrown inject must roll back the whole merge, not just skip status.
+  {
+    const t = createTree('fx');
+    apply(t, { op: 'inject', path: 'x', label: 'orig' });
+    const before = JSON.parse(JSON.stringify(t));
+    assert.throws(() => apply(t, { op: 'inject', path: 'x', label: 'MUTATED', status: 'garbage' }), TypeError);
+    assert.deepEqual(t, before, 'thrown inject on an existing node must leave the tree completely unchanged');
+    assert.equal(findByPath(t, 'x').label, 'orig', 'label must NOT have been mutated to MUTATED by the thrown call');
+  }
+
+  // Scenario B: a brand-new node — the throw must not leave a permanently-created node behind.
+  {
+    const t = createTree('fx');
+    const before = JSON.parse(JSON.stringify(t));
+    assert.throws(() => apply(t, { op: 'inject', path: 'ghost', label: 'ghost-label', status: 'garbage' }), TypeError);
+    assert.deepEqual(t, before, 'thrown inject must not leave a brand-new node in the tree');
+    assert.equal(findByPath(t, 'ghost'), null, 'the ghost node must not exist after the throw');
+  }
+
+  // Scenario C: deep auto-created ancestors — none of a, a/b, a/b/c may survive the throw.
+  {
+    const t = createTree('fx');
+    const before = JSON.parse(JSON.stringify(t));
+    assert.throws(() => apply(t, { op: 'inject', path: 'a/b/c', status: 'garbage' }), TypeError);
+    assert.deepEqual(t, before, 'thrown inject must not leave any auto-created ancestor in the tree');
+    assert.equal(findByPath(t, 'a'), null, 'auto-created ancestor a must not exist after the throw');
+    assert.equal(findByPath(t, 'a/b'), null, 'auto-created ancestor a/b must not exist after the throw');
+    assert.equal(findByPath(t, 'a/b/c'), null, 'auto-created leaf a/b/c must not exist after the throw');
+  }
+});
+
+// ── 17. [audit finding #2 — GAP] recursive sweep passes THROUGH a terminal node ───
+
+check('recursive status sweep passes THROUGH a terminal node into its non-terminal children', () => {
+  const t = createTree('fx');
+  apply(t, { op: 'inject', path: 'wo/child-done/grandchild' });
+  apply(t, { op: 'status', path: 'wo/child-done', status: 'done' });
+  apply(t, { op: 'status', path: 'wo/child-done/grandchild', status: 'active' });
+
+  apply(t, { op: 'status', path: 'wo', status: 'failed', recursive: true });
+
+  assert.equal(findByPath(t, 'wo/child-done').status, 'done', 'the terminal node itself is spared by the sweep');
+  assert.equal(findByPath(t, 'wo/child-done/grandchild').status, 'failed', 'the sweep still recurses into a terminal node\'s own children');
+});
+
+// ── 18. [audit finding #3 — GAP] findById: depth-asymmetric discriminator ────────
+
+check('findById is genuinely depth-first pre-order: a deeper-but-earlier-injected id beats a shallower-but-later one', () => {
+  const t = createTree('root');
+  apply(t, { op: 'inject', path: 'left/deep/dup' });
+  apply(t, { op: 'inject', path: 'right/dup' });
+  const found = findById(t, 'dup');
+  assert.ok(found);
+  assert.equal(found.path, 'left/deep/dup', 'pre-order depth-first fully visits left\'s subtree before ever looking at right, regardless of depth');
+  assert.equal(found.node, findByPath(t, 'left/deep/dup'), 'the returned node must be the left/deep/dup node, not right/dup');
+});
+
+// ── 19. [audit finding #4 — GAP] renderMarkdown excludes the root's own notes ────
+
+check('renderMarkdown never surfaces a note attached to the root node itself', () => {
+  const t = createTree('Root Label');
+  apply(t, { op: 'note', path: '', text: 'a root-level note' });
+  const md = renderMarkdown(t);
+  assert.ok(!md.includes('a root-level note'), 'a root-level note must not appear anywhere in the rendered tree body');
+});
+
 if (process.exitCode) console.error(`\nprogress-tree: FAILURES above (${passed} passed).`);
 else console.log(`\nprogress-tree: all ${passed} checks passed. ✓`);
