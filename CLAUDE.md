@@ -32,6 +32,20 @@ Each test builds throwaway git repos in the OS temp dir and exercises one `lib/*
 real git. Requirements to run anything here: **Node.js** and **Git** (the engine shells out to git;
 on Windows, Git-for-Windows supplies the `bash.exe` the hook wrapper needs).
 
+## Maintenance: every fix or adjustment gets committed and version-bumped
+
+Once a change to this repo's own code, docs, or tests is verified (tests pass), it must be **committed**
+in the same turn — don't leave fixed work sitting uncommitted. Alongside the commit, bump the version
+in `.claude-plugin/plugin.json` **and every other place the version string appears** (currently: the
+install snippet and the footer `Version:` line in `README.md`) per SemVer:
+
+- **patch** — backward-compatible bug fix (the default case; pick this when a fix is fix-dominant even
+  if it incidentally adds a small backward-compatible capability)
+- **minor** — backward-compatible new feature
+- **major** — breaking change — **confirm with the user first**, never bump this alone
+
+Patch and minor bumps happen automatically, without asking. Only a major bump needs a human nod.
+
 ## Architecture: nouns, verbs, laws
 
 > Agents are **nouns** (a role + a tool allowlist), skills are **verbs** (a procedure), hooks are
