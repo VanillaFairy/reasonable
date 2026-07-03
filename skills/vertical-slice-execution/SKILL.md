@@ -238,6 +238,9 @@ explained or not; an `accept` only ever causes **more** surfacing, never less.
   tried, binding constraint named, minimal repro). Dispatch a fresh **`skeptic`** (timeboxed) to
   refute. Only a **refutation-surviving** verdict binds → append a `verdict`/`dead-end` to the ledger
   **with the work-order hash** (the redispatch guard keys on it); the route-planner re-prices siblings.
+  A bound dead end also marks the work-order **node** failed (Family 1 — you are the emitter here):
+  `node ${reasonable}/lib/ledger.mjs append --root <effortRoot> --type node-failed --workOrder <woId> --reason '<binding constraint>'`
+  (a later ratified redispatch reopens it as a fresh attempt; a ratified drop cancels it — never delete).
   Before re-dispatching any previously dead-ended work order, the runner's route-planner runs
   `node ${reasonable}/lib/redispatch-guard.mjs <wo-id>` — blocked unless an input changed.
 
@@ -295,11 +298,17 @@ it at the membrane before merging and closing:
   `node ${reasonable}/lib/ledger.mjs append --root <effortRoot> --type node-completed --workOrder <woId> --kind work-order`
 - **Update the journal** (work orders `merged`; vertical slice closing) — a write you own again now the
   run has returned.
-- **Invoke the `retro` skill** — the mandatory blocking heartbeat. The run ended **at** the retro gate,
-  never through it; the human-blocking retro runs here, in the main session. Do not open the next
-  vertical slice before the retro runs.
-- **Close the slice node once retro returns.** The retro is what actually settles the slice, so mark it
-  done only after that heartbeat completes, not the instant the gate result arrived:
+- **Open the retro node, then invoke the `retro` skill** — the mandatory blocking heartbeat. The retro
+  is a node beneath its slice (the whole-effort tree has no unrecorded phases), and you drive it, so you
+  emit its lifecycle (Family 1):
+  `node ${reasonable}/lib/ledger.mjs append --root <effortRoot> --type node-planned --node <S>/retro --kind phase --title 'retro <S>'`
+  `node ${reasonable}/lib/ledger.mjs append --root <effortRoot> --type node-dispatched --node <S>/retro --kind phase`
+  The run ended **at** the retro gate, never through it; the human-blocking retro runs here, in the main
+  session. Do not open the next vertical slice before the retro runs.
+- **Close the retro node, then the slice node, once retro returns.** The retro is what actually settles
+  the slice, so mark them done only after that heartbeat completes, not the instant the gate result
+  arrived — retro child first, then its slice:
+  `node ${reasonable}/lib/ledger.mjs append --root <effortRoot> --type node-completed --node <S>/retro`
   `node ${reasonable}/lib/ledger.mjs append --root <effortRoot> --type node-completed --node <S>`
 
 ## 7a. Effort end — merge the effort branch to the base (the single human gate)

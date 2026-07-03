@@ -126,9 +126,10 @@ D12 scope-out). Everything else self-ratifies and is logged as above.
      so the tree's approval banner drops it the instant it is actually cleared, not just when
      `inbox.json` happens to shrink.
 7. **Record intent-check-failures (D18, the falsifiable defeater).** For **every** non-breaking choice the
-   human corrected this vertical slice that the agent did **not** escalate, append a ledger entry
-   `{type:"intent-check-failure", verticalSlice:<id>, correctedChoice:<what>, shouldHavePinged:true,
-   retro:<id>}` (`contract-amendment` skill / `docs/artifacts.md` ledger grammar). This is the only thing
+   human corrected this vertical slice that the agent did **not** escalate, append the ledger entry
+   via the controller CLI (like every other ledger write — the controller stamps `seq`/`ts`):
+   `node ${reasonable}/lib/ledger.mjs append --root <effortRoot> --json '{"type":"intent-check-failure","verticalSlice":"<id>","correctedChoice":"<what>","shouldHavePinged":true,"retro":"<id>"}'`
+   (`contract-amendment` skill / `docs/artifacts.md` ledger grammar). This is the only thing
    that makes "never policing" falsifiable — a human silently fixing the agent's call *is* a recorded
    miss. A **rising** intent-check-failure count is the observable signal the intention is too weak an
    oracle → route back to enrich `intention.md`. *Do not skip this because "the fix was small" — the small
