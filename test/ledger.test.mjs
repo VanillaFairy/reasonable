@@ -588,5 +588,59 @@ check('append: a malformed report-* relative path (whitespace segment) is reject
   assert.equal(readLedgerLines(root).length, before, 'nothing appended');
 });
 
+// BUG 4 (self-nested node paths on a re-dispatched slice / second attempt): resolveFamily2
+// must build `${under's path}/attempt-N/${relative segment}` by APPENDING only the segment,
+// and must reject a caller that hands back an already-qualified path instead of a bare segment
+// — on BOTH attempt-1 and attempt-2, since the real-world corruption only ever surfaced on a
+// reopened (attempt-2) work order.
+
+check('append: report-started on attempt-2 (reopened WO) resolves a clean, non-doubled absolute node', () => {
+  const root = newEffort();
+  seedLedger(root, [
+    { seq: 1, type: 'node-planned', node: 's1/WO-1', kind: 'work-order', title: 'wire it' },
+    { seq: 2, type: 'node-dispatched', node: 's1/WO-1', kind: 'work-order', attempt: 1 },
+    { seq: 3, type: 'node-downgraded', node: 's1/WO-1', attempt: 1 },
+    { seq: 4, type: 'node-dispatched', node: 's1/WO-1', kind: 'work-order', attempt: 2 },
+  ]);
+  const r = append(root, { type: 'report-started', under: 'WO-1', node: 'audit/mutation-sampling' });
+  assert.equal(r.ok, true, r.error);
+  assert.equal(r.event.attempt, 2);
+  assert.equal(r.event.node, 's1/WO-1/attempt-2/audit/mutation-sampling', 'appended ONLY the relative segment — no doubled prefix');
+});
+
+check('append: report-started rejects an already-qualified `node` (the full attempt path echoed back) on attempt-1', () => {
+  const root = newEffort();
+  seedLedger(root, [
+    { seq: 1, type: 'node-planned', node: 's1/WO-1', kind: 'work-order', title: 'wire it' },
+    { seq: 2, type: 'node-dispatched', node: 's1/WO-1', kind: 'work-order', attempt: 1 },
+  ]);
+  const before = readLedgerLines(root).length;
+  const r = append(root, { type: 'report-started', under: 'WO-1', node: 's1/WO-1/attempt-1/audit/mutation-sampling' });
+  assert.equal(r.ok, false, 'a self-qualified node must never silently double-nest');
+  assert.match(r.error, /already-qualified path/);
+  assert.equal(readLedgerLines(root).length, before, 'nothing appended');
+});
+
+check('append: report-started rejects an already-qualified `node` on attempt-2 (the exact BUG 4 shape)', () => {
+  const root = newEffort();
+  seedLedger(root, [
+    { seq: 1, type: 'node-planned', node: 's1/WO-1', kind: 'work-order', title: 'wire it' },
+    { seq: 2, type: 'node-dispatched', node: 's1/WO-1', kind: 'work-order', attempt: 1 },
+    { seq: 3, type: 'node-downgraded', node: 's1/WO-1', attempt: 1 },
+    { seq: 4, type: 'node-dispatched', node: 's1/WO-1', kind: 'work-order', attempt: 2 },
+  ]);
+  const before = readLedgerLines(root).length;
+  // Mirrors the real ledger's malformed line: the caller echoed back the full qualified
+  // slice/WO/attempt path instead of the bare "audit/mutation-sampling" segment.
+  const r1 = append(root, { type: 'report-started', under: 'WO-1', node: 's1/WO-1/attempt-2/audit/mutation-sampling' });
+  assert.equal(r1.ok, false);
+  assert.match(r1.error, /already-qualified path/);
+  // The other observed shape: qualified slice/WO prefix without the attempt segment.
+  const r2 = append(root, { type: 'report-started', under: 'WO-1', node: 's1/WO-1/implementation' });
+  assert.equal(r2.ok, false);
+  assert.match(r2.error, /already-qualified path/);
+  assert.equal(readLedgerLines(root).length, before, 'neither malformed call appended anything');
+});
+
 if (process.exitCode) console.error(`\nledger: FAILURES above (${passed} passed).`);
 else console.log(`\nledger: all ${passed} checks passed. ✓`);
