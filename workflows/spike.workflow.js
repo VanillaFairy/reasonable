@@ -230,6 +230,7 @@ export default async function run() {
     `as your structured output, with artifactPath set to where you wrote it. The orchestrator harvests`,
     `that artifact into mainline at the retro - you do NOT write to mainline (you are fenced out of it).`,
     `For an infeasible verdict, include the binding constraint with its evidence. Set timeboxExpired honestly.`,
+    `Section id for progress reporting: "spike".`,
   ].filter(Boolean).join('\n')
 
   const spikeGuard = await guard(() =>

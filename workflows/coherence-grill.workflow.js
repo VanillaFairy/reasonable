@@ -340,6 +340,8 @@ function intentionWriterPrompt(a, scope) {
     'LEDGER LINE to commit alongside intention.md in the SAME atomic commit:',
     asBlock(a.ledgerLine),
     '',
+    'Section id for progress reporting: "persist-intention".',
+    '',
     'Return the WRITER_REPORT. On a clean atomic commit set persisted:true with {filePath, scope,',
     'policyClauseCount, resolvedForkCount, commitSha, ambiguousClausesFlagged?}; if you CANNOT land the',
     'commit faithfully set persisted:false with a one-line failureReason (the script HALTs - never fabricate',
