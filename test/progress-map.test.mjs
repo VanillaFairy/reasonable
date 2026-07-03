@@ -439,6 +439,207 @@ check('EVENT_MAP: node-dispatched with attempt>1 returns MORE ops than attempt=1
   assert.ok(redispatch.length > first.length, 'attempt>1 adds the seal-prior-attempt op on top of the always-run ones');
 });
 
+// ═══ Audit follow-up (T02d) — Finding 1: stale `detail` must clear on normal transitions ═══
+// A checkpoint→reclaim→complete sequence must not leave a DONE node's `detail` stuck on
+// 'checkpointed' forever — node-dispatched's "set active" op and node-completed's op must
+// each pass `detail: null` so a stale annotation from an earlier state never survives.
+check('finding1: checkpoint→reclaim→complete clears the stale "checkpointed" detail, not leaves it forever', () => {
+  const events = [
+    { seq: 1, type: 'node-planned', node: 'x', kind: 'work-order', title: 'T' },
+    { seq: 2, type: 'node-dispatched', node: 'x', kind: 'work-order', attempt: 1 },
+    { seq: 3, type: 'node-checkpointed', node: 'x' },
+    { seq: 4, type: 'node-dispatched', node: 'x', kind: 'work-order', attempt: 1 },
+    { seq: 5, type: 'node-completed', node: 'x', ts: '2026-07-01T14:00:00Z' },
+  ];
+  const tree = foldEvents(events, 'demo');
+  const n = findByPath(tree, 'x');
+  assert.equal(n.status, 'done');
+  assert.equal(n.detail, null, 'node-completed must clear a stale detail (e.g. "checkpointed") left by an earlier state — not leave it hanging on a DONE node forever');
+});
+
+// ═══ Audit follow-up (T02d) — Finding 2: an event's ops must apply atomically ═══
+// A corrupted node-dispatched event (attempt: '3 ', a string with a trailing space) makes
+// op1 (seal attempt-2 failed) SUCCEED — creating a phantom "attempt-2" node with no basis in
+// real work — before op2 (inject attempt-3, using the malformed string as a path segment)
+// THROWS. The whole event must apply all-or-nothing: no phantom subtree survives, the real
+// attempt-1 subtree is untouched, later valid events on other nodes still apply, and a
+// fold-error note lands for the corrupted event.
+check('finding2: a corrupted multi-op event applies atomically — no phantom subtree from a partially-applied event', () => {
+  const events = [
+    { seq: 1, type: 'node-planned', node: 'x', kind: 'work-order', title: 'T' },
+    { seq: 2, type: 'node-dispatched', node: 'x', kind: 'work-order', attempt: 1 },
+    { seq: 3, type: 'node-dispatched', node: 'x', kind: 'work-order', attempt: '3 ' },
+    { seq: 4, type: 'node-planned', node: 'y', kind: 'work-order', title: 'Y' },
+  ];
+  const tree = foldEvents(events, 'demo');
+
+  const phantom = findByPath(tree, 'x/attempt-2');
+  assert.equal(phantom, null, 'a corrupted event that throws partway through its ops must leave NO trace — no phantom attempt-2 node from the op that succeeded before the throw');
+
+  const attempt1 = findByPath(tree, 'x/attempt-1');
+  assert.ok(attempt1, 'the real attempt-1 subtree, established by the earlier valid event, must survive completely unaffected');
+  assert.equal(attempt1.label, 'attempt 1');
+
+  const y = findByPath(tree, 'y');
+  assert.ok(y, 'a later valid event on a DIFFERENT node still applies correctly after the corrupted event');
+  assert.equal(y.status, 'pending');
+  assert.equal(y.label, 'Y');
+
+  const root = findByPath(tree, '');
+  assert.ok(root.notes.some((note) => note.text.startsWith('[fold error]') && note.text.includes('node-dispatched')), 'the corrupted event degrades to a fold-error note instead of silently vanishing');
+});
+
+// ═══ Audit follow-up (T02d) — Finding 3: Family-3 formatted note TEXT, pinned per type ═══
+// Only enrichment/verdict/commit/dead-end had a test asserting the actual `.text` string
+// before this round. These ten round out the rest of formatText()'s switch.
+check('family-3 text: amendment → "amended <component> <clauses> (<direction>)"', () => {
+  const tree = foldEvents([
+    { seq: 1, type: 'node-planned', node: 'x', kind: 'work-order', title: 'T' },
+    { seq: 2, type: 'amendment', node: 'x', component: 'parser', clauses: ['§2'], direction: 'strengthen' },
+  ], 'demo');
+  const n = findByPath(tree, 'x');
+  assert.equal(n.notes[0].text, 'amended parser §2 (strengthen)');
+});
+
+check('family-3 text: characterization → "characterized <component> <clauses> (<test>)"', () => {
+  const tree = foldEvents([
+    { seq: 1, type: 'node-planned', node: 'x', kind: 'work-order', title: 'T' },
+    { seq: 2, type: 'characterization', node: 'x', component: 'parser', clauses: ['§5'], test: 'test_parser_basic' },
+  ], 'demo');
+  const n = findByPath(tree, 'x');
+  assert.equal(n.notes[0].text, 'characterized parser §5 (test_parser_basic)');
+});
+
+check('family-3 text: characterization-promotion → "promoted <component> <clauses> FLOOR→TRUSTED"', () => {
+  const tree = foldEvents([
+    { seq: 1, type: 'node-planned', node: 'x', kind: 'work-order', title: 'T' },
+    { seq: 2, type: 'characterization-promotion', node: 'x', component: 'parser', clauses: ['§5'] },
+  ], 'demo');
+  const n = findByPath(tree, 'x');
+  assert.equal(n.notes[0].text, 'promoted parser §5 FLOOR→TRUSTED');
+});
+
+check('family-3 text: change-characterized → "superseded <component> <clauses>"', () => {
+  const tree = foldEvents([
+    { seq: 1, type: 'node-planned', node: 'x', kind: 'work-order', title: 'T' },
+    { seq: 2, type: 'change-characterized', node: 'x', component: 'parser', clauses: ['§5'] },
+  ], 'demo');
+  const n = findByPath(tree, 'x');
+  assert.equal(n.notes[0].text, 'superseded parser §5');
+});
+
+check('family-3 text: change-characterized-planned → same "superseded" formatter as change-characterized', () => {
+  const tree = foldEvents([
+    { seq: 1, type: 'node-planned', node: 'x', kind: 'work-order', title: 'T' },
+    { seq: 2, type: 'change-characterized-planned', node: 'x', component: 'parser', clauses: ['§6'] },
+  ], 'demo');
+  const n = findByPath(tree, 'x');
+  assert.equal(n.notes[0].text, 'superseded parser §6');
+});
+
+check('family-3 text: verifier-verdict → "adversary <verdict> <component>"', () => {
+  const tree = foldEvents([
+    { seq: 1, type: 'node-planned', node: 'x', kind: 'work-order', title: 'T' },
+    { seq: 2, type: 'verifier-verdict', node: 'x', verdict: 'reject', component: 'parser' },
+  ], 'demo');
+  const n = findByPath(tree, 'x');
+  assert.equal(n.notes[0].text, 'adversary reject parser');
+});
+
+check('family-3 text: scope-expansion → "scope +[<addedLocus...>]"', () => {
+  const tree = foldEvents([
+    { seq: 1, type: 'node-planned', node: 'x', kind: 'work-order', title: 'T' },
+    { seq: 2, type: 'scope-expansion', node: 'x', addedLocus: ['lib/foo.mjs', 'lib/bar.mjs'] },
+  ], 'demo');
+  const n = findByPath(tree, 'x');
+  assert.equal(n.notes[0].text, 'scope +[lib/foo.mjs, lib/bar.mjs]');
+});
+
+check('family-3 text: budget-extension → "budget +1 (extension <n>)"', () => {
+  const tree = foldEvents([
+    { seq: 1, type: 'node-planned', node: 'x', kind: 'work-order', title: 'T' },
+    { seq: 2, type: 'budget-extension', node: 'x', extension: 2 },
+  ], 'demo');
+  const n = findByPath(tree, 'x');
+  assert.equal(n.notes[0].text, 'budget +1 (extension 2)');
+});
+
+check('family-3 text: ratification → "ratified <gate> gate"', () => {
+  const tree = foldEvents([
+    { seq: 1, type: 'node-planned', node: 'x', kind: 'work-order', title: 'T' },
+    { seq: 2, type: 'ratification', node: 'x', gate: 'scaffold' },
+  ], 'demo');
+  const n = findByPath(tree, 'x');
+  assert.equal(n.notes[0].text, 'ratified scaffold gate');
+});
+
+check('family-3 text: intent-check-failure → "intent-check miss: <correctedChoice>"', () => {
+  const tree = foldEvents([
+    { seq: 1, type: 'node-planned', node: 'x', kind: 'work-order', title: 'T' },
+    { seq: 2, type: 'intent-check-failure', node: 'x', correctedChoice: 'chose B instead of A' },
+  ], 'demo');
+  const n = findByPath(tree, 'x');
+  assert.equal(n.notes[0].text, 'intent-check miss: chose B instead of A');
+});
+
+// ═══ Audit follow-up (T02d) — Finding 4: malformed-historical-event degrade path ═══
+// A malformed event must degrade to a note instead of crashing the whole fold, and the
+// events immediately before/after it must still apply correctly.
+check('finding4a: a malformed node-completed (invalid whitespace path segment) degrades to a note; before/after events still apply', () => {
+  const events = [
+    { seq: 1, type: 'node-planned', node: 'x', kind: 'work-order', title: 'Before' },
+    { seq: 2, type: 'node-completed', node: 'bad node', ts: '2026-07-01T15:00:00Z' },
+    { seq: 3, type: 'node-planned', node: 'y', kind: 'work-order', title: 'After' },
+  ];
+  assert.doesNotThrow(() => foldEvents(events, 'demo'), 'a malformed historical event must never crash the whole fold');
+  const tree = foldEvents(events, 'demo');
+
+  const before = findByPath(tree, 'x');
+  assert.ok(before, 'the event immediately before the malformed one still applied');
+  assert.equal(before.status, 'pending');
+
+  const after = findByPath(tree, 'y');
+  assert.ok(after, 'the event immediately after the malformed one still applied');
+  assert.equal(after.status, 'pending');
+
+  const root = findByPath(tree, '');
+  assert.ok(root.notes.some((note) => note.text.startsWith('[fold error]')), 'the malformed event degrades to a fold-error note instead of vanishing silently');
+});
+
+check('finding4b: a malformed report-started (missing node field entirely) degrades to a note; before/after events still apply', () => {
+  const events = [
+    { seq: 1, type: 'node-planned', node: 'x', kind: 'work-order', title: 'Before' },
+    { seq: 2, type: 'report-started', label: 'orphan report' }, // no `node`/`under` field at all
+    { seq: 3, type: 'node-planned', node: 'y', kind: 'work-order', title: 'After' },
+  ];
+  assert.doesNotThrow(() => foldEvents(events, 'demo'), 'a malformed historical event must never crash the whole fold');
+  const tree = foldEvents(events, 'demo');
+
+  const before = findByPath(tree, 'x');
+  assert.ok(before, 'the event immediately before the malformed one still applied');
+  assert.equal(before.status, 'pending');
+
+  const after = findByPath(tree, 'y');
+  assert.ok(after, 'the event immediately after the malformed one still applied');
+  assert.equal(after.status, 'pending');
+
+  const root = findByPath(tree, '');
+  assert.ok(root.notes.some((note) => note.text.startsWith('[fold error]') && note.text.includes('report-started')), 'the malformed event degrades to a fold-error note instead of vanishing silently');
+});
+
+// ═══ Audit follow-up (T02d) — Finding 5: EVENT_MAP lookup must guard prototype pollution ═══
+// A bare `EVENT_MAP[e.type]` lookup resolves 'constructor' to an INHERITED Object.prototype
+// member instead of falling through to the unknown-type legacy fallback. It must degrade to
+// the same "<type> · <workOrder>" note any other unknown type gets — not a confusing internal
+// error produced by treating the inherited member as a mapper function.
+check('finding5: an event type colliding with an inherited Object.prototype member ("constructor") falls through to the normal legacy fallback note', () => {
+  const events = [{ seq: 1, type: 'constructor', workOrder: 'WO-1' }];
+  assert.doesNotThrow(() => foldEvents(events, 'demo'), 'a prototype-colliding type must never crash the whole fold');
+  const tree = foldEvents(events, 'demo');
+  const root = findByPath(tree, '');
+  assert.ok(root.notes.some((note) => note.text === 'constructor · WO-1'), 'must resolve via Object.hasOwn to the unknown-type legacy fallback ("constructor · WO-1"), never an inherited Object.prototype member treated as a mapper');
+});
+
 for (const t of tmps) { try { rmSync(t, { recursive: true, force: true }); } catch { /* best effort */ } }
 
 if (process.exitCode) console.error(`\nprogress-map: FAILURES above (${passed} passed).`);
