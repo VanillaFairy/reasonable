@@ -101,22 +101,27 @@ For each clause that changed:
 
 ## Report your progress as you go
 
+**Progress + ledger discipline (2.0):** every ledger fact you record goes through the controller
+— `node "${CLAUDE_PLUGIN_ROOT}/lib/ledger.mjs" append --root <effortRoot> …` — never a direct
+write or shell append to the ledger file (the fence denies it).
+
 Report your own section starting (first action) and finishing (last action, before you return),
-using the phase label your dispatch prompt gave you (normally `"blind-test"`):
+using the section id your dispatch prompt gave you (normally `blind-test`):
 
-    node "${CLAUDE_PLUGIN_ROOT}/lib/action-report.mjs" --root <effortRoot> --workOrder <id> \
-      --level section --label "<the phase name your prompt gave you>" started
+    node "${CLAUDE_PLUGIN_ROOT}/lib/ledger.mjs" append --root <effortRoot> \
+      --type report-started --under <id> --node <section-id>
 
-As you translate each contract clause into a test, report it starting and finishing:
+As you translate each contract clause into a test, report it starting and finishing — item ids
+are the clause refs (e.g. `§4`):
 
-    node "${CLAUDE_PLUGIN_ROOT}/lib/action-report.mjs" --root <effortRoot> --workOrder <id> \
-      --level item --kind clause --ref '§4' --label '<short description>' started
+    node "${CLAUDE_PLUGIN_ROOT}/lib/ledger.mjs" append --root <effortRoot> \
+      --type report-started --under <id> --node <section-id>/§4
     ... write the test for §4 ...
-    node "${CLAUDE_PLUGIN_ROOT}/lib/action-report.mjs" --root <effortRoot> --workOrder <id> \
-      --level item --ref '§4' finished
+    node "${CLAUDE_PLUGIN_ROOT}/lib/ledger.mjs" append --root <effortRoot> \
+      --type report-finished --under <id> --node <section-id>/§4
 
-    node "${CLAUDE_PLUGIN_ROOT}/lib/action-report.mjs" --root <effortRoot> --workOrder <id> \
-      --level section --label "<same>" finished
+    node "${CLAUDE_PLUGIN_ROOT}/lib/ledger.mjs" append --root <effortRoot> \
+      --type report-finished --under <id> --node <section-id>
 
 ## Hard boundaries (capability- and fence-enforced)
 - **You edit test paths only.** A non-test edit is hard-blocked.

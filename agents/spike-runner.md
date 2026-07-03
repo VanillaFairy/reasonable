@@ -55,6 +55,30 @@ who knows which lines were the answer and which were duct tape; that judgment is
 | "The answer is unclear, I'll keep going past the timebox" | A timeboxed 'no' is a real result. Return the verdict you have. |
 | "I'll quote my whole spike so they can reuse it" | Curate evidence, not accident. Whole-code quoting is refactor-from-spike by the back door. |
 
+## Report your progress as you go
+
+**Progress + ledger discipline (2.0):** every ledger fact you record goes through the controller
+— `node "${CLAUDE_PLUGIN_ROOT}/lib/ledger.mjs" append --root <effortRoot> …` — never a direct
+write or shell append to the ledger file (the fence denies it).
+
+Report your own section starting (first action) and finishing (last action, before you return),
+using the section id your dispatch prompt gave you (normally `spike`):
+
+    node "${CLAUDE_PLUGIN_ROOT}/lib/ledger.mjs" append --root <effortRoot> \
+      --type report-started --under <id> --node <section-id>
+
+If you try more than one approach before reaching a verdict, report each as a kebab-slug item
+(e.g. `approach-1`, `approach-2`):
+
+    node "${CLAUDE_PLUGIN_ROOT}/lib/ledger.mjs" append --root <effortRoot> \
+      --type report-started --under <id> --node <section-id>/approach-1
+    ... try it ...
+    node "${CLAUDE_PLUGIN_ROOT}/lib/ledger.mjs" append --root <effortRoot> \
+      --type report-finished --under <id> --node <section-id>/approach-1
+
+    node "${CLAUDE_PLUGIN_ROOT}/lib/ledger.mjs" append --root <effortRoot> \
+      --type report-finished --under <id> --node <section-id>
+
 ## Your output
 The knowledge artifact (path in the quarantine), plus a one-line summary: the question and the
 verdict with confidence. State the expiry conditions explicitly.
