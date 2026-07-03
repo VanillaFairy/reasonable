@@ -537,9 +537,9 @@ A characterization clause is admissible only if its test (a) **passes on unmutat
 **RED, when run alone**, under at least one locus-scoped source mutant. This **reverse discriminator** is the
 exact dual of greenfield's "RED at HEAD~." It lives in `discriminator.mjs`, reusing that file's
 single-test overlay — the locus stack's `oneCommand` with `{test}` interpolated (`oneTemplate.replace('{test}', testName)`,
-selected per stack so a `.py` locus runs pytest and a `.ts` locus runs the TS runner, verified
-[discriminator.mjs:170](../lib/discriminator.mjs#L170)). It explicitly does **not** delegate to
-`mutation-sample.mjs`, which (verified [mutation-sample.mjs:109](../lib/mutation-sample.mjs#L109)) runs the
+selected per stack so a `.py` locus runs pytest and a `.ts` locus runs the TS runner — a locus spanning
+two stacks fails loud, verified [discriminator.mjs:185](../lib/discriminator.mjs#L185)). It explicitly does **not** delegate to
+`mutation-sample.mjs`, which (verified [mutation-sample.mjs:98](../lib/mutation-sample.mjs#L98)) runs the
 *whole suite* and reports only suite-wide survivors — on a covered legacy repo that would pass vacuously for
 every characterization test, proving the *suite* has teeth, not the new test. The relocation keeps Feathers'
 "pin what is, not what should be" mechanical **and per-test**.

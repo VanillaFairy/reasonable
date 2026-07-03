@@ -213,6 +213,65 @@ check('e2e discriminator: a changed ts test is discriminating via the ts command
   assert.equal(res.json.discriminating, true, 'the ts command must run the overlaid ts test and see it fail on base');
 });
 
+// ── (3) e2e: the LOUD-GAP rule — a file no stack owns fails the check, never slides by ────
+// docs/artifacts.md pins it: "A file matching no entry resolves to no command — a loud gap,
+// never a silent wrong-stack run." These checks pin the LOUD half.
+
+check('e2e mutation-sample: a mutated file no stack owns is a FAILING gap (exit 1, reported), never a silent pass', () => {
+  const root = mutationRepo();
+  write(root, 'zz/calc.js', calc('>')); // a mutation site in a directory neither stack's globs own
+  git(root, 'add', '-A');
+  git(root, 'commit', '-q', '-m', 'unowned file');
+  const res = runJson(root, mutPath, ['--scope', 'zz/**', '--root', root, '--tree', root, '--json']);
+  assert.ok(res.json, `must emit --json (stderr: ${res.stderr || ''})`);
+  assert.deepEqual(res.json.unresolved, ['zz/calc.js'], 'the unowned file is reported by name');
+  assert.equal(res.json.ran, 0, 'no mutant actually ran — the report must not overclaim');
+  assert.equal(res.code, 1, 'an unverified mutant fails the check, same as a survivor');
+});
+
+check('e2e mutation-sample: unresolved gap is loud in the human (non-JSON) output too', () => {
+  const root = mutationRepo();
+  write(root, 'zz/calc.js', calc('>'));
+  git(root, 'add', '-A');
+  git(root, 'commit', '-q', '-m', 'unowned file');
+  let code = 0, stdout = '';
+  try { stdout = execFileSync('node', [mutPath, '--scope', 'zz/**', '--root', root, '--tree', root], { cwd: root, stdio: ['ignore', 'pipe', 'pipe'] }).toString(); }
+  catch (e) { code = e.status ?? 1; stdout = (e.stdout || '').toString(); }
+  assert.equal(code, 1);
+  assert.match(stdout, /Unresolved \(1\)/, 'the gap is printed, not only buried in JSON');
+  assert.match(stdout, /zz\/calc\.js/);
+});
+
+check('e2e discriminator: a changed test file no stack owns fails loud even when a sibling stack resolves', () => {
+  // Base carries an unowned zz test alongside the two stacks; the change touches BOTH the py
+  // test (resolves, discriminating) and the zz test (resolves to nothing). Pre-fix the zz test
+  // silently never ran and the py red vouched for the whole change.
+  const root = newRepo();
+  write(root, 'run.js', RUN_JS);
+  for (const s of ['py', 'ts', 'zz']) {
+    write(root, `${s}/calc.js`, calc('>='));
+    write(root, `${s}/tests/calc.test.js`, calcTest(true));
+  }
+  git(root, 'add', '-A');
+  git(root, 'commit', '-q', '-m', 'base');
+  const base = git(root, 'rev-parse', 'HEAD').trim();
+  for (const s of ['py', 'zz']) {
+    write(root, `${s}/calc.js`, calc('>'));
+    write(root, `${s}/tests/calc.test.js`, calcTest(false));
+  }
+  writeMixedConfig(root); // owns py/** and ts/** — zz/** matches no stack
+  const res = runJson(root, discPath, ['--base', base, '--root', root, '--json']);
+  assert.notEqual(res.code, 0, 'the unresolved changed test must fail the run');
+  assert.match((res.json && res.json.error) || res.stderr || '', /zz\/tests\/calc\.test\.js/, 'the unresolved file is named');
+});
+
+check('e2e discriminator --reverse: a locus spanning two stacks fails loud (one test runs under ONE stack)', () => {
+  const root = mutationRepo();
+  const res = runJson(root, discPath, ['--reverse', '--test', 'anything', '--locus', 'py/**', '--locus', 'ts/**', '--root', root, '--tree', root, '--json']);
+  assert.notEqual(res.code, 0);
+  assert.match((res.json && res.json.error) || res.stderr || '', /spans multiple stacks/, 'the cross-stack locus is rejected, never run under one arbitrary stack');
+});
+
 for (const t of tmps) { try { rmSync(t, { recursive: true, force: true }); } catch { /* best effort */ } }
 
 if (process.exitCode) console.error(`\nper-stack-command: FAILURES above (${passed} passed).`);
