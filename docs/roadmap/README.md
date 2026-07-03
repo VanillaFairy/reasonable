@@ -16,6 +16,16 @@ its problem file.
   Region-scoped, one-commit-per-bit work product via a `lib/atomic-commit.mjs` engine and two triggers
   (implementer inline / no-Bash roles via a Stop-replayed manifest), with merge-by-topology and
   green-on-first-parent.
+- [mechanical-step-executor.md](mechanical-step-executor.md) — **mechanical steps pay an LLM cold-start.**
+  The pure script cannot touch disk, so provisioning + the scribes (work-order-writer, verdict-writer,
+  journal-writer) are cold-context agents doing deterministic file/git work — ~5 serial spawns per work
+  order. The real fix is an engine-side no-LLM `exec` primitive; an interim Haiku downgrade for those
+  roles landed 2026-07-03.
+- [forced-tool-call-shape.md](forced-tool-call-shape.md) — **forced-tool call-shape mis-calls burn
+  retries (and can crash a run).** The model sometimes wraps its whole answer in `{"input":"{…}"}`
+  instead of passing schema fields as top-level args; each fails validation and burns a retry, five in a
+  row crash the agent (the reconciler-crash class). Root fix is engine-side unwrap-before-validate; the
+  `callShapeReminder` prompt mitigation now covers all six workflows (2026-07-03).
 
 ## Anticipated next (not yet defined)
 

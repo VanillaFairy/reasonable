@@ -127,6 +127,16 @@ async function guard(thunk) {
 //                      died (null return) - the main session must decide.
 function done(result) { return result }
 
+// callShapeReminder - appended to every schema-forced prompt below. The model
+// intermittently mis-calls a forced StructuredOutput tool by JSON-stringifying its
+// whole answer into one wrapper property ({"input":"{...}"}) instead of passing the
+// schema's fields as the call's own top-level arguments; each such call fails schema
+// validation and burns one of the 5 retries (five in a row exhaust the cap and throw -
+// the graph-editor-ux-overhaul reconciler crash). Inlined per file: the pure-substrate
+// no-import rule (invariant #5) forbids sharing it across workflows.
+const callShapeReminder =
+  'TOOL-CALL SHAPE: call the forced tool with the schema\'s fields as the CALL\'S OWN top-level arguments (e.g. {"ok": true, "quarantineRoot": "...", ...}) - do NOT JSON-stringify the whole answer into a wrapper property (e.g. {"input": "{...}"}); that fails schema validation and burns a retry.';
+
 // ---------------------------------------------------------------------------
 // The run.
 //
@@ -181,6 +191,7 @@ export default async function run() {
     `inside it and reconcile's effort-scoped scan re-claims it) -> write the single .reasonable-lane.json (with`,
     `the effortRoot back-pointer) -> record the lane via the scribe at status:'dispatched'. All BEFORE any`,
     `spike-runner runs. Idempotent on re-run after a crash: a present matching descriptor is a no-op.`,
+    callShapeReminder,
   ].join('\n')
 
   const provGuard = await guard(() =>
@@ -231,6 +242,7 @@ export default async function run() {
     `that artifact into mainline at the retro - you do NOT write to mainline (you are fenced out of it).`,
     `For an infeasible verdict, include the binding constraint with its evidence. Set timeboxExpired honestly.`,
     `Section id for progress reporting: "spike".`,
+    callShapeReminder,
   ].filter(Boolean).join('\n')
 
   const spikeGuard = await guard(() =>

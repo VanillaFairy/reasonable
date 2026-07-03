@@ -163,6 +163,16 @@ function withinBudget() {
 const a = (args && typeof args === 'object') ? args : {}
 const scope = a.scope === 'micro' ? 'micro' : 'full'
 
+// callShapeReminder - appended to every schema-forced prompt below. The model
+// intermittently mis-calls a forced StructuredOutput tool by JSON-stringifying its
+// whole answer into one wrapper property ({"input":"{...}"}) instead of passing the
+// schema's fields as the call's own top-level arguments; each such call fails schema
+// validation and burns one of the 5 retries (five in a row exhaust the cap and throw -
+// the graph-editor-ux-overhaul reconciler crash). Inlined per file: the pure-substrate
+// no-import rule (invariant #5) forbids sharing it across workflows.
+const callShapeReminder =
+  'TOOL-CALL SHAPE: call the forced tool with the schema\'s fields as the CALL\'S OWN top-level arguments (e.g. {"kind": "forks", "forks": [...]}) - do NOT JSON-stringify the whole answer into a wrapper property (e.g. {"input": "{...}"}); that fails schema validation and burns a retry.'
+
 phase('Coherence grill')
 
 // D15: the loop's stop condition is adversarial, not heuristic. while(true) -
@@ -306,6 +316,7 @@ function grillAdversaryPrompt(a, scope) {
     '',
     'Return exactly one StructuredOutput object: {kind:"forks", forks:[{forkType, altitude, situation,',
     'readings|contradictingClauses, whyDraftDoesNotSettle}, ...], deferred?} OR {kind:"no-fork-found", exercised}.',
+    callShapeReminder,
   ].join('\n')
 }
 
@@ -347,6 +358,7 @@ function intentionWriterPrompt(a, scope) {
     'commit faithfully set persisted:false with a one-line failureReason (the script HALTs - never fabricate',
     'a SHA, and do not emit a bare null on purpose: bare-null is reserved for death). Show git evidence',
     '(e.g. git show --stat) that the one commit contains intention.md AND the ledger line, and nothing else.',
+    callShapeReminder,
   ].join('\n')
 }
 

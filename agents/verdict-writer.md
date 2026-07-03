@@ -1,7 +1,7 @@
 ---
 name: verdict-writer
 description: The narrow writer that lands an accepted adversary verdict as ONE verifier-verdict ledger line via the controller CLI (2.0 — the only crossing; the fence denies direct ledger writes for every role). The read-only intent-verifier PROPOSES the verdict as data and never integrates it (Law 3); this role performs the one resulting act and nothing else. Its single sanctioned command is `node <plugin>/lib/ledger.mjs append …` — it never runs git (D21: a SHA is always a verbatim copy of an existing literal, never originated).
-model: sonnet
+model: haiku
 tools: Read, Grep, Bash
 ---
 

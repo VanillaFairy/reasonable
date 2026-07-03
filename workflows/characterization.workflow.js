@@ -121,6 +121,16 @@ function isCheckpoint(x) {
 function root(a) { return (a && a.effortRoot) || '.'; }
 function plugin(a) { return (a && a.reasonableRoot) || '${reasonable}'; }
 
+// callShapeReminder - appended to every schema-forced prompt below. The model
+// intermittently mis-calls a forced StructuredOutput tool by JSON-stringifying its
+// whole answer into one wrapper property ({"input":"{...}"}) instead of passing the
+// schema's fields as the call's own top-level arguments; each such call fails schema
+// validation and burns one of the 5 retries (five in a row exhaust the cap and throw -
+// the graph-editor-ux-overhaul reconciler crash). Inlined per file: the pure-substrate
+// no-import rule (invariant #5) forbids sharing it across workflows.
+const callShapeReminder =
+  'TOOL-CALL SHAPE: call the forced tool with the schema\'s fields as the CALL\'S OWN top-level arguments (e.g. {"halt": false, "runMode": "autonomous", ...}) - do NOT JSON-stringify the whole answer into a wrapper property (e.g. {"input": "{...}"}); that fails schema validation and burns a retry.';
+
 // -- Prompt builders (pure string functions) ------------------------------------
 
 function reconcilePrompt(a) {
@@ -137,6 +147,7 @@ function reconcilePrompt(a) {
     'Read config.runMode (gated|autonomous); if absent/null on a cold restart, HALT (inferring mode is forbidden).',
     'Confirm config.brownfield: this pass only does work when it is true. If false, set brownfield:false (no-op).',
     'Return the BRIEFING. Evidence before assertions: name the command you ran and quote its output.',
+    callShapeReminder,
   ].join('\n');
 }
 
@@ -170,6 +181,7 @@ function inventoryPrompt(a) {
     'Read only production code; write only the `## Scenarios` prose into the canonical skeleton contracts.',
     'Return the FRONTIER_INVENTORY: the scenarios enumerated, inventoryWritten true once the sections are appended,',
     'and componentsTouched. Evidence before assertions: name the route/intention you read and the files you appended to.',
+    callShapeReminder,
   ].join('\n');
 }
 
@@ -186,6 +198,7 @@ function scribePrompt(a, inv) {
     'inventoryWritten: ' + JSON.stringify(inv.inventoryWritten === true) + '; componentsTouched: ' + JSON.stringify(inv.componentsTouched || []) + '.',
     'If you cannot complete a clean, faithful write, return persisted:false (the script reads that as HALT - never a',
     'swallow; the derived index is rebuildable from git+ledger so halting loses no truth). Return the SCRIBE_ACK.',
+    callShapeReminder,
   ].join('\n');
 }
 

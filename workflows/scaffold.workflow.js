@@ -250,6 +250,16 @@ function contractTouchesProtectedState(c) {
   return c.citationsAdded === true || c.touchesFloor === true
 }
 
+// callShapeReminder - appended to every schema-forced prompt below. The model
+// intermittently mis-calls a forced StructuredOutput tool by JSON-stringifying its
+// whole answer into one wrapper property ({"input":"{...}"}) instead of passing the
+// schema's fields as the call's own top-level arguments; each such call fails schema
+// validation and burns one of the 5 retries (five in a row exhaust the cap and throw -
+// the graph-editor-ux-overhaul reconciler crash). Inlined per file: the pure-substrate
+// no-import rule (invariant #5) forbids sharing it across workflows.
+const callShapeReminder =
+  'TOOL-CALL SHAPE: call the forced tool with the schema\'s fields as the CALL\'S OWN top-level arguments (e.g. {"provisioned": true, "worktree": "...", ...}) - do NOT JSON-stringify the whole answer into a wrapper property (e.g. {"input": "{...}"}); that fails schema validation and burns a retry.'
+
 // Pure phrasing helpers so each agent's dispatch prompt is built from args
 // rather than hard-coded paths. The agents do all I/O; the script only composes
 // strings (no fs).
@@ -274,6 +284,7 @@ function lanePrompt(a) {
     'canonical at the effort root (gitignored), reached from the worktree via the descriptor back-pointer.',
     'Return the PROVISION_ACK: the worktree path (the scaffolder writes code there via `git -C` + absolute paths),',
     'and confirmation the descriptor is written. A false/absent descriptor is a HALT - never build lane-less.',
+    callShapeReminder,
   ].join('\n')
 }
 
@@ -309,6 +320,7 @@ function scaffolderPrompt(a) {
     'honestly (a missed shared/floor touch would skip a non-waivable check).',
     'Section id for progress reporting: "build-skeleton".',
     'If the chosen direction cannot be wired thin-real, return kind:"infeasible" with the binding constraint - do NOT explore or spike in-phase (escalate to the main session).',
+    callShapeReminder,
   ].join('\n')
 }
 
@@ -325,6 +337,7 @@ function verifyPrompt(a, build) {
     '- no-fake-in-production-composition-root: no fake is reachable from main\'s object graph (a wiring check, not a visibility check) - a parity violation even if tests pass.',
     'Section id for progress reporting: "verify-invariants".',
     'Set allGreen true ONLY if every check passed and no finding stands. Any red non-parked test, non-compiling parked test, stub-calling-stub, off-path canned data, or fake in the composition root is a finding that must be routed before sign-off.',
+    callShapeReminder,
   ].join('\n')
 }
 
@@ -360,6 +373,7 @@ function bornContractPrompt(a, contract, build) {
     're-spec the contract - cite the specific clause and the topology/vision it violates). escalate = two',
     'defensible readings the oracle cannot settle (routes to the human inbox; in autonomous mode it joins the',
     'always-escalate classes). A wrong ACCEPT corrupts effort truth - say only what the reference supports.',
+    callShapeReminder,
   ].join('\n')
 }
 
@@ -384,6 +398,7 @@ function verdictWriterPrompt(a, verdict, contract, build) {
     'any backstop and does NOT remove the diff from reconcile - a missing or half-written verdict can only',
     'cause MORE human surfacing, never less. Write nothing but this one ledger line. Return the SCRIBE_ACK',
     '(ok:true once the line is durably appended).',
+    callShapeReminder,
   ].join('\n')
 }
 
@@ -394,6 +409,7 @@ function scribePrompt(a, build) {
     'The transition the script decided: advance `phase` to "scaffolding" and mark the effort ready for "vertical-slice-execution"; record the skeleton commit ' + (build.commit || '(unknown)') + ' in the orchestrator\'s `commits` accounting; carry runMode = ' + (modeOf(a) || '(unset)') + ' forward unchanged in any field you already track.',
     'Do NOT touch the ledger, contracts, or code. Do NOT auto-resolve any inbox item (silence never consents).',
     'If you cannot complete a clean, faithful write, return ok:false with a one-line reason - the script reads that as a HALT and loses no truth (reconcile rebuilds the index from git + ledger). Never report a partial write as success.',
+    callShapeReminder,
   ].join('\n')
 }
 

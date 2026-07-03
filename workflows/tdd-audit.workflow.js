@@ -132,6 +132,16 @@ async function guard(thunk) {
 }
 function ok(r) { return r && r.kind !== 'checkpoint' }
 
+// callShapeReminder - appended to every schema-forced prompt below. The model
+// intermittently mis-calls a forced StructuredOutput tool by JSON-stringifying its
+// whole answer into one wrapper property ({"input":"{...}"}) instead of passing the
+// schema's fields as the call's own top-level arguments; each such call fails schema
+// validation and burns one of the 5 retries (five in a row exhaust the cap and throw -
+// the graph-editor-ux-overhaul reconciler crash). Inlined per file: the pure-substrate
+// no-import rule (invariant #5) forbids sharing it across workflows.
+const callShapeReminder =
+  'TOOL-CALL SHAPE: call the forced tool with the schema\'s fields as the CALL\'S OWN top-level arguments (e.g. {"isGitRepo": true, "hasContracts": false, ...}) - do NOT JSON-stringify the whole answer into a wrapper property (e.g. {"input": "{...}"}); that fails schema validation and burns a retry.'
+
 function baseCtx(a) {
   return 'targetRoot=' + (a.targetRoot || '(cwd)') + '; reasonable plugin root=' + (a.reasonableRoot || '$CLAUDE_PLUGIN_ROOT') + (a.scope ? ('; scope=' + a.scope) : '') + '.'
 }
@@ -140,6 +150,7 @@ function surveyPrompt(a) {
     'You are the test-auditor, lens = SURVEY. ' + baseCtx(a),
     'Detect the stack(s), the full-suite test command, and the SINGLE-TEST command template (must contain a {test} placeholder — the confirm lens needs it). Enumerate source<->test pairs and, if large, propose coverage partitions of ~15-20 source files. One subproject per distinct runner/language (a monorepo is the common case; do not collapse it).',
     'Set isGitRepo (is targetRoot a git repo?) and hasContracts (is there a .reasonable/ with contracts?). Return the SURVEY schema. Read-only.',
+    callShapeReminder,
   ].join('\n')
 }
 function coveragePrompt(a, survey, p) {
@@ -147,6 +158,7 @@ function coveragePrompt(a, survey, p) {
     'You are the test-auditor, lens = COVERAGE. ' + baseCtx(a),
     'SCOPE (your partition): ' + JSON.stringify((p && p.files) || []) + '.',
     'For each source file in scope, list the public surface and mark each behavior TESTED / PARTIAL / UNTESTED by READING the test assertions (not just file existence). Assign priority by blast radius. Note correctness flags you spot in passing (report, never fix). Return the COVERAGE schema.',
+    callShapeReminder,
   ].join('\n')
 }
 function lensPrompt(a, survey, lens, schemaName) {
@@ -154,6 +166,7 @@ function lensPrompt(a, survey, lens, schemaName) {
     'You are the test-auditor, lens = ' + lens.toUpperCase() + '. ' + baseCtx(a),
     'Survey context: testCommands=' + JSON.stringify((survey.subprojects || []).map((s) => s.testCommand)) + ', pairs=' + JSON.stringify(survey.pairs || []) + '.',
     'Follow your constitution\'s ' + lens + ' lens exactly and return the ' + schemaName + ' schema. Read-only.',
+    callShapeReminder,
   ].join('\n')
 }
 function honestyPrompt(a, survey) {
@@ -161,6 +174,7 @@ function honestyPrompt(a, survey) {
     'You are the test-auditor, lens = HONESTY. ' + baseCtx(a),
     'Judge each source<->test pair against the canonical rubric at ' + (a.reasonableRoot || '$CLAUDE_PLUGIN_ROOT') + '/skills/tdd-audit/references/test-honesty-rubric.md. Find each behavior\'s INTENT SOURCE and judge against THAT, not the implementation.',
     'For every SYCOPHANTIC or SUSPECT row, populate testId (the id the single-test command runs) and locus (the source glob it pins) so the confirm phase can mechanically check it. Pairs: ' + JSON.stringify(survey.pairs || []) + '. Return the HONESTY schema.',
+    callShapeReminder,
   ].join('\n')
 }
 function confirmPrompt(a, survey, flag) {
@@ -174,6 +188,7 @@ function confirmPrompt(a, survey, flag) {
     'If targetRoot is a git repo AND a single-test command exists AND locus is known, run the reverse-discriminator:',
     "  node " + (a.reasonableRoot || '$CLAUDE_PLUGIN_ROOT') + "/lib/discriminator.mjs --reverse --test '" + (flag.testId || '<id>') + "' --locus '" + (flag.locus || '<glob>') + "' --test-one-cmd '" + oneCmd + "' " + globArgs + "--tree '" + (a.targetRoot || '.') + "' --json",
     'admissible:false => mechanically-confirmed vacuous (ran:true, admissible:false). admissible:true => had teeth, downgrade (ran:true, admissible:true). If you cannot run it, set ran:false with skippedReason. Return the CONFIRM schema. Do NOT edit anything.',
+    callShapeReminder,
   ].join('\n')
 }
 function scanPrompt(a, survey) {
@@ -181,6 +196,7 @@ function scanPrompt(a, survey) {
     'You are the test-auditor, lens = CONFIRM (scan). ' + baseCtx(a),
     'Run `node ' + (a.reasonableRoot || '$CLAUDE_PLUGIN_ROOT') + '/lib/sanity.mjs scan` and report sanityFindings. ' + (survey.hasContracts ? 'Contracts ARE present: also run `node ' + (a.reasonableRoot || '$CLAUDE_PLUGIN_ROOT') + '/lib/citation-resolve.mjs` and report mappingFindings.' : 'No contracts present: set mappingRan:false and add "mapping — no contracts present" to skipped.'),
     'Return the SCAN schema. Read-only.',
+    callShapeReminder,
   ].join('\n')
 }
 

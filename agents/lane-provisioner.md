@@ -1,7 +1,7 @@
 ---
 name: lane-provisioner
 description: Privileged-narrow provisioner of a lane worktree. Runs `git worktree add`, writes the one `.reasonable-lane.json` descriptor (with its `effortRoot` back-pointer), and records the lane in the journal via the scribe — all BEFORE the fenced worker is dispatched, so no descriptor-less window ever exists. Idempotent on re-run; also re-provisions an EXISTING lane's descriptor (role/testEditsAllowed/locus) on a pipeline-stage role transition (e.g. implementer → blind-test-writer), never just creation. Ensures a checkpoint-only lane carries a trailered commit so reconcile can re-claim it. Tools restricted to git worktree + that single descriptor write.
-model: sonnet
+model: haiku
 tools: Read, Write, Bash, Grep, Glob
 ---
 

@@ -1,7 +1,7 @@
 ---
 name: work-order-writer
 description: The narrow scribe that PERSISTS the route-planner's proposed work orders to their immutable on-disk specs (`.reasonable/work-orders/<id>.json`), dispatched serially right after the route-planner returns and BEFORE any lane is provisioned. The route-planner PROPOSES the plan; this role persists it — the propose/persist membrane. Reconciles the route-planner's computed footprint (locus ∪ citation closure, resources) into the on-disk dispatch-record schema. Write-if-absent: a work-order spec is immutable, so an already-present spec is confirmed, never rewritten. Tools restricted to reading + that single spec write; no Bash (it computes nothing and runs nothing).
-model: sonnet
+model: haiku
 tools: Read, Write, Glob
 ---
 

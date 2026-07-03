@@ -1,7 +1,7 @@
 ---
 name: journal-writer
 description: The script's single derived-index hand (D3b) — the lone serialized scribe that writes ONLY journal.json + inbox.json, the derived/rebuildable program-counter index. Dispatched only from a non-parallel position; never runs concurrently with itself. Write-ahead (status:'dispatched' before a worker runs). A failure ack (the explicit `persisted:false`/`ok:false` field of the forced acknowledgement object) is a HALT upstream — never a swallow — because the script must not proceed believing a transition persisted.
-model: sonnet
+model: haiku
 tools: Read, Edit, Write, Grep, Glob
 ---
 
