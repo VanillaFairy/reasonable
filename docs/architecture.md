@@ -536,9 +536,10 @@ Genesis runs in two layers with different cadences (the §5.4 cost-asymmetry spl
 A characterization clause is admissible only if its test (a) **passes on unmutated HEAD** and (b) goes
 **RED, when run alone**, under at least one locus-scoped source mutant. This **reverse discriminator** is the
 exact dual of greenfield's "RED at HEAD~." It lives in `discriminator.mjs`, reusing that file's
-existing single-test overlay (`testOneCommand.replace('{test}', testName)`, verified
-[discriminator.mjs:119-120](../lib/discriminator.mjs#L119-L120)). It explicitly does **not** delegate to
-`mutation-sample.mjs`, which (verified [mutation-sample.mjs:104](../lib/mutation-sample.mjs#L104)) runs the
+single-test overlay — the locus stack's `oneCommand` with `{test}` interpolated (`oneTemplate.replace('{test}', testName)`,
+selected per stack so a `.py` locus runs pytest and a `.ts` locus runs the TS runner, verified
+[discriminator.mjs:170](../lib/discriminator.mjs#L170)). It explicitly does **not** delegate to
+`mutation-sample.mjs`, which (verified [mutation-sample.mjs:109](../lib/mutation-sample.mjs#L109)) runs the
 *whole suite* and reports only suite-wide survivors — on a covered legacy repo that would pass vacuously for
 every characterization test, proving the *suite* has teeth, not the new test. The relocation keeps Feathers'
 "pin what is, not what should be" mechanical **and per-test**.

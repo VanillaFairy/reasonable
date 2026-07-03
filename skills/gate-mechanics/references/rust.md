@@ -50,6 +50,10 @@ Written at scaffolding into `.reasonable/config.json`:
 > projects allow `unwrap()` in clearly-infallible spots. The lint subset should be ones you genuinely
 > never want; the rest belong in the auditor checklist.
 
+> On a **multi-stack effort** (e.g. Rust alongside a TS frontend), `testCommand` becomes a per-stack
+> `{globs, command, oneCommand}` list rather than a string, so each mechanical check runs the stack that
+> owns the file under test — see [artifacts.md](../../../docs/artifacts.md) (config.json, "Multi-stack efforts").
+
 ## Inline `#[cfg(test)]` caveat (the fence and unit tests)
 
 Inline unit tests (`#[cfg(test)] mod tests { … }`) live *inside* source files, so the path fence sees

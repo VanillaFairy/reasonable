@@ -47,6 +47,10 @@ adding one file like this; no agent or skill changes.
 > Calibrate the lint subset to the project's real taboos. `as any` is sometimes pragmatic; if so, move
 > it to the auditor checklist rather than a hard hook.
 
+> On a **multi-stack effort** (e.g. TS alongside a Python service), `testCommand` becomes a per-stack
+> `{globs, command, oneCommand}` list rather than a string, so each mechanical check runs the stack that
+> owns the file under test — see [artifacts.md](../../../docs/artifacts.md) (config.json, "Multi-stack efforts").
+
 ## Sleep-as-synchronization (a common TS sanity violation)
 
 `await new Promise(r => setTimeout(r, 200))` to "wait for" async work is the canonical flaky-test

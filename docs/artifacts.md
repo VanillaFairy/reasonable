@@ -205,6 +205,34 @@ that needs a test command, build command, or test-path classification.
 }
 ```
 
+**Multi-stack efforts.** On an effort spanning stacks (e.g. `python+typescript`),
+`testCommand` may be a **list of per-stack entries** instead of a string, so a
+mechanical check runs the suite of the stack that *owns the file it is testing* — a
+`.py` mutant under pytest, a `.ts` mutant under vitest — never one stack-blind
+command that is hollow off its own stack:
+
+```json
+{
+  "stack": "python+typescript",
+  "testCommand": [
+    { "globs": ["server/**"], "command": "python -m pytest server/tests -q", "oneCommand": "python -m pytest server/tests -q -k {test}" },
+    { "globs": ["admin/**"],  "command": "cd admin && npm test",             "oneCommand": "cd admin && npm test -- {test}" },
+    { "globs": ["client/**"], "command": "cd client && npm test",            "oneCommand": "cd client && npm test -- {test}" }
+  ]
+}
+```
+
+Each entry carries its own `command` (full suite) and `oneCommand` (the `{test}`
+template in that runner's syntax — `-k {test}` for pytest, `-- {test}` for vitest).
+The file under test picks the **first entry whose `globs` match** it: `mutation-sample`
+by the mutated source file, the absence `discriminator` by the overlaid test file, the
+reverse `discriminator` by the clause locus. The **full-suite green gate runs every
+stack** — "suite green" on a mixed effort means *all* stacks pass. A file matching no
+entry resolves to no command — a loud gap, never a silent wrong-stack run. A plain
+string `testCommand`/`testOneCommand` stays the single-stack fast path, unchanged (it
+is one nameless stack that owns every file); the top-level `testOneCommand` applies
+only in that single-string form.
+
 `setupCommand` is the dependency-install command (`npm ci`, `uv sync`, `cargo
 fetch`, …). The lane-provisioner uses it to make a *fresh worktree* able to run its
 suite when the effort root's installed deps cannot simply be linked in — a worktree
