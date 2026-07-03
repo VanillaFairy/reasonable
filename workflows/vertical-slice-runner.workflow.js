@@ -23,7 +23,10 @@
 //   budget + agent-cap guarded while loop (S15, D16a/D16c)
 //     per wave: the enrichment pipeline() (S5.6, no barrier, S8)
 //        [ provisionThenImplement -> intentVerify -> reprovisionForBlindTest -> blindTest
-//          -> adjudicate -> audit ]
+//          -> commitBlindTests -> adjudicate -> audit ]
+//        commitBlindTests lands the blind-test-writer's tests onto the lane in one trailered
+//        commit via a narrow lane-committer (the blind-writer has no Bash to commit its own
+//        output; an uncommitted test is silently dropped by the lane merge - BUG 3, twice).
 //        each agent() guard()-wrapped: a budget THROW -> {kind:'checkpoint'} (D16b)
 //        reprovisionForBlindTest re-invokes the lane-provisioner on the SAME lane to move
 //        the descriptor's role/testEditsAllowed/locus from implementer to blind-test-writer
@@ -941,6 +944,45 @@ async function blindTest(prev, wo, _idx, ctx) {
   ));
 }
 
+// commitBlindTests - land the blind-test-writer's tests onto the lane in ONE trailered commit
+// (sofia-plays slice 3b, BUG 3 - recurred twice). The blind-test-writer has NO Bash by design (it
+// must be unable to run the suite or read the impl), so it cannot commit its own output: the tests
+// sit STAGED-BUT-UNCOMMITTED on the lane, and a lane merge silently DROPS them -> the effort branch
+// gets the module with ZERO tests. This is an UNCONDITIONAL pipeline stage (capability, not a prompt
+// the blind-writer must "remember"): a narrow lane-committer runs `commit-gate --commit` in the
+// worktree, staging exactly the lane's in-scope tests and committing them with a Work-Order trailer,
+// so the lane tip carries module + tests together and the merge integrates both - the dual of the
+// verdict-writer (a Bash-less proposer's one durable act performed by a separate narrow hand). A
+// failed/incomplete commit is a LOUD durability gap (kind:"other", BREAKING), never a silent pass:
+// certifying green over tests a merge would drop is a false "done" (Law 1, Parity).
+async function commitBlindTests(prev, wo, _idx, ctx) {
+  if (!prev || prev.kind !== 'green') return prev; // trapped lane: carry the trap forward
+  const a = ctx.args;
+  const worktree = (ctx.worktrees && ctx.worktrees[wo.id]) || a.effortRoot;
+  const plug = a.reasonableRoot || '$CLAUDE_PLUGIN_ROOT';
+  const message = `test(${wo.id}): blind-test-writer tests\n\nWork-Order: ${wo.id}`;
+  const ack = await guard(wo.id, () => ctx.agent(
+    [
+      'Durably COMMIT the blind-test-writer\'s tests onto the lane, in ONE trailered commit. The blind-test-writer has no Bash and could not commit its own output; you are the narrow hand that lands it (D3a). The tests are staged-but-uncommitted on the lane and a lane merge would silently drop them - this stage closes that gap.',
+      `Lane worktree (the CODE tree - git ops run HERE, never the main checkout): ${worktree}`,
+      `Work order: ${wo.id}`,
+      `Run EXACTLY this one command: \`node ${plug}/lib/commit-gate.mjs --root ${worktree} --commit ${j(message)}\`. Your cwd is the effort root (a subagent's cwd is fixed there - cd does not persist), so you MUST pass \`--root ${worktree}\` (the LANE worktree): commit-gate resolves the lane descriptor from it via findLane and stages ONLY the lane's in-scope tests, committing in the worktree. NEVER omit --root or point it at the main checkout - that would stage the wrong tree. The message ends with a \`Work-Order: ${wo.id}\` trailer - pass it verbatim.`,
+      'Run NOTHING else - no bare git, no test command (running the suite is the capability the blind-test-writer was denied; you inherit that denial), no file edit. commit-gate is idempotent: with nothing in-scope uncommitted it reports clean and commits nothing (a no-op success; never --allow-empty).',
+      'Return the ack: persisted:true once the lane\'s in-scope tests are committed (or a clean idempotent no-op); persisted:false if commit-gate exits non-zero OR any in-scope test file remains staged-but-uncommitted/untracked after your call (a durability gap - surface it, never paper over it).',
+      callShapeReminder,
+    ].join('\n'),
+    { label: `commit-blind-tests:${wo.id}`, phase: 'Enrich', agentType: 'reasonable:lane-committer', schema: SCRIBE_ACK },
+  ));
+  if (ack && ack.kind === 'checkpoint') return ack; // budget ceiling / null gap
+  if (!ack || ack.persisted !== true) {
+    // Tests not durable -> a green built on tests that vanish at merge is a false done (Law 1,
+    // Parity). Surface it BREAKING rather than let the audit certify green over lost tests.
+    return { kind: 'other', workOrder: wo.id, verticalSlice: wo.verticalSlice || a.verticalSliceId,
+      note: 'blind-test-writer tests could not be durably committed to the lane (commit-gate failed or left in-scope tests uncommitted) - refusing to certify a green built on tests a merge would drop (BUG 3).' };
+  }
+  return prev; // tests committed onto the lane tip; continue the chain unchanged.
+}
+
 // adjudicate - read-only-by-WRITE (Read/Grep/Glob/Bash; NO Edit): it ACTUALLY RUNS the
 // lane suite to surface the reds, then judges every red with the CONTRACT TEXT as arbiter
 // (impl violates contract -> fix impl; test mistranslates a clause -> fix test citing the
@@ -1238,6 +1280,13 @@ async function journalWrite(state, a) {
         `Set journal.currentVerticalSlice = ${j(a && a.verticalSliceId)} (keep the slice marked active in the program counter even if the per-wave write-ahead missed).`,
         `Also persist this descriptive cost block into journal.json as "cost" (add an updatedAt ISO timestamp): ${j(cost)}. It feeds the deterministic progress mirror (D19) - descriptive telemetry, never a gate input.`,
         `Transitions: ${j({ greenWorkOrders: state.greenWorkOrders || [], checkpoints: (state.checkpoints || []).length, blocked: (state.blocked || []).length })}`,
+        // BUG 5 (sofia-plays slice 3b): a gate-passed WO is NOT merged. The runner used to hand the
+        // scribe greenWorkOrders with only "record the transitions", so a scribe would map green ->
+        // "merged" (the only terminal status), which content-references a mergeSha it was never given,
+        // and D21 (never originate a SHA) forced it to persisted:false -> the runner HALTed a
+        // genuinely-green slice. The merge to `merged`+SHA is the main session's post-run membrane act;
+        // in-run the WO stays `dispatched`, so there is nothing here that needs a SHA.
+        'GATE-PASSED IS NOT MERGED (D21): a work order in greenWorkOrders has PASSED its in-run gate but is NOT yet merged - the lane merges into the effort branch AFTER this run returns, in the main session (a membrane act). LEAVE every green work order at its current status:"dispatched": do NOT set status "merged", do NOT set merged:true, and do NOT write, originate, complete, or require a mergeSha/commit for it. The journal has NO "green"/"gate-passed" status (the five are pending|dispatched|checkpointed|merged|dead-end) - marking green as merged would demand a SHA you were never handed, and originating one is the phantom-commit bug you HALT on, never commit. greenWorkOrders is run telemetry here, NOT a merged-status directive; a green slice must produce a clean persisted:true, never a persisted:false HALT for a SHA you were never supposed to write.',
         `Pending inbox: ${j(state.pendingInbox || [])}`,
         'Return the SCRIBE_ACK: persisted:true once journal.json + inbox.json are durably written faithfully against their schemas; persisted:false if you cannot complete a clean, faithful write (the script reads persisted:false as HALT - it must not proceed believing a transition persisted). A bare-null return is reserved for agent death/skip and also HALTs.',
         callShapeReminder,
@@ -1426,7 +1475,7 @@ while (!verticalSliceGreen && withinBudget(a, budget) && withinAgentCap(state)) 
 
   for (const wave of waves) {
     log(`dispatching wave of ${wave.workOrders.length} work order(s).`);
-    state.agentsDispatched += wave.workOrders.length * 7; // rough per-WO agent tally (provision+[characterize]+implement+intent-verify+blind+adjudicate+audit-leaf)
+    state.agentsDispatched += wave.workOrders.length * 8; // rough per-WO agent tally (provision+[characterize]+implement+intent-verify+reprovision+blind+commit-blind-tests+adjudicate+audit-leaf)
 
     // WRITE-AHEAD (D19 tier-1): flip the slice + this wave's not-yet-green work orders to
     // `dispatched` in the journal BEFORE the pipeline runs, so the progress mirror reads
@@ -1454,6 +1503,7 @@ while (!verticalSliceGreen && withinBudget(a, budget) && withinAgentCap(state)) 
       (prev, wo, i) => intentVerify(prev, wo, i, ctx),
       (prev, wo, i) => reprovisionForBlindTest(prev, wo, i, ctx),
       (prev, wo, i) => blindTest(prev, wo, i, ctx),
+      (prev, wo, i) => commitBlindTests(prev, wo, i, ctx),
       (prev, wo, i) => adjudicate(prev, wo, i, ctx),
       (prev, wo, i) => audit(prev, wo, i, ctx),
     );

@@ -83,6 +83,8 @@ function makeAgent(calls, { persistOk = true } = {}) {
       return { persisted: persistOk, written: persistOk ? [WO_ID] : [], note: null };
     }
     if (label.startsWith('scribe:')) return { persisted: true, transition: label, note: null };
+    // BUG 3: the narrow lane-committer that lands the blind-test-writer's tests onto the lane.
+    if (label.startsWith('commit-blind-tests:')) return { persisted: true, transition: label, note: null };
     if (label.startsWith('provision:') || label.startsWith('reprovision-blind-test:')) {
       return { provisioned: true, worktree: '/eff/.worktrees/' + WO_ID, branch: 'lane/' + WO_ID,
         descriptorWritten: true, depsReady: true, noOp: false, kind: null, note: null };

@@ -275,9 +275,17 @@ concept wants extraction. The runner cannot grow new control flow to chase it, s
 ## 7. Close the vertical slice → retro (the `green` arm)
 On a `green` `GATE_RESULT`, the runner has already verified the gate math internally — but you confirm
 it at the membrane before merging and closing:
-- **Confirm the work product is committed.** `node ${reasonable}/lib/commit-gate.mjs --check` is clean
-  in each lane before its merge — "uncommitted == not done" (the commit iron rule). A lane's
-  implementer commit is mandatory; a green result over an uncommitted lane tree is invalid.
+- **Confirm the work product is committed — land residual, then verify clean.** The runner's in-run
+  `commitBlindTests` stage already lands each lane's blind-test-writer tests in a trailered commit (the
+  blind-writer has no Bash to commit its own output — BUG 3, twice), so the lane tip carries module +
+  tests. The merge is a membrane act you own, so belt-and-suspenders: for each lane run `node
+  ${reasonable}/lib/commit-gate.mjs --root <laneWorktree> --commit "chore(reasonable): land residual
+  lane work product"` (idempotent — a clean no-op when the lane is already committed; `--root
+  <laneWorktree>` targets the lane, since your cwd is the main checkout), then confirm `node
+  ${reasonable}/lib/commit-gate.mjs --root <laneWorktree> --check` is clean before its merge —
+  "uncommitted == not done" (the commit iron rule). A lane's implementer commit **and** its blind-test
+  commit are both mandatory; a green result over an uncommitted lane tree is invalid, and a naive `git
+  merge` silently drops staged-but-uncommitted tests (the exact loss BUG 3 fixes).
 - **Verify the gate evidence yourself.** The slice's promoted scenarios are GREEN and the
   vertical-slice-gate audit (mutation + sanity + proportionality + mapping, `adversarial-audit` skill)
   passed. The gate is the merge condition, not a vibe — re-check, don't trust the summary.
