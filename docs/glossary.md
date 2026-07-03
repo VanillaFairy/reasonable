@@ -171,17 +171,38 @@ one of the three is probably wrong.
   vision gets exactly one of (a) **fix the code**, (b) **amend the vision**
   (human-approved), (c) **record a deliberate deferral**. The poison is the
   *unclassified* divergence.
-- **Ledger** — append-only record of enrichments, amendments, verdicts, scope
-  expansions, budget extensions. The methodology's audit log.
-- **Section** — a named span of work a dispatched agent reports within its own work order
-  (`"implementation"`, `"audit"`, a rework label like `"post-audit fixes"`) via an
-  `action-started`/`action-finished` pair (D19). Sections are strictly linear per work order —
-  the *n*-th `action-started` at `level:"section"` is the *n*-th section, in order; a rework
-  cycle appends a new one rather than reopening an old one.
-- **Action event** — the `action-started` / `action-finished` / `action-obsoleted` ledger event
-  trio a dispatched agent reports as it works (D19), replacing the retired per-tool-call
-  heartbeat. `lib/progress.mjs` replays them sequentially into the section/item tree
-  `progress.md` renders; `action-obsoleted` is binding and terminal.
+- **Ledger** — append-only record of node lifecycle, worker reports, and domain events
+  (enrichments, amendments, verdicts, scope expansions, budget extensions, …). The
+  methodology's audit log, and the sole source the progress tree (D19) is folded from.
+- **Ledger controller** — `lib/ledger.mjs`, the **sole validated write path** onto
+  `ledger.jsonl`. An agent can propose an event's content but never its coordinates: the
+  controller validates the event's shape, then stamps `seq` (monotonic), `ts` (its own
+  clock — an agent-supplied one is always overwritten), `attempt`, and the resolved
+  absolute `node`, discarding whatever the caller sent for any of them. Every write, from
+  every actor, goes in through its CLI (`node lib/ledger.mjs append …`) or JS API — there
+  is no other door.
+- **Node** — a dispatchable unit of the execution tree (a work order, a slice, a spike, a
+  scaffold, a worker's own reported span of work, …), addressed by a `/`-joined path from
+  the tree root. Every node carries one of five statuses (`pending | active | done |
+  failed | canceled`), an optional free-text detail, and a list of notes. The progress
+  mirror (`progress.json` / `progress.md`, D19) is a **full replay** of the ledger into
+  this tree — never patched incrementally — so a fix to the fold's interpretation
+  re-renders all history correctly on the next regen, with nothing left to migrate.
+- **Kind** — the enum classifying a node: `work-order | spike | scaffold | grill-pass |
+  slice | phase`. Stamped once, at `node-planned`, and carried on every Family-1 lifecycle
+  event for that node.
+- **Attempt** — a numbered retry subtree under a node (`attempt-1`, `attempt-2`, …),
+  computed by the **ledger controller** from the tree's own state, never chosen by the
+  agent. A fresh dispatch opens `attempt-1`; a **reopen** (the node redispatched while it
+  or its latest attempt is already `failed`) seals the prior attempt `failed` —
+  recursively, but leaving its own already-`done`/`canceled` children exactly as they
+  were — and opens a fresh attempt beside it; a **continuation** (e.g. a checkpoint
+  reclaim) reuses the latest attempt instead of opening a new one.
+- **Report event** — the `report-started` / `report-finished` / `report-canceled` ledger
+  event trio (Family 2) a dispatched worker appends to narrate its own progress, addressed
+  **relative to its own node** (`under`); the ledger controller resolves that to the
+  tree's absolute path, so a worker never has to track which attempt it is currently in.
+  Replaces the retired `action-started` / `action-finished` / `action-obsoleted` trio.
 - **Work order** — one atomic dispatch: named artifact inputs, an artifact
   output, a gate, a **locus**, **resource claims**, a **budget**.
 - **Locus** — a work order's declared edit scope (path globs).
