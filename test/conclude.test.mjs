@@ -8,7 +8,7 @@
 
 import assert from 'node:assert';
 import { execFileSync } from 'node:child_process';
-import { mkdtempSync, mkdirSync, writeFileSync, existsSync, rmSync } from 'node:fs';
+import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, existsSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -67,6 +67,24 @@ check('clean effort → archives, exit 0', () => {
   assert.equal(r.code, 0, r.out);
   assert.ok(!existsSync(join(root, '.reasonable')), '.reasonable/ should be archived away');
   assert.ok(existsSync(join(root, '.reasonable.done-demo')), 'archive dir should exist');
+
+  // The "concluded" event went through the ledger controller (lib/ledger.mjs), not a raw
+  // appendJsonl — so it must carry script-authoritative stamps, not placeholders.
+  const archivedDir = join(root, '.reasonable.done-demo');
+  const ledgerLines = readFileSync(join(archivedDir, 'ledger.jsonl'), 'utf8')
+    .trim().split('\n').map((line) => JSON.parse(line));
+  const concludedEvent = ledgerLines[ledgerLines.length - 1];
+  assert.equal(concludedEvent.type, 'concluded');
+  assert.ok(Number.isInteger(concludedEvent.seq) && concludedEvent.seq > 0,
+    `seq must be a stamped positive integer, got ${JSON.stringify(concludedEvent.seq)}`);
+  assert.ok(typeof concludedEvent.ts === 'string' && /^\d{4}-\d{2}-\d{2}T/.test(concludedEvent.ts),
+    `ts must be a stamped ISO timestamp, got ${JSON.stringify(concludedEvent.ts)}`);
+
+  // The controller's default-on mirror regen folds "concluded" to root status "done"
+  // immediately — verified via the archived progress.json (it moves with the rest of the
+  // bookkeeping when conclude renames .reasonable/ aside).
+  const progress = JSON.parse(readFileSync(join(archivedDir, 'progress.json'), 'utf8'));
+  assert.equal(progress.status, 'done', 'progress.json root status must fold to done after conclude');
 });
 
 // 2 — dirty in-scope work → auto-commits it, THEN archives (zero friction).
