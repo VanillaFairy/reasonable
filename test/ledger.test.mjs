@@ -372,6 +372,159 @@ await checkAsync('CLI concurrency: 12 parallel appends land as 12 unique, gaples
   }
 });
 
+// ── audit round 3: EVENT_SCHEMAS[type] prototype-pollution bypass (finding 1) ──────
+// A `type` matching an inherited Object.prototype member name (`__proto__`, `toString`,
+// `hasOwnProperty`, `constructor`, ...) must be treated as "unknown type", exactly like any
+// other genuinely-unknown type. A plain bracket lookup (`EVENT_SCHEMAS[type]`) instead resolves
+// these to the INHERITED value, skipping every required-field/kind check entirely — an
+// unvalidated arbitrary payload would land verbatim in the ledger.
+
+check('validateEvent: a __proto__ type is rejected, not resolved to the inherited Object.prototype value', () => {
+  assert.equal(validateEvent({ type: '__proto__', anything: 'goes' }).ok, false);
+});
+
+check('validateEvent: a toString type is rejected, not resolved to Object.prototype.toString', () => {
+  assert.equal(validateEvent({ type: 'toString' }).ok, false);
+});
+
+check('validateEvent: a hasOwnProperty type is rejected, not resolved to Object.prototype.hasOwnProperty', () => {
+  assert.equal(validateEvent({ type: 'hasOwnProperty' }).ok, false);
+});
+
+check('validateEvent: a constructor type is rejected, not resolved to Object.prototype.constructor', () => {
+  assert.equal(validateEvent({ type: 'constructor' }).ok, false);
+});
+
+check('append: a __proto__-typed event is rejected — no unvalidated payload reaches the ledger via the JS API', () => {
+  const root = newEffort();
+  const before = readLedgerLines(root).length;
+  const r = append(root, { type: '__proto__', anything: 'goes' });
+  assert.equal(r.ok, false, 'the prototype-pollution bypass must not let an arbitrary payload through append()');
+  assert.equal(readLedgerLines(root).length, before, 'nothing appended for a rejected event');
+});
+
+check('CLI: a __proto__-typed --json payload exits non-zero — the bypass must not reach the ledger via the CLI door either', () => {
+  const root = newEffort();
+  const res = runCli(['append', '--root', root, '--json', JSON.stringify({ type: '__proto__', anything: 'goes' })]);
+  assert.notEqual(res.status, 0, 'must not exit 0 for a type that bypasses schema validation via the inherited prototype');
+  assert.equal(readLedgerLines(root).length, 0, 'nothing appended');
+});
+
+// ── audit round 3: append() must never let a mirror-regen failure escape (finding 2) ──────
+// The ledger LINE is durably written (appendJsonl, under the lock) BEFORE the mirror-regen step
+// runs. A throw from that later, best-effort step must never propagate out of append() — the
+// documented contract is "never throws" — and must never mask the fact that the line already
+// landed (a caller with no ok:false signal has no way to know a retry would duplicate work).
+
+check('append: writeMirror throwing after a successful ledger write does not propagate — the line is already durable', () => {
+  const root = newEffort();
+  // Force writeMirror's internal writeFileSync(progress.json, ...) to throw EISDIR by making
+  // the mirror's own output path a directory instead of a file.
+  mkdirSync(join(root, '.reasonable', 'progress.json'));
+  const before = readLedgerLines(root).length;
+  let result;
+  assert.doesNotThrow(() => {
+    result = append(root, { type: 'node-planned', node: 'WO-mirror-fail', kind: 'work-order', title: 'x' });
+  }, 'append() must never let a mirror-regen failure escape as an uncaught exception');
+  const lines = readLedgerLines(root);
+  assert.equal(lines.length, before + 1, 'the ledger append itself succeeded even though the mirror regen threw');
+  assert.equal(lines[lines.length - 1].node, 'WO-mirror-fail');
+  assert.ok(result, 'append() returned instead of throwing');
+});
+
+check('CLI: writeMirror throwing after a successful ledger append must not crash with a raw Node stack trace', () => {
+  const root = newEffort();
+  mkdirSync(join(root, '.reasonable', 'progress.json'));
+  const res = runCli(['append', '--root', root, '--type', 'node-planned', '--node', 'WO-cli-mirror-fail', '--kind', 'work-order', '--title', 'x']);
+  // Whatever the exit code, this must stay inside the documented `ledger: <error>` contract —
+  // never an uncaught-exception crash (a raw multi-line Node stack trace with no 'ledger:' prefix).
+  assert.ok(res.status === 0 || /ledger:/.test(res.stderr),
+    'must either exit cleanly or print the documented ledger: <error> contract, never an uncaught-exception crash');
+  assert.ok(!/\n\s+at .+:\d+:\d+/.test(res.stderr), 'must not leak a raw Node stack trace to stderr');
+  assert.equal(readLedgerLines(root).length, 1, 'the ledger write already succeeded before the mirror regen ran');
+});
+
+// ── audit round 3: same-node concurrent dispatch race (finding 3) ─────────────────────────
+// buildTree(root) (a full ledger re-read + attempt computation) runs OUTSIDE the lock that
+// protects appendJsonl's seq assignment. N concurrent node-dispatched calls against the SAME
+// node therefore all read identical pre-dispatch history and independently compute the same
+// attempt number.
+
+await checkAsync('CLI concurrency: 8 parallel node-dispatched on the SAME never-dispatched node all succeed but compute the SAME attempt number', async () => {
+  const root = newEffort();
+  seedLedger(root, [
+    { seq: 1, type: 'node-planned', node: 'WO-race', kind: 'work-order', title: 'race target' },
+  ]);
+  const N = 8;
+  const runs = Array.from({ length: N }, (_, i) => new Promise((resolve, reject) => {
+    const child = spawn(process.execPath, [
+      LIB, 'append', '--root', root, '--type', 'node-dispatched',
+      '--workOrder', 'WO-race', '--kind', 'work-order',
+    ], { stdio: ['ignore', 'ignore', 'pipe'] });
+    let stderr = '';
+    child.stderr.on('data', (d) => { stderr += d; });
+    child.on('error', reject);
+    child.on('close', (code) => (code === 0 ? resolve() : reject(new Error(`racer ${i} exited ${code}: ${stderr}`))));
+  }));
+  await Promise.all(runs); // all 8 dispatches succeed — no crash, no ok:false
+  const lines = readLedgerLines(root).filter((l) => l.type === 'node-dispatched');
+  assert.equal(lines.length, N, 'all 8 node-dispatched lines landed');
+  const attempts = new Set(lines.map((l) => l.attempt));
+  // KNOWN LIMITATION: concurrent same-node dispatch is not currently serialized; all N racers
+  // compute the same attempt number. Acceptable under Plan 1's single-vertical-slice-in-flight
+  // default; revisit if cross-slice parallelism becomes standard.
+  assert.equal(attempts.size, 1, 'all racers computed the SAME attempt number (buildTree runs outside the append lock)');
+  assert.ok(attempts.has(1), 'a never-before-dispatched node races to attempt 1, not some other number');
+});
+
+// ── audit round 3: other required string fields aren't type-checked (finding 4) ───────────
+// Only `node`/`workOrder` get the isNonEmptyString check. Every other required field is checked
+// only for `!== undefined`, never for type — an empty string, null, array, or object all
+// currently pass.
+
+check('validateEvent: node-planned rejects a non-string title (empty, null, array, object) — not just undefined', () => {
+  assert.equal(validateEvent({ type: 'node-planned', node: 'x', kind: 'work-order', title: '' }).ok, false);
+  assert.equal(validateEvent({ type: 'node-planned', node: 'x', kind: 'work-order', title: null }).ok, false);
+  assert.equal(validateEvent({ type: 'node-planned', node: 'x', kind: 'work-order', title: ['a', 'b'] }).ok, false);
+  assert.equal(validateEvent({ type: 'node-planned', node: 'x', kind: 'work-order', title: {} }).ok, false);
+});
+
+check('validateEvent: enrichment rejects a non-string component (array, null) — not just undefined', () => {
+  assert.equal(validateEvent({ type: 'enrichment', component: ['a'] }).ok, false);
+  assert.equal(validateEvent({ type: 'enrichment', component: null }).ok, false);
+});
+
+// ── audit round 3: node-downgraded on a never-dispatched node fabricates a phantom attempt (finding 5) ──
+// Downgrading a node with ZERO attempts ever (planned, never dispatched) currently stamps
+// attempt:1 and creates a phantom "attempt-1, failed" subtree for an attempt that never existed.
+
+check('append: node-downgraded on a planned-but-never-dispatched node is rejected, not stamped with a phantom attempt-1', () => {
+  const root = newEffort();
+  seedLedger(root, [
+    { seq: 1, type: 'node-planned', node: 'WO-1', kind: 'work-order', title: 'never dispatched' },
+  ]);
+  const before = readLedgerLines(root).length;
+  const r = append(root, { type: 'node-downgraded', workOrder: 'WO-1' });
+  assert.equal(r.ok, false, 'downgrading a node with zero attempts ever must fail — there is nothing to downgrade');
+  assert.equal(readLedgerLines(root).length, before, 'no phantom attempt-1 line is appended');
+});
+
+// ── audit round 3: report-* on a never-dispatched node is silently accepted (finding 6) ────
+// A report-started/-finished/-canceled against a work order that has NEVER been node-dispatched
+// (zero attempts) is currently accepted, producing an internally inconsistent tree (the parent
+// stays pending while a leaf under a fabricated attempt-1 shows active).
+
+check('append: report-started against a work order that was planned but never dispatched is rejected (fail loud, symmetric with the unplanned-node guard)', () => {
+  const root = newEffort();
+  seedLedger(root, [
+    { seq: 1, type: 'node-planned', node: 'WO-1', kind: 'work-order', title: 'never dispatched' },
+  ]);
+  const before = readLedgerLines(root).length;
+  const r = append(root, { type: 'report-started', under: 'WO-1', node: '§4' });
+  assert.equal(r.ok, false, 'a worker cannot report progress on a work order that was never dispatched to it');
+  assert.equal(readLedgerLines(root).length, before, 'no line appended for a report against an undispatched work order');
+});
+
 for (const t of tmps) { try { rmSync(t, { recursive: true, force: true }); } catch { /* best effort */ } }
 
 if (process.exitCode) console.error(`\nledger: FAILURES above (${passed} passed).`);
