@@ -150,10 +150,11 @@ check('exports: KINDS is exact; EVENT_SCHEMAS is a registry that excludes legacy
 // root, specifically so that resolving `workOrder: 'WO-1'` / `under: 'WO-1'` exercises REAL
 // findById resolution (segment id -> full path), not a trivial identity case where id === path.
 
-check('append: report-started stamps seq + controller ts, resolves attempt-1 absolute node (fresh WO, no prior attempts)', () => {
+check('append: report-started stamps seq + controller ts, resolves attempt-1 absolute node (dispatched WO, no prior attempts)', () => {
   const root = newEffort();
   seedLedger(root, [
     { seq: 1, type: 'node-planned', node: 's1/WO-1', kind: 'work-order', title: 'wire the widget' },
+    { seq: 2, type: 'node-dispatched', node: 's1/WO-1', kind: 'work-order', attempt: 1 },
   ]);
   const before = readLedgerLines(root).length;
   const r = append(root, {
@@ -348,6 +349,7 @@ await checkAsync('CLI concurrency: 12 parallel appends land as 12 unique, gaples
   const root = newEffort();
   seedLedger(root, [
     { seq: 1, type: 'node-planned', node: 'WO-1', kind: 'work-order', title: 'concurrent target' },
+    { seq: 2, type: 'node-dispatched', node: 'WO-1', kind: 'work-order', attempt: 1 },
   ]);
   const before = readLedgerLines(root).length;
   const N = 12;
