@@ -147,6 +147,18 @@ The vision you are extracting has three parts:
    intention** (the oracle), and the standing artifacts. The human ratifies each — these are one-time
    ratifications (vision, topology, initial route, intention, scaffold-to-come). **Silence never
    ratifies.** Nothing proceeds to scaffolding without it.
+10a. **Open the route's nodes in the ledger (after ratification).** The `analysis` phase node opened in
+   `develop` step 0 is done, and the ratified route is now the tree's frontier — close the one, plant the
+   other, so the mirror shows the plan before the first slice ever dispatches:
+   - Close the phase: `node ${reasonable}/lib/ledger.mjs append --root <effortRoot> --type node-completed --node analysis`
+   - For **every vertical slice on the ratified route**, plant the slice and each of its already-known
+     work orders (repeat the second line once per known work order under that slice):
+     ```
+     node ${reasonable}/lib/ledger.mjs append --root <effortRoot> --type node-planned --node <sliceId> --kind slice --title '<slice title>'
+     node ${reasonable}/lib/ledger.mjs append --root <effortRoot> --type node-planned --node <sliceId>/<woId> --kind work-order --title '<output>'
+     ```
+   - For **every spike on the route**, plant it the same way:
+     `node ${reasonable}/lib/ledger.mjs append --root <effortRoot> --type node-planned --node <spikeId> --kind spike --title '<spike question>'`
 
 ## Brownfield branch (BF7) — runs only when `config.brownfield = true`
 
