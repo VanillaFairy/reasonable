@@ -479,7 +479,8 @@ coordinates it lands at. On every append the controller:
    outright** (a clean break, not a lenient pass-through).
 2. **Stamps** the fields no caller may author, discarding anything the caller supplied for
    them: `seq` (monotonic, from the same append lock `lib/effort.mjs` already provides), `ts`
-   (ISO-8601, the controller's own clock — an agent-supplied timestamp is always overwritten),
+   (local-time ISO-8601 with a numeric offset, e.g. `2026-07-04T15:30:00.000+03:00`, from the
+   controller's own clock — an agent-supplied timestamp is always overwritten),
    and — for the two families below that carry them — `attempt` and the resolved absolute
    `node`.
 3. **Appends** the stamped line, then regenerates the progress mirror (below) unless the
@@ -779,9 +780,9 @@ attempt subtree — the old attempt stays beside it as visible history.
   optional cost suffix (`~<agents> agents · <tok> tok`) appended **only** when
   `journal.cost` is present; a one-line summary (`<done>/<total> done · <active> active ·
   <failed> failed`, from the same `counts`); a note that the file regenerates on every
-  ledger append and that times are UTC; the rendered tree body (nested
+  ledger append and that times are local (with a UTC offset); the rendered tree body (nested
   `- <glyph> <label>` bullets, two spaces of indent per depth, a trailing `_(detail)_`
-  wherever a detail is set, and a literal `[YYYY-MM-DD HH:MM:SS UTC]` suffix on `active`/
+  wherever a detail is set, and a literal `[YYYY-MM-DD HH:MM:SS ±HH:MM]` suffix on `active`/
   `failed` nodes that carry a `statusTs`; each note renders as its own child bullet,
   `- ✎ [ts?] text`); and, only when `inbox.json` has open items, a trailing
   `> ⚠ **inbox: N awaiting you** — <kinds>` banner.

@@ -169,7 +169,7 @@ check('append: report-started stamps seq + controller ts, resolves the absolute 
   const stored = lines[lines.length - 1];
   assert.equal(stored.seq, before + 1, 'seq is script-assigned, last + 1');
   assert.notEqual(stored.ts, '1999-01-01T00:00:00.000Z', 'agent-supplied ts is overwritten, never trusted');
-  assert.match(stored.ts, /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d+)?Z$/, 'controller stamps its own ISO UTC clock');
+  assert.match(stored.ts, /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d+)?[+-]\d{2}:\d{2}$/, 'controller stamps its own local ISO clock, with a numeric offset (not UTC Z)');
   assert.equal(stored.node, 's1/WO-1/impl/§4', 'absolute node = path(under) + attempt-1 (no prior attempts) + relative');
   assert.equal(stored.under, 'WO-1', 'under is kept as provenance');
   // The returned stamped event must reflect the same ts-overwrite + resolved node (seq is assigned
