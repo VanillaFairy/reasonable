@@ -9,6 +9,18 @@ A `*` marks a **machine-parsed** artifact — its grammar is load-bearing; the
 hook engine breaks if it drifts. Prose artifacts (vision, vertical-slice spec) are
 human/agent-read and have a recommended shape, not a rigid grammar.
 
+**Path values in any machine-parsed JSON artifact MUST use forward slashes.** An
+agent that hand-authors JSON (the lane-provisioner's descriptor, the journal-writer's
+`lanes` map, …) must write every path POSIX-style — `"C:/work/proj/x"`, never
+`"C:\work\proj\x"`. On Windows a native path resolves with backslashes, and a
+backslash *opens* a JSON string escape, so a raw path (`\w`, `\s`, …) makes the whole
+file **unparseable**. Forward slashes are valid for Node and git on every OS and are a
+no-op off Windows. This bit hard once: an unescaped `effortRoot` corrupted a lane
+descriptor, `findLane()` read the unparseable file as *no lane*, and the fence denied
+the provisioned worker as "presumed hostile" — a whole slice stalled with no signal of
+the real cause (graph-editor-ux-overhaul, 2026-07). Libraries are safe automatically
+(`JSON.stringify` escapes backslashes); only **hand-authored** JSON is at risk.
+
 ---
 
 ## Effort root

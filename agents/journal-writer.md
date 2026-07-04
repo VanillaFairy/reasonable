@@ -57,7 +57,10 @@ clean HALT loses no truth (reconcile rebuilds the index from git + ledger, and h
 1. **`journal.json` — the program counter.** Statuses are exactly
    `pending | dispatched | checkpointed | merged | dead-end`. You record status transitions on
    `workOrders`, the `lanes` map (worktree path → work order), `currentVerticalSlice`, `phase`,
-   `supervision`, and the orchestrator's `commits` accounting. When the dispatch prompt hands you a
+   `supervision`, and the orchestrator's `commits` accounting. **Write every path — the `lanes` map
+   keys especially — with forward slashes, never native Windows backslashes** (`docs/artifacts.md`): a
+   backslash opens a JSON escape and corrupts the file, and a corrupt `journal.json` forces reconcile
+   to discard the program counter and rebuild. When the dispatch prompt hands you a
    `cost` block (the runner's agent tally + token spend), persist it as the descriptive `cost` field
    (stamp an `updatedAt`) — it feeds the deterministic progress mirror (D19), is **never a gate
    input**, and is the one journal field that is not reconcile-rebuildable. Otherwise match the schema
