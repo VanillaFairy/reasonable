@@ -60,7 +60,32 @@ node $CLAUDE_PLUGIN_ROOT/lib/seam.mjs --classify --log <captured-output-file> --
   rule it impl-violates or test-mistranslates, and you do **not** ask for a blind redo.
 - **`kind: "behavior"`** → a real assertion ran and disagreed: drop to the contract fork below. The
   classifier protects this boundary so a genuine behaviour bug is never swallowed as a seam.
+- **`kind: "premise"`** (subkind `constraint-violation`) → the test raised a NON-assertion exception
+  while **establishing its scenario** — a system constraint the product enforces by design (a
+  foreign-key / unique / not-null / check violation) fired in an arrange step, so **no behavioural
+  assertion ever ran**. This is the **premise fork** (below), not the contract fork: the blind-writer
+  built a scenario the system forbids. Confirm the traceback ORIGIN before ruling — the check is which
+  actor raised it, exactly as the seam boundary protects behaviour.
 - **`kind: "unknown"`** → no seam signature; judge against the contract as usual.
+
+## The premise fork (a `kind: "premise"` red — an unrealizable test scenario)
+A `premise` red means the test could not even *arrange* the state it wanted to assert on, because the
+product **forbids that state by design** (e.g. `sequence_ref_id` is a FK, so a dangling reference can
+never be persisted; a unique index, so a duplicate can never be inserted). Read the traceback and rule
+by **origin**:
+- **Originates in the test's own ARRANGE** (a fixture / setup line building the scenario, before the
+  behaviour-under-test is exercised) → the test's **premise is unrealizable**. → Verdict **`blind-redo`**:
+  the blind-writer must rebuild a **realizable** scenario that still exercises the SAME clause (e.g. a
+  persistable brokenness the schema allows). Cite the clause and name the constraint that made the
+  premise impossible. If the cited clause's own example **names** the forbidden state (the contract
+  implies an impossible premise), ALSO say the clause needs a clarifying amendment and route that to the
+  orchestrator. This is **not** `intent-fork` — the workflow resolves it with a bounded redo.
+- **Originates in the IMPLEMENTATION under test** (the exception is raised inside the code path the test
+  drives, not its arrange) → this is an **impl bug**: rule *fix the implementation* (verdict 1).
+- **The clause FUNDAMENTALLY requires the forbidden premise** (no realizable scenario can exercise it,
+  because the very behaviour asserted is only reachable in the forbidden state) → that is a genuine
+  contract-vs-reality conflict: emit **`intent-fork`**, naming the clause and the constraint that
+  contradicts it. Only here does a premise red cross to the human.
 
 The orchestrator **bounds** the seam route (it escalates to the human after a small number of
 declaration passes), so emitting `seam-undeclared` honestly cannot loop — a seam that resists
@@ -120,6 +145,8 @@ ambiguous and only the intention can choose.
 | "The clause is ambiguous but I'll pick the sensible reading" | A fork is settled by `intention.md`, not your sense. Cite it, or emit `intent-fork`. |
 | "This render test died at module-load — tell the blind writer to redo it" | A blind redo can't fix a seam it can't see (that loop is the incident). Classify with `lib/seam.mjs`; route `seam-undeclared` so the implementer declares + exposes the seam. |
 | "Element not found — the test must be wrong, loosen it" | Don't guess. If `lib/seam.mjs` says `element-not-found`, the DOM handle is undeclared/unexposed → `seam-undeclared`, not a test edit. |
+| "The test's setup crashed on a FK/constraint — escalate an intent-fork to the human" | If `lib/seam.mjs` says `kind:"premise"` and the exception originated in the test's own arrange, the premise is unrealizable → verdict `blind-redo` (the workflow rebuilds a realizable scenario), NOT `intent-fork`. Only a clause that FUNDAMENTALLY requires the forbidden state crosses to the human. |
+| "A mistranslated test needs redoing, so I'll return intent-fork" | A fixable test defect is a bounded `blind-redo`, not a human escalation. `intent-fork` is only for a fork the intention oracle genuinely cannot settle. |
 
 ## Report your progress as you go
 

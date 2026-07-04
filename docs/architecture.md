@@ -182,7 +182,7 @@ it does not grow control flow (which a fixed run forbids).
 
 ```
 OUTCOME.kind =
-  green | scope-expansion | ripple | jurisdiction | seam-undeclared | spike-needed |
+  green | scope-expansion | ripple | jurisdiction | seam-undeclared | blind-redo | spike-needed |
   infeasible | checkpoint | intent-fork | other
 ```
 
@@ -193,6 +193,7 @@ OUTCOME.kind =
 | `ripple` | sequence provider-first / consumer-first single-contract pipeline runs (§5.10) |
 | `jurisdiction` | dispatch the adjudicator (which cites the oracle) |
 | `seam-undeclared` | **seam-declaration re-pass (ADVISORY)**, two paths by which side of the test is starved. **Output:** a render-clause red the `lib/seam.mjs` classifier calls a seam-observation failure (module-load / export-shape / element-not-found), NOT a behaviour mismatch → the implementer enriches `## Observable Seams` + exposes the handle. **Input:** a state-reading clause whose scenario the blind-writer cannot construct (no declared mock for the store/hook/context it reads) — raised **proactively, no red** (a missing input seam is a *false green*, invisible to `lib/seam.mjs`) → the implementer enriches `## Input Seams` with the mock shape. Either way the blind-writer then targets / sets up the declared seam. Bounded (escalates to `intent-fork` after a few passes) — never a blind redo, which could not close the loop. |
+| `blind-redo` | **blind-redo re-pass (ADVISORY)** — a fixable TEST defect the workflow resolves itself instead of escalating: the blind-writer mistranslated a clause, or built an **unrealizable premise** (`lib/seam.mjs` `kind:"premise"` — a FK/unique/not-null/check violation the product enforces by design fired in the test's arrange, so no assertion ran). The **implementation is left intact**; the blind-writer rebuilds the offending test against the (possibly clarified) contract with a realizable premise. Bounded (escalates to `intent-fork` after a few passes, or immediately if the clause fundamentally requires the forbidden state). This closes the `fix-test → intent-fork` gap for backend premise errors, the dual of `seam-undeclared` for render-observation failures. |
 | `spike-needed` | **return** to the main session to launch the spike workflow (nesting limit, §12) |
 | `infeasible` | dispatch the skeptic; two independent exhaustions auto-promote to the dead-end ceremony |
 | `checkpoint` | triage the budget: extend once / fresh-context retry / escalate |

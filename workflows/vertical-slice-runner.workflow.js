@@ -255,7 +255,7 @@ const OUTCOME = {
     kind: {
       type: 'string',
       enum: [
-        'green', 'scope-expansion', 'ripple', 'jurisdiction', 'seam-undeclared', 'spike-needed',
+        'green', 'scope-expansion', 'ripple', 'jurisdiction', 'seam-undeclared', 'blind-redo', 'spike-needed',
         'infeasible', 'checkpoint', 'intent-fork', 'other',
       ],
     },
@@ -709,6 +709,24 @@ async function provisionThenImplement(wo, _orig, _idx, ctx) {
     log(`seam-declaration re-pass for ${wo.id} (attempt ${ctx.seamRedeclares[wo.id]}): implementer declares + exposes the observable seam (subkind: ${seamTask.subkind || 'n/a'}).`);
   }
 
+  // A prior adjudication may have routed `blind-redo` here: a fixable TEST defect (a
+  // mistranslated clause / an unrealizable premise). The IMPLEMENTATION is correct and
+  // already committed - only the blind-writer's test is redone (in blindTest, below). So on
+  // a redo pass the implementer must NO-OP: no code, no contract, no new commit. We count the
+  // pass here (the cap is enforced in adjudicate) but leave the task on ctx for blindTest to
+  // consume. NOTE: a redo pass and a seam pass are mutually exclusive - a seam re-pass DOES
+  // re-run the implementer (to expose the handle), so seamTask takes precedence if both set.
+  ctx.redoTasks = ctx.redoTasks || {};
+  ctx.redoTries = ctx.redoTries || {};
+  const redoTask = (!seamTask && ctx.redoTasks[wo.id]) || null;
+  if (redoTask) {
+    ctx.redoTries[wo.id] = (ctx.redoTries[wo.id] || 0) + 1;
+    log(`blind-redo re-pass for ${wo.id} (attempt ${ctx.redoTries[wo.id]}): implementation left INTACT; the blind-writer rebuilds the test realizably.`);
+  }
+  const redoDirective = redoTask
+    ? `BLIND-REDO PASS - DO NOT TOUCH THE IMPLEMENTATION. A prior adjudication ruled the blind-writer's TEST defective (a mistranslated clause or an UNREALIZABLE premise the product forbids by design); the implementation and contract for this work order are CORRECT and ALREADY COMMITTED. Make NO code change, NO contract change, and create NO new commit this pass. The blind-writer will rebuild the test realizably. Return kind:"green" as a pass-through (no detail.enrichment, no detail.commit) so the pipeline proceeds to the blind-test redo. Redo context: ${j(redoTask)}.`
+    : '';
+
   // 1) Provision the lane BEFORE the fenced worker - closes the descriptor-less window (D7)
   //    AND capture the worktree (PROVISION_ACK, not OUTCOME) so we can direct the CODE-writing
   //    roles into it. Two-root model: code -> the worktree (git -C); .reasonable/ state -> the
@@ -789,6 +807,7 @@ async function provisionThenImplement(wo, _orig, _idx, ctx) {
     : '';
   return guard(wo.id, () => ctx.agent(
     [
+      redoDirective, // when set (a blind-redo pass) this DOMINATES: no-op the implementation, pass through green.
       'Implement this work order on the active vertical-slice path (thin-real only; loud stubs off-path).',
       `Effort root (canonical .reasonable/ - contracts + ledger here, absolute): ${effortRoot}`,
       `Lane worktree (CODE here; cwd for git): ${worktree}`,
@@ -944,8 +963,18 @@ async function blindTest(prev, wo, _idx, ctx) {
   if (!prev || prev.kind !== 'green') return prev; // trapped lane: carry the trap forward
   const a = ctx.args;
   const worktree = (ctx.worktrees && ctx.worktrees[wo.id]) || a.effortRoot;
+  // Consume a BLIND-REDO task (a prior adjudication ruled a test defective - a mistranslated
+  // clause or an UNREALIZABLE premise). Rebuild the offending test(s) realizably against the
+  // (possibly clarified) contract; the implementation is untouched and stays blind.
+  ctx.redoTasks = ctx.redoTasks || {};
+  const redoTask = ctx.redoTasks[wo.id] || null;
+  if (redoTask) delete ctx.redoTasks[wo.id];
+  const redoDirective = redoTask
+    ? `BLIND-REDO: a prior adjudication found the test(s) you wrote DEFECTIVE - ${redoTask.constraint ? `their premise was UNREALIZABLE (the product forbids that state: ${j(redoTask.constraint)})` : `they mistranslated the clause (${j(redoTask.reason || redoTask)})`}. Re-read the current contract (it may have been CLARIFIED since) and REBUILD the offending test(s) so the premise is REALIZABLE - construct only states the system actually permits - while still asserting the SAME clause. ${redoTask.realizablePremise ? `Suggested realizable premise: ${j(redoTask.realizablePremise)}.` : ''} Keep every already-passing test as-is; you still NEVER read the implementation.`
+    : '';
   return guard(wo.id, () => ctx.agent(
     [
+      redoDirective, // when set (a blind-redo pass) this DOMINATES: rebuild the defective test realizably.
       'Blind test-writer: you receive ONLY the old and new contract text for this work order - never the implementation diff.',
       `Effort root (canonical .reasonable/ - read the contract here): ${a.effortRoot}`,
       `Lane worktree (write the TEST files here, by absolute path - tests are CODE): ${worktree}`,
@@ -958,7 +987,7 @@ async function blindTest(prev, wo, _idx, ctx) {
       'Section id for progress reporting: "tests".',
       'Return the OUTCOME (kind:"green" if you produced the test delta cleanly; otherwise the matching trap kind).',
       callShapeReminder,
-    ].join('\n'),
+    ].filter(Boolean).join('\n'),
     { label: `blind-test:${wo.id}`, phase: 'Enrich', agentType: 'reasonable:blind-test-writer', schema: OUTCOME },
   ));
 }
@@ -1031,8 +1060,8 @@ async function adjudicate(prev, wo, _idx, ctx) {
       `Work order: ${wo.id}`,
       `Run the suite in the worktree (cwd ${worktree}), NOT the main checkout. Read the contract from ${a.effortRoot}/.reasonable/contracts/.`,
       'ANTI-PLACEHOLDER (cardinal rule): execute the suite for real and report detail.suiteRan=true with detail.failing=[failing test ids]. If you CANNOT run it (deps missing - see if the lane needs an install - or no test command, or a harness error), that is a LOUD verification gap: return kind:"other" with a note naming exactly why it could not run. You may NEVER return kind:"checkpoint" (that is the budget ceiling, not a probe gap) and NEVER kind:"green" without an executed, fully-green suite. Inventing a probe result is the cardinal sin - it manufactures a false green.',
-      `SEAM TRIAGE (do this on ANY red, BEFORE the contract judgment): a render-clause test can die because it could not OBSERVE the unit (module-load death, wrong export shape, or a missing DOM handle) rather than because behaviour disagrees. Capture the failing output to a file and CLASSIFY it deterministically - never eyeball it: \`node ${plug}/lib/seam.mjs --classify --log <captured-output-file> --json\`. If it reports kind:"seam" -> return kind:"seam-undeclared" with detail = { component:<the render component>, clause:<the render clause id if known>, subkind:<module-load|export-shape|element-not-found>, missing:<the export/handle the test needed>, signals:<the classifier signals> }. This routes a SEAM-DECLARATION re-pass (the implementer declares its \`## Observable Seams\` + exposes the handle), NOT a blind redo. Do this ONLY when the classifier says kind:"seam" - a real assertion mismatch stays yours to judge below.`,
-      'Implementation violates contract (a real behavioural red the classifier calls kind:"behavior") -> verdict fix-implementation (test untouched): return kind:"jurisdiction" so the implementer is re-dispatched to satisfy the contract next pass. Test mistranslates a clause -> verdict fix-test, citing the clause; if the blind writer must redo it, return kind:"intent-fork". Green-ness is never the goal state of test-editing.',
+      `SEAM/PREMISE TRIAGE (do this on ANY red, BEFORE the contract judgment): a test can die for a reason that is NOT a behaviour disagreement - it could not OBSERVE the unit (module-load death, wrong export shape, missing DOM handle), or it could not even ESTABLISH its scenario (a system constraint the product enforces by design fired in the arrange). Capture the failing output to a file and CLASSIFY it deterministically - never eyeball it: \`node ${plug}/lib/seam.mjs --classify --log <captured-output-file> --json\`. (a) kind:"seam" -> return kind:"seam-undeclared" with detail = { component, clause, subkind:<module-load|export-shape|element-not-found>, missing, signals } - a SEAM-DECLARATION re-pass (the implementer declares its \`## Observable Seams\` + exposes the handle). (b) kind:"premise" (a FK/unique/not-null/check violation with NO assertion) -> read the traceback ORIGIN: if it fired in the test's own ARRANGE (the premise is UNREALIZABLE - the product forbids that persisted state), return kind:"blind-redo" with detail = { clause:<the clause id>, constraint:<what the DB forbade>, realizablePremise:<a persistable scenario that still exercises the clause>, contractClarification:<the clause text to fix IF its example names the forbidden state, else null> }; if it fired in the IMPLEMENTATION under test, it is an impl bug (kind:"jurisdiction"); if the clause FUNDAMENTALLY requires the forbidden state, kind:"intent-fork". Do (a)/(b) ONLY when the classifier says so - a real assertion mismatch (kind:"behavior") stays yours to judge below.`,
+      'Implementation violates contract (a real behavioural red the classifier calls kind:"behavior") -> verdict fix-implementation (test untouched): return kind:"jurisdiction" so the implementer is re-dispatched to satisfy the contract next pass. Test mistranslates a clause (or built an unrealizable premise) -> verdict fix-test: return kind:"blind-redo" with detail={ clause, reason, realizablePremise } so the blind-writer redoes the test IN-WORKFLOW against the contract (the implementation is left intact) - this is a BOUNDED re-pass, NOT a human escalation. Reserve kind:"intent-fork" for a fork the intention oracle genuinely cannot settle (or a clause that fundamentally requires a forbidden state). Green-ness is never the goal state of test-editing.',
       `A scope/priority/jurisdiction fork must cite ${a.effortRoot}/.reasonable/intention.md; an unsettleable fork is intent-fork (BREAKING).`,
       'Section id for progress reporting: "adjudication".',
       'Return the OUTCOME: kind:"green" ONLY when the suite actually executed and is fully green and the lane is consistent with its contract (set detail.suiteRan=true); a seam-observation red -> kind:"seam-undeclared"; any behavioural red -> the matching kind above (never green, never checkpoint).',
@@ -1057,6 +1086,26 @@ async function adjudicate(prev, wo, _idx, ctx) {
     ctx.seamTasks = ctx.seamTasks || {};
     ctx.seamTasks[wo.id] = result.detail || {};
     log(`adjudicate: ${wo.id} red is a seam-observation failure (subkind: ${(result.detail && result.detail.subkind) || 'n/a'}) - routing seam-undeclared (declaration pass ${tries + 1}/${SEAM_REDECLARE_CAP}), NOT a blind redo.`);
+  }
+
+  // Bounded-escalation guard around the BLIND-REDO route (mirrors the seam route). A fixable
+  // test defect - a mistranslated clause or an UNREALIZABLE premise (lib/seam.mjs kind:"premise")
+  // - is resolved IN-WORKFLOW: stash the redo task so the next pass leaves the implementation
+  // intact and re-dispatches the blind-writer to rebuild the test realizably. The SCRIPT bounds
+  // the loop; at the cap the test genuinely resists a realizable rewrite, so it escalates to the
+  // human (fail toward scrutiny) instead of spinning.
+  const BLIND_REDO_CAP = 2;
+  if (result && result.kind === 'blind-redo') {
+    ctx.redoTries = ctx.redoTries || {};
+    const tries = ctx.redoTries[wo.id] || 0;
+    if (tries >= BLIND_REDO_CAP) {
+      return { kind: 'intent-fork', workOrder: wo.id, verticalSlice: wo.verticalSlice || a.verticalSliceId,
+        detail: { stage: 'adjudicate', reason: `test still red after ${tries} blind-redo pass(es) - the scenario resists a realizable rewrite; the clause may fundamentally require a forbidden state or genuinely mistranslate intent`, redo: result.detail || {}, oracle: 'vision + vertical-slice spec' },
+        note: 'blind-redo route exhausted its bounded re-passes - escalating to the human (fail toward scrutiny)' };
+    }
+    ctx.redoTasks = ctx.redoTasks || {};
+    ctx.redoTasks[wo.id] = result.detail || {};
+    log(`adjudicate: ${wo.id} red is a fixable test defect (${(result.detail && result.detail.constraint) ? 'unrealizable premise' : 'clause mistranslation'}) - routing blind-redo (redo pass ${tries + 1}/${BLIND_REDO_CAP}), implementation left intact.`);
   }
   return result;
 }
@@ -1204,6 +1253,20 @@ function route(outcome, state, mode) {
       // cap), so this arm only needs to keep the loop going.
       s.needsAnotherPass = true;
       s.pendingInbox.push({ class: 'ADVISORY', kind: 'seam-undeclared', workOrder: outcome.workOrder, detail: outcome.detail || {} });
+      break;
+
+    case 'blind-redo':
+      // A fixable TEST defect (the blind-writer mistranslated a clause, or built an
+      // UNREALIZABLE premise the product forbids by design - lib/seam.mjs kind:"premise").
+      // The old design escalated any "the test must be redone" straight to intent-fork (a
+      // human), so the workflow could not fix its own test. This is the bounded BLIND-REDO
+      // re-pass: the implementation is left intact and the blind-writer rebuilds the test
+      // realizably against the (possibly clarified) contract. ADVISORY, not BREAKING: it
+      // resolves itself in-run. The adjudicate stage stashed the task on ctx.redoTasks and
+      // bounds the re-passes (escalates to intent-fork at the cap), so this arm only keeps
+      // the loop going.
+      s.needsAnotherPass = true;
+      s.pendingInbox.push({ class: 'ADVISORY', kind: 'blind-redo', workOrder: outcome.workOrder, detail: outcome.detail || {} });
       break;
 
     case 'spike-needed':
