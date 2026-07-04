@@ -183,25 +183,38 @@ one of the three is probably wrong.
   is no other door.
 - **Node** — a dispatchable unit of the execution tree (a work order, a slice, a spike, a
   scaffold, a worker's own reported span of work, …), addressed by a `/`-joined path from
-  the tree root. Every node carries one of five statuses (`pending | active | done |
-  failed | canceled`), an optional free-text detail, and a list of notes. The progress
-  mirror (`progress.json` / `progress.md`, D19) is a **full replay** of the ledger into
-  this tree — never patched incrementally — so a fix to the fold's interpretation
-  re-renders all history correctly on the next regen, with nothing left to migrate.
+  the tree root. A node carries a STORED status, an optional free-text detail, and a list
+  of notes. Its **displayed** status is one of six (`pending · | active ▶ | done ✓ |
+  failed ↻ | panic 💥 | canceled ⊘`) and is **derived**: a leaf shows its own stored status;
+  a container is a pure function of its children (§ **Derived status**), so no status is
+  ever cascaded down or healed back. The progress mirror (`progress.json` / `progress.md`,
+  D19) is a **full replay** of the ledger into this tree — never patched incrementally — so
+  a fix to the fold re-renders all history correctly on the next regen, nothing to migrate.
+- **Derived status** — the displayed status of a *container* node, computed from its LIVE
+  children: any live `panic` → `panic` (a terminal failure compromises the unit); else all
+  live `done` → `done`; else any live `active` or `failed` → `active` (`failed` = in motion,
+  see below); else `pending`. An authored terminal on the node itself wins over derivation
+  (a `done` from node-completed; a detail-bearing `failed`/`panic`/`canceled` from a real
+  event). Canceled children and superseded attempts are shown but excluded.
+- **failed vs panic** — `failed` (↻) is **non-terminal**: the node is down and *under
+  investigation* (an investigator is looking for a workaround). It never completes on its
+  own and blocks its parent's `done`, but does not by itself compromise the parent. `panic`
+  (💥) is **terminal, unrecoverable**: it escalates to the user and (via derivation)
+  compromises the parent, which itself enters `failed` and the loop climbs.
 - **Kind** — the enum classifying a node: `work-order | spike | scaffold | grill-pass |
   slice | phase`. Stamped once, at `node-planned`, and carried on every Family-1 lifecycle
   event for that node.
-- **Attempt** — a numbered retry subtree under a node (`attempt-1`, `attempt-2`, …),
-  computed by the **ledger controller** from the tree's own state, never chosen by the
-  agent. A fresh dispatch opens `attempt-1`; a **reopen** (the node redispatched while it
-  or its latest attempt is already `failed`) seals the prior attempt `failed` —
-  recursively, but leaving its own already-`done`/`canceled` children exactly as they
-  were — and opens a fresh attempt beside it; a **continuation** (e.g. a checkpoint
-  reclaim) reuses the latest attempt instead of opening a new one.
+- **Attempt** — a re-run is a **sibling** `name[k]` (`WO`, `WO[2]`, `WO[3]`, …), NOT a
+  wrapper node — attempt 1 IS the base node itself. The **ledger controller** owns the
+  `[k]`: agents send the base path, and it decides fresh vs. reopen vs. continuation from
+  the tree's own state at dispatch time. A **reopen** (the live attempt already sealed
+  `failed`/`panic`) mints the next sibling `base[k]` beside the old one, which stays as
+  visible history; a **continuation** (e.g. a checkpoint reclaim) re-uses the same node.
+  The old attempt is never edited — retry is append-a-sibling, never seal-and-nest.
 - **Report event** — the `report-started` / `report-finished` / `report-canceled` ledger
   event trio (Family 2) a dispatched worker appends to narrate its own progress, addressed
-  **relative to its own node** (`under`); the ledger controller resolves that to the
-  tree's absolute path, so a worker never has to track which attempt it is currently in.
+  **relative to its own node** (`under`, the base id); the ledger controller resolves it to
+  the absolute path under the *live* attempt, so a worker never tracks which attempt it is in.
   Replaces the retired `action-started` / `action-finished` / `action-obsoleted` trio.
 - **Work order** — one atomic dispatch: named artifact inputs, an artifact
   output, a gate, a **locus**, **resource claims**, a **budget**.

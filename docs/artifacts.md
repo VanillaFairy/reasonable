@@ -500,12 +500,13 @@ dispatched; it rides on every Family-1 event that has a node.
 | type | required fields | controller stamps | meaning |
 |---|---|---|---|
 | `node-planned` | `node`, `kind`, `title` | — | the node enters the tree, `pending` |
-| `node-dispatched` | `node`, `kind` | `attempt` | the node goes `active`; opens a fresh attempt subtree, or reopens one (see below) |
+| `node-dispatched` | `node`, `kind` | `attempt` (+ rewrites `node` to `base[k]` on a reopen) | the node goes `active`; a reopen opens the `name[k]` sibling (see below) |
 | `node-checkpointed` | `node` | — | budget exhaustion — back to `pending`, detail `"checkpointed"` |
-| `node-downgraded` | `node` | `attempt` | reconcile's crash-recovery downgrade — the current attempt is sealed `failed`, the node goes back to `pending` |
+| `node-downgraded` | `node` | rewrites `node` to the live attempt | reconcile's crash-recovery downgrade — the live attempt is sealed `failed`, detail `"lost-work crash"`; the next dispatch mints the retry sibling |
 | `node-completed` | `node` | — | `done` |
-| `node-failed` | `node` (`reason` optional) | — | `failed` |
-| `node-canceled` | `node`, `reason` | — | `canceled`, recursively |
+| `node-failed` | `node` (`reason` optional) | — | `failed` — **non-terminal**: down, under investigation (does not compromise the parent) |
+| `node-panicked` | `node` (`reason` optional) | — | `panic` — **terminal, unrecoverable**: escalates to the user and compromises the parent |
+| `node-canceled` | `node`, `reason` | — | `canceled` (the node only; no cascade — its children keep their own status under a ⊘ parent) |
 | `approval-resolved` | `id` | — | annotates the effort root; the inbox banner's own fold is future work |
 | `concluded` (existing) | — | — | the whole effort root goes `done` |
 
@@ -515,16 +516,16 @@ unresolvable `workOrder` fails the append: agents treat that as fatal (fail loud
 `reconcile.mjs` tolerates it as non-fatal, since recovery must not die just because the
 progress tree happens to be thin.
 
-**Attempt arithmetic**, computed fresh from the tree at append time — never carried by the
-caller. For a node's existing `attempt-N` children, let `latest` be the highest N (0 if
-none). `node-dispatched` stamps `1` when there's no prior attempt; `latest + 1` — a
-**reopen** — when the latest attempt (or the node itself) is already `failed`; otherwise
-`latest` — a **continuation**, e.g. a checkpoint reclaim picking the same attempt back up.
-`node-downgraded` always stamps `max(latest, 1)`. A reopen seals the prior attempt's subtree
-`failed`, recursively, so nothing is left dangling `active` — but it never deletes anything:
-that subtree's own already-`done`/`canceled` children stay exactly as they were, so the tree
-still shows precisely what that attempt finished before it died — and opens a fresh
-`attempt-N+1` beside it.
+**Attempt arithmetic — `name[k]` siblings**, computed fresh from the tree at append time,
+never carried by the caller. An attempt is a **sibling**, not a wrapper: attempt 1 IS the
+base node (`slice/WO`); a re-run is `slice/WO[2]`, `slice/WO[3]`, … Agents always send the
+BASE path. For the base's family under its parent, let `latest` be the highest attempt present
+(0 = never planned) and `liveMember` its node. `node-dispatched`: `latest` 0 → reject
+(unplanned); `liveMember` sealed `failed`/`panic` → a **reopen**, stamp `latest + 1` and mint
+the sibling `base[latest+1]`; otherwise a fresh dispatch (attempt 1) or a **continuation** (a
+checkpoint reclaim re-using the same node). `node-downgraded`: seals `liveMember` `failed`
+(rejects a never-dispatched node). The old attempt is **never edited or deleted** — it stays
+as visible history beside the fresh sibling, showing exactly what it finished before it died.
 
 ### Family 2 — worker reports
 
@@ -532,11 +533,12 @@ still shows precisely what that attempt finished before it died — and opens a 
 `report-canceled {under, node, reason}` — a dispatched worker's own narration of the work it
 is doing, addressed **relative to itself**: `under` names the worker's own node (its work
 order, its slice, …), and `node` is a relative path under that (`implementation`,
-`audit-2/mutation-sample`). The controller looks up `under` in the tree, reads that node's
-current attempt, and stamps the absolute address itself —
-`path(under) + '/attempt-' + attempt + '/' + node` — so a worker never has to know or track
-which attempt it is currently in. An unresolvable `under` fails the append: a worker report
-with no home is a bug, not something to render around.
+`audit-2/mutation-sample`). The controller looks up `under` (the base id) in the tree, finds
+its **live attempt**, and stamps the absolute address itself — `<liveMember path>/<node>`, so
+a report lands directly under the current attempt with **no wrapper segment**, and a worker
+never has to know or track which attempt it is in. An unresolvable `under` — or one whose live
+member is still `pending` (never dispatched) — fails the append: a worker report with no home
+is a bug, not something to render around.
 
 ### Family 3 — domain events
 
@@ -557,9 +559,9 @@ its resolved node (or the effort root, if it has none) — domain color, never s
 {"seq":2,"ts":"...","type":"node-dispatched","node":"expr-eval","kind":"slice","attempt":1}
 {"seq":3,"ts":"...","type":"node-planned","node":"expr-eval/WO-12","kind":"work-order","title":"parser: precedence"}
 {"seq":4,"ts":"...","type":"node-dispatched","node":"expr-eval/WO-12","kind":"work-order","attempt":1}
-{"seq":5,"ts":"...","type":"report-started","under":"WO-12","attempt":1,"node":"expr-eval/WO-12/attempt-1/implementation","label":"implementation"}
+{"seq":5,"ts":"...","type":"report-started","under":"WO-12","attempt":1,"node":"expr-eval/WO-12/implementation","label":"implementation"}
 {"seq":6,"ts":"...","type":"enrichment","component":"parser","clauses":["§4"],"workOrder":"WO-12","node":"expr-eval/WO-12","verticalSlice":"expr-eval","note":"learned precedence needs a clause"}
-{"seq":7,"ts":"...","type":"report-finished","under":"WO-12","attempt":1,"node":"expr-eval/WO-12/attempt-1/implementation"}
+{"seq":7,"ts":"...","type":"report-finished","under":"WO-12","attempt":1,"node":"expr-eval/WO-12/implementation"}
 {"seq":8,"ts":"...","type":"commit","workOrder":"WO-12","node":"expr-eval/WO-12","commit":"sha256:…","role":"implementer","by":"commit-record"}
 {"seq":9,"ts":"...","type":"node-completed","node":"expr-eval/WO-12"}
 {"seq":10,"ts":"...","type":"amendment","component":"parser","clause":"§2","direction":"weaken","retro":"R3","approvedBy":"human","reason":"clause over-specified"}
@@ -708,7 +710,7 @@ re-dispatch after a lost-work crash → 2, 3, …), and **never** on any other
 transition, so a same-run re-pass or a checkpoint-reclaim leaves it unchanged. It
 is preserved across a reconcile downgrade (which touches only `status`). The progress
 mirror no longer reads it: the ledger controller now derives a node's attempt/reopen
-state directly from the ledger-built tree itself (its own `attempt-N` children — see
+state directly from the ledger-built tree itself (its own `name[k]` sibling family — see
 `ledger.jsonl` above), so `dispatchEpoch` is journal-only bookkeeping today. Absent on
 a legacy journal ⇒ read as `0`; **never a gate input**. `lanes` maps each live worktree
 path to its work order; reconciliation checks this against the actual worktrees on disk
@@ -726,7 +728,7 @@ to re-dispatch) additionally tolerates a `status:"green"` + `merged:true` shape 
 equivalent. This is a defensive **read-side** tolerance for a real drift incident
 (a work order once landed with the vertical-slice-gate's own `green` vocabulary
 instead of `merged`), not a second value anything should intentionally write —
-the sole writer still only ever produces the five statuses above.
+the sole writer still only ever produces the work-order statuses above.
 
 ---
 
@@ -756,15 +758,18 @@ of work — is a **node**, addressed by a `/`-joined path from the root, and it 
 { "id": "WO-12", "label": "parser: precedence", "status": "active",
   "detail": null, "statusTs": "2026-07-02T10:04:00Z",
   "notes": [{ "text": "enriched parser §4", "ts": "..." }],
-  "children": [ /* nested nodes, same shape — including any attempt-N subtrees */ ] }
+  "children": [ /* nested nodes, same shape — plus any `name[k]` retry siblings */ ] }
 ```
 
-Five statuses only, one glyph each, the same vocabulary at every depth: `pending ·`,
-`active ▶`, `done ✓`, `failed ✗`, `canceled ⊘`. `detail` is an optional free-text gloss
-(`"checkpointed"`, `"lost-work crash"`, `"downgraded — awaiting redispatch"`); `notes[]`
-holds annotations folded from Family-3 domain events (`{ text, ts }`) and from
-`approval-resolved`. A node's own children include its `attempt-N` subtrees where it has
-them — the reopen semantics from `ledger.jsonl` above, rendered as tree structure.
+The `status` field here is the **stored** status; the mirror renders and counts each node's
+**derived** status (a leaf shows its own; a container is a pure function of its live children —
+see `docs/glossary.md` "Derived status"). Six statuses, one glyph each, the same vocabulary at
+every depth: `pending ·`, `active ▶`, `done ✓`, `failed ↻`, `panic 💥`, `canceled ⊘` — where
+`failed` is non-terminal (down, under investigation) and `panic` is the terminal, unrecoverable
+failure that compromises the parent. `detail` is an optional free-text gloss (`"checkpointed"`,
+`"lost-work crash"`); `notes[]` holds annotations folded from Family-3 domain events
+(`{ text, ts }`) and from `approval-resolved`. A retry is a **sibling** `WO-12[2]`, not a nested
+attempt subtree — the old attempt stays beside it as visible history.
 
 - **`progress.json`** — the tree object itself, spread with one extra key: `counts`, one
   integer per status (`{ pending, active, done, failed, canceled }`, from `countByStatus` —
