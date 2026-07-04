@@ -489,6 +489,27 @@ function classifyFloorBreak(state) {
 function toGateResult(verticalSliceGreen, state, budget) {
   const floorBreaks = classifyFloorBreak(state);
   const regressions = floorBreaks.filter((b) => b.breaking);
+  const walls = state.blocked || [];
+
+  // A worker-reported WALL (scope-expansion / intent-fork / other / infeasible / spike-needed)
+  // takes precedence: it is a direct "could not finish" signal, and a co-occurring floor break
+  // is frequently a DOWNSTREAM symptom of the unfinished work. Surface BOTH — the walls AND the
+  // regressions — so the main session sees the real cause instead of a masked one (the slice-4
+  // incident: an ungranted scope-expansion was hidden behind its own collateral floor break
+  // because regressions were classified first). A wall means the slice is not green, so this
+  // correctly gates ahead of the green/budget branches too.
+  if (walls.length > 0) {
+    return {
+      kind: 'blocked',
+      outcome: {
+        kind: 'trap',
+        items: walls,
+        regressions,
+        plannedSupersessions: floorBreaks.filter((b) => b.advisory),
+        progress: state.progress || {},
+      },
+    };
+  }
 
   // An unforeseen regression is BREAKING and gates the result regardless of green math.
   if (regressions.length > 0) {
@@ -516,12 +537,10 @@ function toGateResult(verticalSliceGreen, state, budget) {
     };
   }
 
-  // Any pending BREAKING trap arm (intent-fork / other / unresolved jurisdiction...)
-  // that survived the loop blocks for a human decision rather than masquerading as
-  // budget exhaustion.
-  if (state.blocked && state.blocked.length > 0) {
-    return { kind: 'blocked', outcome: { kind: 'trap', items: state.blocked, progress: state.progress || {} } };
-  }
+  // (Pending BREAKING trap arms — scope-expansion / intent-fork / other / infeasible /
+  // spike-needed — are handled by the walls branch at the TOP of this function, ahead of the
+  // regression/green/budget branches, so they never masquerade as budget exhaustion or hide
+  // behind a collateral floor break.)
 
   // Otherwise the budget-guarded loop ran out before GREEN - the common hard-slice
   // exit, first-class on purpose (S7). Distinguish from a gate.
@@ -1145,13 +1164,20 @@ function route(outcome, state, mode) {
       break;
 
     case 'scope-expansion':
-      // autonomous: grant+log; gated: queue an inbox item (cheaper than sneaking).
-      if (mode === 'autonomous') {
-        s.pendingInbox.push({ class: 'ADVISORY', kind: 'scope-expansion', workOrder: outcome.workOrder, detail: outcome.detail || {} });
-      } else {
-        s.pendingInbox.push({ class: 'ADVISORY', kind: 'scope-expansion', workOrder: outcome.workOrder, detail: outcome.detail || {}, status: 'open' });
-      }
-      s.needsAnotherPass = true; // re-dispatch with the widened locus next iteration
+      // A scope-expansion is a CROSS-LOCUS decision, and the runner has NO in-run grant
+      // mechanism: the lane's fence is licensed by the persisted work-order spec, which this
+      // pure script cannot rewrite, so a re-pass re-hits the SAME fence and re-emits the SAME
+      // request — an infinite spin to budget/agent-cap exhaustion (the graph-editor-ux-overhaul
+      // slice-4 incident: the SAME trivial main.py/client.py request re-logged ~6× and ~2.4M
+      // tokens burned before the run blocked on an unrelated floor break). So it does NOT set
+      // needsAnotherPass. It is logged ADVISORY for the record AND escalated BREAKING to the
+      // main-session membrane, which owns cross-locus decisions: the orchestrator grants it
+      // (widens the locus / makes the cross-locus edit) and re-launches — in autonomous mode
+      // without waiting on the human, in gated mode with the human's nod. (A future in-run
+      // auto-grant would persist a widened spec + re-provision + collision-check against sibling
+      // lanes; until that exists, escalate-don't-spin is the correct, safe behaviour.)
+      s.pendingInbox.push({ class: 'ADVISORY', kind: 'scope-expansion', workOrder: outcome.workOrder, detail: outcome.detail || {}, ...(mode === 'autonomous' ? {} : { status: 'open' }) });
+      s.blocked.push({ class: 'BREAKING', kind: 'scope-expansion', workOrder: outcome.workOrder, detail: outcome.detail || {} });
       break;
 
     case 'ripple':
@@ -1545,7 +1571,11 @@ while (!verticalSliceGreen && withinBudget(a, budget) && withinAgentCap(state)) 
   verticalSliceGreen = computeGreen(state);
 
   // If nothing changed this pass and we are not green, the loop would spin - only a
-  // checkpoint/ripple/scope-expansion warrants another pass; otherwise break to the gate.
+  // checkpoint/ripple/jurisdiction/seam-undeclared re-pass (each of which changes something
+  // between passes: a re-plan, a provider-first contract, an adjudication, a seam declaration)
+  // warrants another pass; otherwise break to the gate. A scope-expansion is NOT among them -
+  // it has no in-run grant, so it escalates BREAKING (see route()) rather than re-passing, which
+  // is what closes the graph-editor-ux-overhaul slice-4 spin.
   if (!verticalSliceGreen && !state.needsAnotherPass && (state.checkpoints || []).length === 0) break;
 }
 
