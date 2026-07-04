@@ -81,6 +81,26 @@ canonical state.
    because you write it into a *fresh* worktree before any lane exists there — a lane can never seed its
    own descriptor (the fence denies that self-write categorically). You write the descriptor; the
    worker is forbidden to.
+
+   **Every path value MUST be valid JSON — forward slashes only, never native Windows backslashes.**
+   Write `effortRoot` (and any path-valued field) POSIX-style — e.g. `"effortRoot":
+   "C:/work/proj/.reasonable-efforts/x"`, **never** `"C:\work\..."`. A backslash *opens* a JSON string
+   escape, so a raw Windows path (`\w`, `\s`, `\g`, …) makes the descriptor **unparseable** — and the
+   fence's `findLane()` treats an unparseable descriptor **exactly like a missing one**, silently
+   fence-denying the very worker you just provisioned for as "presumed hostile … no provisioned lane"
+   (the 2026-07 graph-editor-ux-overhaul Windows incident: a whole slice stalled with zero signal of the
+   real cause). Convert **every** `\` to `/` in **every** path value before writing; forward slashes are
+   valid for both Node and git on Windows, and POSIX paths contain no backslashes, so this is a safe
+   no-op off Windows.
+
+   **Then verify it parses — mandatory, not optional.** Immediately after writing, confirm the
+   descriptor is valid JSON before you go any further:
+
+       node -e "JSON.parse(require('fs').readFileSync(process.argv[1],'utf8'))" "<worktree>/.reasonable-lane.json"
+
+   If it throws, the descriptor is corrupt: rewrite it with forward-slash paths and re-verify. **Never**
+   announce the dispatch (step 5) over a descriptor that does not parse — a worker dispatched against an
+   unparseable descriptor is the descriptor-less window in disguise, and it fails silently.
 4. **Confirm the journal record — you cannot write it, and you cannot dispatch the writer.** You do
    **not** write `journal.json` yourself (the `journal-writer` scribe is the sole derived-index hand),
    and unlike steps 1–3 this is not something your tools let you *do* at all: you have no Agent tool, so
@@ -179,6 +199,7 @@ readability; never treat it — or the descriptor — as authority.
 | "I'll edit `journal.json` to record the lane" | The scribe is the only derived-index writer. Do not write the journal yourself. |
 | "I have no Agent tool, so I can't dispatch the scribe, so `provisioned` must be false" | `provisioned:true` covers steps 1–3 only (worktree, deps, descriptor) — the capabilities your tools actually give you. Step 4 is a confirm-only read of a record the orchestrator's write-ahead scribe already landed *before you ran*; report what you found as `journalRecorded`, but never let it gate `provisioned`. Reporting `provisioned:false` over a fully-armed physical lane just because you can't personally vouch for a write you were never able to make is a false negative, not honesty. |
 | "The lane already exists, so this is an error" | It is idempotent success. Skip the satisfied steps; never duplicate a worktree or a lane mapping. |
+| "I'll paste the effortRoot path in exactly as given" | On Windows that is a backslash path (`C:\work\…`) — **invalid JSON**, and `findLane()` reads an unparseable descriptor as *no lane*, fence-denying your own worker with no hint of the cause. Forward slashes only; then verify the file parses before you announce the dispatch. |
 | "A descriptor already exists for this work order, so nothing to do" | Only true if it also names the ROLE you were just asked to provision for. A role-transition request (e.g. blind-test-writer after implementer) must rewrite the descriptor's role/testEditsAllowed/locus — leaving a stale role in place fence-denies the next stage's very first tool call. |
 | "It's a checkpoint lane with no commits — nothing to anchor" | A 0-commit lane is lost by reconcile. Ensure one trailered checkpoint commit so `commitsAhead > 0` holds. |
 | "I'll dispatch the worker since I'm already here" | Out of role. You return after the journal record; the orchestrator dispatches. |
