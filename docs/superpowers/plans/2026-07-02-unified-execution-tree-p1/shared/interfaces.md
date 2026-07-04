@@ -23,9 +23,14 @@ export function apply(tree, op)          // mutates tree in place, returns tree;
 export function findByPath(tree, path)   // → Node | null       (path 'a/b/c'; '' → root)
 export function findById(tree, id)       // → { node, path } | null — depth-first pre-order,
                                          //   FIRST match wins; null if not found
+export function displayStatus(node)      // → the DERIVED status shown for a node (see below).
+                                         //   A LEAF shows its own stored status; a CONTAINER
+                                         //   derives from its children and never uses a stored
+                                         //   status that could rot (no cascade, no heal).
 export function countByStatus(tree)      // → { pending, active, done, failed, canceled }
-                                         //   counts every node EXCEPT the root
-export function renderMarkdown(tree)     // → markdown of the tree BODY only (no header):
+                                         //   counts every node EXCEPT the root, BY displayStatus
+export function renderMarkdown(tree)     // → markdown of the tree BODY only (no header); glyph is
+                                         //   displayStatus(node):
                                          //   nested '- <glyph> <label>' bullets, 2-space indent
                                          //   per depth; detail rendered as '  _(detail)_' suffix;
                                          //   active/failed nodes with statusTs get a literal
@@ -70,6 +75,26 @@ export function renderMarkdown(tree)     // → markdown of the tree BODY only (
 
 Totality: ordering problems NEVER throw (auto-create + idempotent merge). Malformed input
 (unknown op, bad status, bad segment) ALWAYS throws — that's a mapper bug surfacing loudly.
+
+### Derived display status (`displayStatus`)
+
+The status *stored* on a node is what events set on it directly (and it stays authoritative for
+the ledger's own attempt arithmetic). The status *shown* — what `renderMarkdown` glyphs and
+`countByStatus` counts — is derived, so a container never holds a value that can rot (this is why
+the tree needs no downward cascade and no heal). Rules, in order:
+
+1. **Leaf** (no children) → its own stored status.
+2. **Authored container terminal wins:** stored `done` (a container only reaches `done` via a
+   node-completed event — trusted even over a crashed/superseded attempt beneath it); or stored
+   `failed`/`canceled` **with a `detail`** (set by a real node-failed / node-downgraded "lost-work
+   crash" / node-canceled event, not a detail-less cascade sweep) → that status.
+3. Otherwise **derive from LIVE direct children** (canceled children excluded from the outcome;
+   among `attempt-<n>` siblings only the highest is live, lower ones are shown but excluded):
+   all live done → `done`; else any live active → `active`; else any live failed → `failed`; else a
+   mix of done+pending → `active`; else `pending`. All children canceled → `canceled`.
+
+A detail-LESS stored `failed` on a container is a cascade scar and is derived straight past — the
+slice-4 fix (a slice transiently blocked while its work finished shows `done`, block kept as a note).
 
 ---
 

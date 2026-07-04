@@ -6,7 +6,7 @@
 import assert from 'node:assert/strict';
 import {
   STATUSES, TERMINAL, GLYPH, createTree, apply,
-  findByPath, findById, countByStatus, renderMarkdown,
+  findByPath, findById, countByStatus, renderMarkdown, displayStatus,
 } from '../lib/progress-tree.mjs';
 
 let passed = 0;
@@ -255,16 +255,16 @@ check('findById returns the depth-first FIRST match among duplicate ids in diffe
 
 // ── 14. countByStatus — excludes the root, counts every descendant ───────────
 
-check('countByStatus excludes the root and counts every descendant', () => {
+check('countByStatus excludes the root and counts every descendant by its DERIVED status', () => {
   const t = createTree('root');
   apply(t, { op: 'status', path: '', status: 'active' }); // set the ROOT's own status explicitly
-  apply(t, { op: 'inject', path: 'a', status: 'done' });
-  apply(t, { op: 'inject', path: 'b', status: 'failed' });
-  apply(t, { op: 'inject', path: 'b/c', status: 'active' });
-  apply(t, { op: 'inject', path: 'd' }); // pending by default
+  apply(t, { op: 'inject', path: 'a', status: 'done' });    // leaf
+  apply(t, { op: 'inject', path: 'b', status: 'failed' });  // CONTAINER (has b/c) — stored 'failed'…
+  apply(t, { op: 'inject', path: 'b/c', status: 'active' }); // …but derives 'active' from this live child
+  apply(t, { op: 'inject', path: 'd' }); // pending leaf by default
   const counts = countByStatus(t);
-  assert.deepEqual(counts, { pending: 1, active: 1, done: 1, failed: 1, canceled: 0 },
-    'root is active but is NOT counted — only b/c contributes the single active count');
+  assert.deepEqual(counts, { pending: 1, active: 2, done: 1, failed: 0, canceled: 0 },
+    'root excluded; b is counted by its DERIVED status (active, from b/c) not its stored failed — so active=2 (b + b/c), failed=0');
 });
 
 // ── 15. renderMarkdown — invariants, not a byte golden ────────────────────────
@@ -273,7 +273,10 @@ check('renderMarkdown: glyph+label, 2-space-per-depth indent, detail suffix, sta
   const t = createTree('Root Label');
   apply(t, { op: 'inject', path: 'a', label: 'Task A' });
   apply(t, { op: 'status', path: 'a', status: 'done' });
+  // a is a CONTAINER; its glyph is derived from its child, so the child must also be done for
+  // 'a' to display done. (detail still renders on a done node.)
   apply(t, { op: 'inject', path: 'a/b', label: 'Sub B', detail: 'extra detail' });
+  apply(t, { op: 'status', path: 'a/b', status: 'done' });
   apply(t, { op: 'note', path: 'a', text: 'noted with ts', ts: '2026-07-02T09:00:00Z' });
   apply(t, { op: 'note', path: 'a', text: 'noted without ts' });
   apply(t, { op: 'inject', path: 'c', label: 'Task C' });
@@ -406,6 +409,98 @@ check('renderMarkdown never surfaces a note attached to the root node itself', (
   apply(t, { op: 'note', path: '', text: 'a root-level note' });
   const md = renderMarkdown(t);
   assert.ok(!md.includes('a root-level note'), 'a root-level note must not appear anywhere in the rendered tree body');
+});
+
+// ── 20. displayStatus — containers derive from children, leaves keep their own ────
+
+check('displayStatus: a leaf shows its own stored status', () => {
+  const t = createTree('fx');
+  apply(t, { op: 'inject', path: 'leaf', status: 'failed' });
+  assert.equal(displayStatus(findByPath(t, 'leaf')), 'failed');
+});
+
+check('displayStatus: the slice-4 scar is gone — a container whose stored status was cascade-failed shows done once its children are done', () => {
+  const t = createTree('fx');
+  // attempt-1 container: stored 'failed' (as a cascade sweep once left it) with an all-done subtree.
+  apply(t, { op: 'inject', path: 'WO/attempt-1/impl', status: 'done' });
+  apply(t, { op: 'status', path: 'WO/attempt-1', status: 'failed' }); // the stale stored scar
+  apply(t, { op: 'status', path: 'WO', status: 'done' });
+  assert.equal(displayStatus(findByPath(t, 'WO/attempt-1')), 'done',
+    'the container derives done from its done child — the stored failed is ignored, no ✗ wedged under WO');
+  assert.equal(displayStatus(findByPath(t, 'WO')), 'done');
+});
+
+check('displayStatus: an AUTHORED container failure (detail-bearing) overrides derivation — a lost-work crash whose sub-steps finished still reads failed', () => {
+  const t = createTree('fx');
+  apply(t, { op: 'inject', path: 'WO/attempt-2/a', status: 'done' });
+  apply(t, { op: 'inject', path: 'WO/attempt-2/b', status: 'done' });
+  // the process crashed after the sub-steps recorded done — authored failed WITH a reason
+  apply(t, { op: 'status', path: 'WO/attempt-2', status: 'failed', detail: 'lost-work crash' });
+  assert.equal(displayStatus(findByPath(t, 'WO/attempt-2')), 'failed',
+    'a detail-bearing (authored) failure stands even though every child is done — the crash invalidated the work');
+});
+
+check('displayStatus: an authored node-completed (done) on a container is trusted over a crashed/superseded attempt underneath it', () => {
+  const t = createTree('fx');
+  // attempt-2 crashed (authored failed) but the WO itself was later node-completed → the WO is done,
+  // with the crash visible as history underneath.
+  apply(t, { op: 'inject', path: 'WO/attempt-2/impl', status: 'done' });
+  apply(t, { op: 'status', path: 'WO/attempt-2', status: 'failed', detail: 'lost-work crash' });
+  apply(t, { op: 'status', path: 'WO', status: 'done' }); // node-completed
+  assert.equal(displayStatus(findByPath(t, 'WO')), 'done', 'authored completion is trusted — the crash does not bubble up to the recovered WO');
+  assert.equal(displayStatus(findByPath(t, 'WO/attempt-2')), 'failed', 'the crashed attempt stays failed as history');
+});
+
+check('displayStatus: a detail-LESS container failure is a cascade scar → derived past, NOT shown failed', () => {
+  const t = createTree('fx');
+  apply(t, { op: 'inject', path: 'C/x', status: 'done' });
+  apply(t, { op: 'status', path: 'C', status: 'failed' }); // no detail → cascade scar
+  assert.equal(displayStatus(findByPath(t, 'C')), 'done',
+    'no reason on the failure means it came from a sweep, not an event — derive past it');
+});
+
+check('displayStatus: a container with a genuinely failed live child derives failed', () => {
+  const t = createTree('fx');
+  apply(t, { op: 'inject', path: 'WO/a', status: 'done' });
+  apply(t, { op: 'inject', path: 'WO/b', status: 'failed' }); // real failed leaf, no recovery
+  assert.equal(displayStatus(findByPath(t, 'WO')), 'failed');
+});
+
+check('displayStatus: active dominates failed among live children (work still in motion)', () => {
+  const t = createTree('fx');
+  apply(t, { op: 'inject', path: 'WO/a', status: 'failed' });
+  apply(t, { op: 'inject', path: 'WO/b', status: 'active' });
+  assert.equal(displayStatus(findByPath(t, 'WO')), 'active');
+});
+
+check('displayStatus: a superseded attempt-N is excluded — WO with failed attempt-1 + done attempt-2 shows done', () => {
+  const t = createTree('fx');
+  apply(t, { op: 'inject', path: 'WO/attempt-1/x', status: 'failed' });
+  apply(t, { op: 'status', path: 'WO/attempt-1', status: 'failed' });
+  apply(t, { op: 'inject', path: 'WO/attempt-2/x', status: 'done' });
+  apply(t, { op: 'status', path: 'WO/attempt-2', status: 'done' });
+  assert.equal(displayStatus(findByPath(t, 'WO')), 'done',
+    'the live attempt (highest N) represents the family; the failed attempt-1 is excluded from derivation');
+  assert.equal(displayStatus(findByPath(t, 'WO/attempt-1')), 'failed',
+    'but the superseded attempt-1 is still SHOWN as failed — visible history, just not counted toward the parent');
+});
+
+check('displayStatus: a mix of done + pending (nothing active) reads as active — in progress', () => {
+  const t = createTree('fx');
+  apply(t, { op: 'inject', path: 'WO/a', status: 'done' });
+  apply(t, { op: 'inject', path: 'WO/b', status: 'pending' });
+  assert.equal(displayStatus(findByPath(t, 'WO')), 'active');
+});
+
+check('displayStatus: canceled children are excluded; all-canceled derives canceled', () => {
+  const t = createTree('fx');
+  apply(t, { op: 'inject', path: 'WO/a', status: 'done' });
+  apply(t, { op: 'inject', path: 'WO/b', status: 'canceled' });
+  assert.equal(displayStatus(findByPath(t, 'WO')), 'done', 'a canceled child does not drag the parent off done');
+  const t2 = createTree('fx');
+  apply(t2, { op: 'inject', path: 'X/a', status: 'canceled' });
+  apply(t2, { op: 'inject', path: 'X/b', status: 'canceled' });
+  assert.equal(displayStatus(findByPath(t2, 'X')), 'canceled', 'a container whose every child is canceled is itself canceled');
 });
 
 if (process.exitCode) console.error(`\nprogress-tree: FAILURES above (${passed} passed).`);
