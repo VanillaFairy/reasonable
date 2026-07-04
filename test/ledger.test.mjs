@@ -152,7 +152,7 @@ check('exports: KINDS is exact; EVENT_SCHEMAS is a registry that excludes legacy
 // root, specifically so that resolving `workOrder: 'WO-1'` / `under: 'WO-1'` exercises REAL
 // findById resolution (segment id -> full path), not a trivial identity case where id === path.
 
-check('append: report-started stamps seq + controller ts, resolves attempt-1 absolute node (dispatched WO, no prior attempts)', () => {
+check('append: report-started stamps seq + controller ts, resolves the absolute node under the live attempt (base, no wrapper)', () => {
   const root = newEffort();
   seedLedger(root, [
     { seq: 1, type: 'node-planned', node: 's1/WO-1', kind: 'work-order', title: 'wire the widget' },
@@ -170,13 +170,13 @@ check('append: report-started stamps seq + controller ts, resolves attempt-1 abs
   assert.equal(stored.seq, before + 1, 'seq is script-assigned, last + 1');
   assert.notEqual(stored.ts, '1999-01-01T00:00:00.000Z', 'agent-supplied ts is overwritten, never trusted');
   assert.match(stored.ts, /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d+)?Z$/, 'controller stamps its own ISO UTC clock');
-  assert.equal(stored.node, 's1/WO-1/attempt-1/impl/§4', 'absolute node = path(under) + attempt-1 (no prior attempts) + relative');
+  assert.equal(stored.node, 's1/WO-1/impl/§4', 'absolute node = path(under) + attempt-1 (no prior attempts) + relative');
   assert.equal(stored.under, 'WO-1', 'under is kept as provenance');
   // The returned stamped event must reflect the same ts-overwrite + resolved node (seq is assigned
   // inside the appendJsonl lock; whether the returned object also carries it back is left open —
   // see report's "ambiguities to escalate").
   assert.notEqual(r.event.ts, '1999-01-01T00:00:00.000Z');
-  assert.equal(r.event.node, 's1/WO-1/attempt-1/impl/§4');
+  assert.equal(r.event.node, 's1/WO-1/impl/§4');
 });
 
 check('append: attempt arithmetic — a fresh node (no attempts yet) dispatches at attempt 1, workOrder resolves to its real path', () => {
@@ -550,9 +550,10 @@ check('append: first dispatch of s2/retro stamps attempt 1 even when s1/retro (s
   const r = append(root, { type: 'node-dispatched', node: 's2/retro', kind: 'phase' });
   assert.equal(r.ok, true, r.error);
   assert.equal(r.event.attempt, 1, 'fresh node dispatches at attempt 1 — s1/retro\'s failure must not leak in');
+  assert.equal(r.event.node, 's2/retro', 'attempt 1 is the base node itself — no [k] suffix, no leaked reopen');
   const tree = buildTree(root);
   const s2retro = findByPath(tree, 's2/retro');
-  assert.deepEqual(s2retro.children.map((c) => c.id), ['attempt-1'], 'no phantom sealed attempt-1 fabricated');
+  assert.deepEqual(s2retro.children.map((c) => c.id), [], 'no attempt wrapper child, and no phantom s2/retro[2] sibling');
 });
 
 check('append: dispatching a node whose path is unplanned still fails loud even when its last segment exists elsewhere', () => {
@@ -594,18 +595,22 @@ check('append: a malformed report-* relative path (whitespace segment) is reject
 // — on BOTH attempt-1 and attempt-2, since the real-world corruption only ever surfaced on a
 // reopened (attempt-2) work order.
 
-check('append: report-started on attempt-2 (reopened WO) resolves a clean, non-doubled absolute node', () => {
+check('append: report-started on a reopened WO resolves under the live `[2]` sibling — clean, non-doubled', () => {
   const root = newEffort();
   seedLedger(root, [
     { seq: 1, type: 'node-planned', node: 's1/WO-1', kind: 'work-order', title: 'wire it' },
     { seq: 2, type: 'node-dispatched', node: 's1/WO-1', kind: 'work-order', attempt: 1 },
-    { seq: 3, type: 'node-downgraded', node: 's1/WO-1', attempt: 1 },
-    { seq: 4, type: 'node-dispatched', node: 's1/WO-1', kind: 'work-order', attempt: 2 },
+    { seq: 3, type: 'node-downgraded', node: 's1/WO-1' }, // seals the first attempt failed
   ]);
+  // The reopen dispatch goes through the controller so it MINTS the sibling s1/WO-1[2].
+  const d = append(root, { type: 'node-dispatched', node: 's1/WO-1', kind: 'work-order' });
+  assert.equal(d.ok, true, d.error);
+  assert.equal(d.event.node, 's1/WO-1[2]', 'the reopen dispatch mints the sibling, not a wrapper');
+  assert.equal(d.event.attempt, 2);
   const r = append(root, { type: 'report-started', under: 'WO-1', node: 'audit/mutation-sampling' });
   assert.equal(r.ok, true, r.error);
   assert.equal(r.event.attempt, 2);
-  assert.equal(r.event.node, 's1/WO-1/attempt-2/audit/mutation-sampling', 'appended ONLY the relative segment — no doubled prefix');
+  assert.equal(r.event.node, 's1/WO-1[2]/audit/mutation-sampling', 'the report lands under the live sibling — appended only the relative segment, no doubled prefix');
 });
 
 check('append: report-started rejects an already-qualified `node` (the full attempt path echoed back) on attempt-1', () => {

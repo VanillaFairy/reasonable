@@ -93,11 +93,9 @@ check('lost-work downgrade with a resolvable WO emits node-downgraded and regene
   assert.ok(progress, 'progress.json was regenerated (append()\'s default regen:true)');
   const wo1 = progress.children.find((c) => c.id === 'WO-1');
   assert.ok(wo1, 'WO-1 node present in the progress tree');
-  assert.equal(wo1.status, 'pending', 'WO-1 itself is pending, awaiting redispatch');
-  const attempt1 = wo1.children.find((c) => c.id === 'attempt-1');
-  assert.ok(attempt1, 'attempt-1 subtree present');
-  assert.equal(attempt1.status, 'failed', 'the attempt subtree is sealed failed');
-  assert.equal(attempt1.detail, 'lost-work crash', 'the attempt carries the lost-work crash detail');
+  assert.equal(wo1.status, 'failed', 'the downgrade seals the WO (its live attempt) failed');
+  assert.equal(wo1.detail, 'lost-work crash', 'carrying the lost-work crash detail — the retry will be a sibling');
+  assert.deepEqual(wo1.children.map((c) => c.id), [], 'no attempt wrapper — attempt 1 IS the WO node itself');
 });
 
 // 2 — DISCRIMINATOR: no prior node-planned/node-dispatched for WO-1 → append() cannot resolve

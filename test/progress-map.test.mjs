@@ -19,7 +19,7 @@ import { tmpdir } from 'node:os';
 import { join, basename } from 'node:path';
 
 import { EVENT_MAP, foldEvents, buildTree, writeMirror } from '../lib/progress-map.mjs';
-import { findByPath } from '../lib/progress-tree.mjs';
+import { findByPath, countByStatus, displayStatus } from '../lib/progress-tree.mjs';
 
 const tmps = [];
 function newEffort() {
@@ -47,60 +47,58 @@ function check(name, fn) {
 // ── the reopen fixture (case 1 & case 8 share it) ───────────────────────────────────
 // A work order is planned, dispatched, does real work (§4 finishes, §5 is left
 // active), then crashes (downgraded) and is redispatched as attempt-2.
+// The fold receives events with ALREADY-STAMPED absolute paths (the ledger controller minted the
+// `[k]` sibling). A re-run of WO-1 is the sibling WO-1[2] — no attempt wrapper.
 const WO = 'slice-1/WO-1';
+const WO2 = 'slice-1/WO-1[2]';
 function reopenEvents() {
   return [
     { seq: 1, type: 'node-planned', node: WO, kind: 'work-order', title: 'Build parser', ts: '2026-07-01T09:00:00Z' },
-    { seq: 2, type: 'node-dispatched', node: WO, kind: 'work-order', attempt: 1, ts: '2026-07-01T09:00:01Z' },
-    { seq: 3, type: 'report-started', node: `${WO}/attempt-1/implementation/§4`, label: '§4', ts: '2026-07-01T09:00:05Z' },
-    { seq: 4, type: 'report-finished', node: `${WO}/attempt-1/implementation/§4`, ts: '2026-07-01T09:05:00Z' },
-    { seq: 5, type: 'report-started', node: `${WO}/attempt-1/implementation/§5`, label: '§5', ts: '2026-07-01T09:05:05Z' },
-    { seq: 6, type: 'node-downgraded', node: WO, attempt: 1, ts: '2026-07-01T09:10:00Z' },
-    { seq: 7, type: 'node-dispatched', node: WO, kind: 'work-order', attempt: 2, ts: '2026-07-01T09:15:00Z' },
-    { seq: 8, type: 'report-started', node: `${WO}/attempt-2/implementation/§4`, label: '§4', ts: '2026-07-01T09:15:05Z' },
+    { seq: 2, type: 'node-dispatched', node: WO, kind: 'work-order', ts: '2026-07-01T09:00:01Z' },
+    { seq: 3, type: 'report-started', node: `${WO}/implementation/§4`, label: '§4', ts: '2026-07-01T09:00:05Z' },
+    { seq: 4, type: 'report-finished', node: `${WO}/implementation/§4`, ts: '2026-07-01T09:05:00Z' },
+    { seq: 5, type: 'report-started', node: `${WO}/implementation/§5`, label: '§5', ts: '2026-07-01T09:05:05Z' }, // left in-flight
+    { seq: 6, type: 'node-downgraded', node: WO, ts: '2026-07-01T09:10:00Z' },                 // seals WO failed (lost-work crash)
+    { seq: 7, type: 'node-dispatched', node: WO2, kind: 'work-order', ts: '2026-07-01T09:15:00Z' }, // retry sibling
+    { seq: 8, type: 'report-started', node: `${WO2}/implementation/§4`, label: '§4', ts: '2026-07-01T09:15:05Z' },
   ];
 }
 
 // ═══ Case 1 — reopen acceptance (the spec's end-to-end) ════════════════════════════
-check('reopen acceptance: crash + redispatch seals attempt-1, preserves its done work, opens attempt-2', () => {
+check('reopen acceptance: a lost-work crash seals the first attempt failed, its done work survives, and the retry is a live SIBLING', () => {
   const tree = foldEvents(reopenEvents(), 'demo');
 
-  const attempt1 = findByPath(tree, `${WO}/attempt-1`);
-  assert.ok(attempt1, 'attempt-1 exists');
-  assert.equal(attempt1.status, 'failed', 'attempt-1 sealed failed by the downgrade');
-  assert.equal(attempt1.detail, 'lost-work crash');
-
-  const doneLeaf = findByPath(tree, `${WO}/attempt-1/implementation/§4`);
-  assert.ok(doneLeaf, '§4 leaf survives under the sealed attempt');
-  assert.equal(doneLeaf.status, 'done', 'a TERMINAL descendant is never swept by the recursive seal');
-
-  const strandedLeaf = findByPath(tree, `${WO}/attempt-1/implementation/§5`);
-  assert.ok(strandedLeaf, '§5 leaf survives under the sealed attempt');
-  assert.equal(strandedLeaf.status, 'failed', 'a non-terminal (active) descendant IS swept by the recursive seal');
-
-  const attempt2 = findByPath(tree, `${WO}/attempt-2`);
-  assert.ok(attempt2, 'attempt-2 exists after redispatch');
-
   const wo = findByPath(tree, WO);
-  assert.ok(wo, 'the work-order node itself exists');
-  assert.equal(wo.status, 'active', 'redispatch returns the WO node to active');
+  assert.ok(wo, 'the first-attempt WO node exists');
+  assert.equal(wo.status, 'failed', 'downgrade sealed it failed');
+  assert.equal(wo.detail, 'lost-work crash');
+  assert.equal(displayStatus(wo), 'failed', 'and it DISPLAYS failed — an authored, detail-bearing crash stands even over its done sub-step');
+
+  const doneLeaf = findByPath(tree, `${WO}/implementation/§4`);
+  assert.equal(doneLeaf.status, 'done', 'its finished sub-step survives, untouched (no cascade)');
+  const strandedLeaf = findByPath(tree, `${WO}/implementation/§5`);
+  assert.equal(strandedLeaf.status, 'active', 'its in-flight sub-step is NOT swept — it just stops mattering (the WO is superseded)');
+
+  const wo2 = findByPath(tree, WO2);
+  assert.ok(wo2, 'the retry sibling WO-1[2] exists — no attempt wrapper node');
+  assert.equal(findByPath(tree, `${WO}/attempt-1`), null, 'there is NO attempt-1 wrapper anywhere');
+
+  // the parent slice reads the LIVE attempt (WO-1[2]) — the failed first attempt is excluded.
+  assert.equal(displayStatus(findByPath(tree, 'slice-1')), 'active', 'the slice is active on the live retry, not failed by the superseded crash');
 });
 
 // ═══ Case 2 — checkpoint continuation ══════════════════════════════════════════════
-check('checkpoint continuation: re-dispatching the SAME attempt is a continuation, not a new attempt', () => {
+check('checkpoint continuation: re-dispatching the SAME node is a continuation — no new sibling', () => {
   const events = [
     { seq: 1, type: 'node-planned', node: 'slice-1/WO-2', kind: 'work-order', title: 'Undo window', ts: '2026-07-01T10:00:00Z' },
-    { seq: 2, type: 'node-dispatched', node: 'slice-1/WO-2', kind: 'work-order', attempt: 1, ts: '2026-07-01T10:00:01Z' },
+    { seq: 2, type: 'node-dispatched', node: 'slice-1/WO-2', kind: 'work-order', ts: '2026-07-01T10:00:01Z' },
     { seq: 3, type: 'node-checkpointed', node: 'slice-1/WO-2', ts: '2026-07-01T10:05:00Z' },
-    { seq: 4, type: 'node-dispatched', node: 'slice-1/WO-2', kind: 'work-order', attempt: 1, ts: '2026-07-01T10:10:00Z' },
+    { seq: 4, type: 'node-dispatched', node: 'slice-1/WO-2', kind: 'work-order', ts: '2026-07-01T10:10:00Z' },
   ];
   const tree = foldEvents(events, 'demo');
   const wo = findByPath(tree, 'slice-1/WO-2');
-  assert.equal(wo.children.length, 1, 'exactly one attempt child, not two');
   assert.equal(wo.status, 'active', 'the WO is active again after the reclaim');
-  const attempt1 = findByPath(tree, 'slice-1/WO-2/attempt-1');
-  assert.ok(attempt1);
-  assert.notEqual(attempt1.status, 'failed', 'no failed subtree from a mere checkpoint/reclaim cycle');
+  assert.equal(findByPath(tree, 'slice-1/WO-2[2]'), null, 'a checkpoint reclaim mints NO retry sibling');
 });
 
 // ═══ Case 3 — every Family-1 type maps per the table ═══════════════════════════════
@@ -142,18 +140,19 @@ check('family-1: node-failed → failed + reason as detail', () => {
   assert.equal(n.detail, 'walked off a cliff');
 });
 
-check('family-1: node-canceled → canceled, recursive over non-terminal descendants', () => {
+check('family-1: node-canceled → the node reads canceled (authored, detail-bearing) regardless of its children', () => {
   const tree = foldEvents([
     { seq: 1, type: 'node-planned', node: 'x', kind: 'work-order', title: 'T' },
-    { seq: 2, type: 'node-dispatched', node: 'x', kind: 'work-order', attempt: 1 },
-    { seq: 3, type: 'report-started', node: 'x/attempt-1/implementation/§1', label: '§1' },
+    { seq: 2, type: 'node-dispatched', node: 'x', kind: 'work-order' },
+    { seq: 3, type: 'report-started', node: 'x/implementation/§1', label: '§1' },
     { seq: 4, type: 'node-canceled', node: 'x', reason: 'scope cut' },
   ], 'demo');
   const n = findByPath(tree, 'x');
   assert.equal(n.status, 'canceled');
   assert.equal(n.detail, 'scope cut');
-  const leaf = findByPath(tree, 'x/attempt-1/implementation/§1');
-  assert.equal(leaf.status, 'canceled', 'the active leaf is swept along recursively');
+  assert.equal(displayStatus(n), 'canceled', 'an authored canceled with a reason wins over derivation');
+  // No recursive sweep: the in-flight leaf keeps its own status (it just sits under a ⊘ parent).
+  assert.equal(findByPath(tree, 'x/implementation/§1').status, 'active', 'the leaf is NOT swept — no cascade');
 });
 
 check('family-1: concluded → the effort root goes done', () => {
@@ -168,18 +167,19 @@ check('family-1: approval-resolved → a note on the root, never structure', () 
   assert.ok(root.notes.some((n) => n.text === 'approval resolved: INBOX-3'));
 });
 
-// ═══ Case 4 — a redispatch seals WITHOUT clobbering an existing crash detail ═══════
-check('node-dispatched attempt>1 reseals the prior attempt but never overwrites its existing crash detail', () => {
+// ═══ Case 4 — a downgrade seals the first attempt; the retry sibling never clobbers its crash ═══
+check('node-downgraded seals the node failed with a crash detail; dispatching the retry sibling never touches it', () => {
   const events = [
     { seq: 1, type: 'node-planned', node: 'x', kind: 'work-order', title: 'T' },
-    { seq: 2, type: 'node-dispatched', node: 'x', kind: 'work-order', attempt: 1 },
-    { seq: 3, type: 'node-downgraded', node: 'x', attempt: 1 },
-    { seq: 4, type: 'node-dispatched', node: 'x', kind: 'work-order', attempt: 2 },
+    { seq: 2, type: 'node-dispatched', node: 'x', kind: 'work-order' },
+    { seq: 3, type: 'node-downgraded', node: 'x' },              // seals x failed, detail 'lost-work crash'
+    { seq: 4, type: 'node-dispatched', node: 'x[2]', kind: 'work-order' }, // retry is a SIBLING
   ];
   const tree = foldEvents(events, 'demo');
-  const attempt1 = findByPath(tree, 'x/attempt-1');
-  assert.equal(attempt1.status, 'failed');
-  assert.equal(attempt1.detail, 'lost-work crash', "node-dispatched's own seal carries no detail — the downgrade's crash detail must survive");
+  const first = findByPath(tree, 'x');
+  assert.equal(first.status, 'failed');
+  assert.equal(first.detail, 'lost-work crash', "the first attempt keeps its crash detail — the retry is a separate sibling, never a reseal of x");
+  assert.ok(findByPath(tree, 'x[2]'), 'the retry sibling x[2] exists');
 });
 
 // ═══ Case 5 — Family-2 worker reports (already-absolute node paths) ════════════════
@@ -196,27 +196,27 @@ check('family-2: report-started → injects + active, label + statusTs from the 
   assert.equal(leaf.statusTs, '2026-07-01T12:00:00Z');
 });
 
-check('family-2: report-started activates every ancestor container along the way, not just the leaf', () => {
+check('family-2: a container DISPLAYS active while a leaf runs under it — by derivation, no ancestor-nudging op', () => {
   const tree = foldEvents([
     { seq: 1, type: 'node-planned', node: 'x', kind: 'work-order', title: 'T' },
-    { seq: 2, type: 'node-dispatched', node: 'x', kind: 'work-order', attempt: 1 },
-    { seq: 3, type: 'report-started', node: 'x/attempt-1/implementation/§7', label: '§7' },
+    { seq: 2, type: 'node-dispatched', node: 'x', kind: 'work-order' },
+    { seq: 3, type: 'report-started', node: 'x/implementation/§7', label: '§7' },
   ], 'demo');
-  assert.equal(findByPath(tree, 'x').status, 'active', 'the work order itself');
-  assert.equal(findByPath(tree, 'x/attempt-1').status, 'active',
-    'the attempt-1 container — this is the reported bug: it used to stay "· pending" while real work ran underneath it');
-  assert.equal(findByPath(tree, 'x/attempt-1/implementation').status, 'active', 'the intermediate section folder too');
+  // The intermediate `implementation` folder is a pending STUB in stored form, but DISPLAYS active
+  // because its child is active — a container is never shown less "in motion" than the work under it.
+  assert.equal(displayStatus(findByPath(tree, 'x')), 'active', 'the work order itself');
+  assert.equal(displayStatus(findByPath(tree, 'x/implementation')), 'active', 'the intermediate section folder, derived');
 });
 
-check('family-2: ancestor activation never resurrects an ancestor that has already reached a terminal status', () => {
+check('family-2: a late report under a sealed (crashed) node does NOT resurrect it — authored failure wins over derivation', () => {
   const tree = foldEvents([
     { seq: 1, type: 'node-planned', node: 'x', kind: 'work-order', title: 'T' },
-    { seq: 2, type: 'node-dispatched', node: 'x', kind: 'work-order', attempt: 1 },
-    { seq: 3, type: 'node-downgraded', node: 'x', attempt: 1 }, // seals x/attempt-1 failed
-    { seq: 4, type: 'report-started', node: 'x/attempt-1/late-straggler', label: 'late' },
+    { seq: 2, type: 'node-dispatched', node: 'x', kind: 'work-order' },
+    { seq: 3, type: 'node-downgraded', node: 'x' },                     // seals x failed (crash)
+    { seq: 4, type: 'report-started', node: 'x/late-straggler', label: 'late' },
   ], 'demo');
-  assert.equal(findByPath(tree, 'x/attempt-1').status, 'failed',
-    'a sealed attempt must stay failed — ancestor activation only ever promotes a PENDING ancestor, never a terminal one');
+  assert.equal(displayStatus(findByPath(tree, 'x')), 'failed',
+    'a detail-bearing crash stands even though a late leaf is active underneath — the authored failure is not derived past');
 });
 
 check('family-2: report-finished → done', () => {
@@ -323,45 +323,29 @@ check('legacy: an unknown type with no node and no workOrder notes the root with
   assert.ok(root.notes.some((n) => n.text === 'totally-unknown'));
 });
 
-// ═══ Orphan sweep — a terminal transition closes stray ACTIVE descendants (lost-finish) ══
-// A sub-report starts but its own finish event is lost (e.g. node-path drift stamps the finish
-// onto a differently-pathed twin), so it lingers ▶active under a node that later completes. The
-// parent's terminal transition must sweep the orphan closed — no stale "active 4h ago" leaf under
-// a ✓done parent — while SPARING pending (never-run) descendants.
-check('orphan sweep: report-finished closes a stray ACTIVE descendant whose own finish was lost', () => {
+// ═══ Orphans need no sweep — an authored terminal DISPLAYS correctly over a stray active leaf ══
+// A sub-report starts but its own finish is lost, so it lingers ▶active under a node that later
+// completes. No cascade sweeps it: the parent carries an AUTHORED terminal (node-completed →
+// done), and displayStatus trusts that over derivation, so the orphan simply stops mattering.
+check('no-sweep: a node-completed parent DISPLAYS done even with a stray active leaf whose finish was lost', () => {
   const tree = foldEvents([
     { seq: 1, type: 'node-planned', node: 'x', kind: 'work-order', title: 'T' },
-    { seq: 2, type: 'node-dispatched', node: 'x', kind: 'work-order', attempt: 1 },
-    { seq: 3, type: 'report-started', node: 'x/attempt-1/audit/mutation-sampling', label: 'mutation-sampling' },
-    { seq: 4, type: 'report-started', node: 'x/attempt-1/audit/mutation-sampling/run', label: 'run', ts: '2026-07-01T15:01:00Z' },
-    { seq: 5, type: 'report-finished', node: 'x/attempt-1/audit/mutation-sampling', ts: '2026-07-01T15:10:00Z' },
-  ], 'demo');
-  assert.equal(findByPath(tree, 'x/attempt-1/audit/mutation-sampling').status, 'done', 'the finished node is done');
-  assert.equal(findByPath(tree, 'x/attempt-1/audit/mutation-sampling/run').status, 'done',
-    'the orphaned in-flight `run` child (its own finish lost) is swept done — no stale ▶active leaf under a ✓done parent');
-});
-
-check('orphan sweep spares a PENDING descendant: node-completed must not fake-complete a never-run step', () => {
-  const tree = foldEvents([
-    { seq: 1, type: 'node-planned', node: 'x', kind: 'work-order', title: 'T' },
-    { seq: 2, type: 'report-started', node: 'x/live', label: 'live' },              // active, finish lost
-    { seq: 3, type: 'node-planned', node: 'x/todo', kind: 'step', title: 'Todo' },  // pending, never started
+    { seq: 2, type: 'node-dispatched', node: 'x', kind: 'work-order' },
+    { seq: 3, type: 'report-started', node: 'x/audit/run', label: 'run' }, // finish lost → stays active in stored form
     { seq: 4, type: 'node-completed', node: 'x', ts: '2026-07-01T16:00:00Z' },
   ], 'demo');
-  assert.equal(findByPath(tree, 'x').status, 'done');
-  assert.equal(findByPath(tree, 'x/live').status, 'done', 'an orphaned ACTIVE child is swept done');
-  assert.equal(findByPath(tree, 'x/todo').status, 'pending', 'a PENDING child is SPARED — never-run work is not fake-completed');
+  assert.equal(displayStatus(findByPath(tree, 'x')), 'done', 'authored node-completed is trusted — no stale ▶ drags it off done');
+  assert.equal(findByPath(tree, 'x/audit/run').status, 'active', 'the orphan is NOT mutated — it is simply not counted against the done parent');
 });
 
-check('orphan sweep: node-failed sweeps its stray ACTIVE descendants to failed', () => {
+check('no-sweep: a slice that is node-failed DISPLAYS failed (authored, detail-bearing) while its in-flight child keeps its own status', () => {
   const tree = foldEvents([
     { seq: 1, type: 'node-planned', node: 'x', kind: 'slice', title: 'Slice' },
-    { seq: 2, type: 'report-started', node: 'x/wo/attempt-1', label: 'wo' },        // active
+    { seq: 2, type: 'report-started', node: 'x/wo', label: 'wo' }, // active
     { seq: 3, type: 'node-failed', node: 'x', reason: 'slice failed', ts: '2026-07-01T16:51:00Z' },
   ], 'demo');
-  assert.equal(findByPath(tree, 'x').status, 'failed');
-  assert.equal(findByPath(tree, 'x/wo/attempt-1').status, 'failed',
-    'an in-flight descendant of a FAILED node is swept failed, not left ▶active');
+  assert.equal(displayStatus(findByPath(tree, 'x')), 'failed', 'the authored node-failed (with a reason) is respected');
+  assert.equal(findByPath(tree, 'x/wo').status, 'active', 'the child is not swept — no cascade');
 });
 
 // ═══ Case 8 — fold order-independence (sorts a COPY, never mutates the input) ══════
@@ -401,7 +385,7 @@ check('writeMirror: writes progress.json (tree + counts) and progress.md (header
     { seq: 1, type: 'node-planned', node: 'slice-1', kind: 'slice', title: 'Slice One' },
     { seq: 2, type: 'node-completed', node: 'slice-1' },
     { seq: 3, type: 'node-planned', node: 'slice-2', kind: 'slice', title: 'Slice Two' },
-    { seq: 4, type: 'node-dispatched', node: 'slice-2', kind: 'slice', attempt: 1 },
+    { seq: 4, type: 'node-dispatched', node: 'slice-2', kind: 'slice' },
   ]);
   writeInbox(root, { items: [{ id: 'INBOX-1', kind: 'topology-smell' }] });
 
@@ -413,9 +397,9 @@ check('writeMirror: writes progress.json (tree + counts) and progress.md (header
   const j = JSON.parse(readFileSync(join(root, '.reasonable', 'progress.json'), 'utf8'));
   assert.ok(j.counts, 'progress.json carries a counts object');
   assert.equal(j.counts.done, 1, 'slice-1 is done');
-  // slice-2 AND its freshly-opened slice-2/attempt-1 are both active — a container is never
-  // left showing pending while the attempt underneath it is doing real work.
-  assert.equal(j.counts.active, 2, 'slice-2 is active, and so is its attempt-1 child');
+  // slice-2 is active — there is NO attempt wrapper node anymore, so it contributes exactly one
+  // active count, not two.
+  assert.equal(j.counts.active, 1, 'slice-2 is active — no wrapper child');
   assert.equal(j.counts.failed, 0);
   // Tree data lives either spread at the top level or nested under .tree — interfaces.md's
   // phrasing ("the tree, plus {counts}") does not pin which, so tolerate either reading.
@@ -424,8 +408,8 @@ check('writeMirror: writes progress.json (tree + counts) and progress.md (header
 
   const md = readFileSync(join(root, '.reasonable', 'progress.md'), 'utf8');
   assert.match(md, /^# reasonable · acme.*~5 agents.*tok/m, 'header carries the effort name and, since journal.cost is set, a cost segment');
-  assert.match(md, /1\/3 done/, 'counts line: 1 of 3 non-root nodes done');
-  assert.match(md, /2 active/, 'counts line: 2 active (slice-2 + its attempt-1 child)');
+  assert.match(md, /1\/2 done/, 'counts line: 1 of 2 non-root nodes done');
+  assert.match(md, /1 active/, 'counts line: 1 active (slice-2, no wrapper)');
   assert.match(md, /0 failed/, 'counts line: 0 failed');
   assert.match(md, /Slice One/);
   assert.match(md, /Slice Two/);
@@ -498,11 +482,13 @@ check('EVENT_MAP: enrichment stays ONE op even with a multi-fragment note (no en
   assert.equal(ops.length, 1);
 });
 
-check('EVENT_MAP: node-dispatched with attempt>1 returns MORE ops than attempt=1 (the extra seal-prior-attempt op)', () => {
-  const first = EVENT_MAP['node-dispatched']({ type: 'node-dispatched', node: 'x', kind: 'work-order', attempt: 1 });
-  const redispatch = EVENT_MAP['node-dispatched']({ type: 'node-dispatched', node: 'x', kind: 'work-order', attempt: 2 });
-  assert.ok(Array.isArray(first) && Array.isArray(redispatch));
-  assert.ok(redispatch.length > first.length, 'attempt>1 adds the seal-prior-attempt op on top of the always-run ones');
+check('EVENT_MAP: node-dispatched opens the node active — same op shape for a base and for a `[k]` retry sibling (no prior-attempt seal)', () => {
+  const first = EVENT_MAP['node-dispatched']({ type: 'node-dispatched', node: 'slice/x', kind: 'work-order' });
+  const retry = EVENT_MAP['node-dispatched']({ type: 'node-dispatched', node: 'slice/x[2]', kind: 'work-order' });
+  assert.ok(Array.isArray(first) && Array.isArray(retry));
+  assert.equal(first.length, retry.length, 'a retry seals nothing — its prior attempt was already sealed by whatever failed it');
+  assert.ok(first.some((op) => op.op === 'status' && op.status === 'active'), 'a dispatch sets the node active');
+  assert.ok(retry.every((op) => op.path === 'slice/x[2]'), 'every op targets only the dispatched node — no cross-node seal');
 });
 
 // ═══ Audit follow-up (T02d) — Finding 1: stale `detail` must clear on normal transitions ═══
@@ -523,36 +509,30 @@ check('finding1: checkpoint→reclaim→complete clears the stale "checkpointed"
   assert.equal(n.detail, null, 'node-completed must clear a stale detail (e.g. "checkpointed") left by an earlier state — not leave it hanging on a DONE node forever');
 });
 
-// ═══ Audit follow-up (T02d) — Finding 2: an event's ops must apply atomically ═══
-// A corrupted node-dispatched event (attempt: '3 ', a string with a trailing space) makes
-// op1 (seal attempt-2 failed) SUCCEED — creating a phantom "attempt-2" node with no basis in
-// real work — before op2 (inject attempt-3, using the malformed string as a path segment)
-// THROWS. The whole event must apply all-or-nothing: no phantom subtree survives, the real
-// attempt-1 subtree is untouched, later valid events on other nodes still apply, and a
-// fold-error note lands for the corrupted event.
-check('finding2: a corrupted multi-op event applies atomically — no phantom subtree from a partially-applied event', () => {
+// ═══ Audit follow-up (T02d) — Finding 2: an event's ops apply atomically (scratch-clone) ═══
+// A corrupted report-started (a `node` with a whitespace segment) makes its first op — inject —
+// THROW on the bad segment. foldEvents applies each event's ops to a scratch CLONE first, so a
+// throw discards the clone whole: no partial node survives, the real subtree is untouched, later
+// valid events on other nodes still apply, and a fold-error note lands for the corrupted event.
+check('finding2: a corrupted event applies atomically — no partial node survives, surroundings intact, degrade note lands', () => {
   const events = [
     { seq: 1, type: 'node-planned', node: 'x', kind: 'work-order', title: 'T' },
-    { seq: 2, type: 'node-dispatched', node: 'x', kind: 'work-order', attempt: 1 },
-    { seq: 3, type: 'node-dispatched', node: 'x', kind: 'work-order', attempt: '3 ' },
+    { seq: 2, type: 'node-dispatched', node: 'x', kind: 'work-order' },
+    { seq: 3, type: 'report-started', node: 'x/bad seg/leaf', label: 'boom' }, // bad segment → inject throws
     { seq: 4, type: 'node-planned', node: 'y', kind: 'work-order', title: 'Y' },
   ];
   const tree = foldEvents(events, 'demo');
 
-  const phantom = findByPath(tree, 'x/attempt-2');
-  assert.equal(phantom, null, 'a corrupted event that throws partway through its ops must leave NO trace — no phantom attempt-2 node from the op that succeeded before the throw');
-
-  const attempt1 = findByPath(tree, 'x/attempt-1');
-  assert.ok(attempt1, 'the real attempt-1 subtree, established by the earlier valid event, must survive completely unaffected');
-  assert.equal(attempt1.label, 'attempt 1');
+  const x = findByPath(tree, 'x');
+  assert.ok(x, 'the real x subtree, from the earlier valid events, survives completely unaffected');
+  assert.equal(x.children.length, 0, 'the corrupted event leaves NO trace — x gained no partial child from the thrown inject');
 
   const y = findByPath(tree, 'y');
-  assert.ok(y, 'a later valid event on a DIFFERENT node still applies correctly after the corrupted event');
-  assert.equal(y.status, 'pending');
+  assert.ok(y, 'a later valid event on a DIFFERENT node still applies after the corrupted one');
   assert.equal(y.label, 'Y');
 
   const root = findByPath(tree, '');
-  assert.ok(root.notes.some((note) => note.text.startsWith('[fold error]') && note.text.includes('node-dispatched')), 'the corrupted event degrades to a fold-error note instead of silently vanishing');
+  assert.ok(root.notes.some((note) => note.text.startsWith('[fold error]') && note.text.includes('report-started')), 'the corrupted event degrades to a fold-error note instead of silently vanishing');
 });
 
 // ═══ Audit follow-up (T02d) — Finding 3: Family-3 formatted note TEXT, pinned per type ═══

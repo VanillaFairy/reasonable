@@ -18,9 +18,9 @@ function check(name, fn) {
 // ── vocabulary ────────────────────────────────────────────────────────────────
 
 check('vocabulary is exact', () => {
-  assert.deepEqual(STATUSES, ['pending', 'active', 'done', 'failed', 'canceled']);
-  assert.deepEqual(TERMINAL, ['done', 'canceled']);
-  assert.deepEqual(GLYPH, { pending: '·', active: '▶', done: '✓', failed: '✗', canceled: '⊘' });
+  assert.deepEqual(STATUSES, ['pending', 'active', 'done', 'failed', 'panic', 'canceled']);
+  assert.deepEqual(TERMINAL, ['done', 'panic', 'canceled'], 'failed is NON-terminal (under investigation)');
+  assert.deepEqual(GLYPH, { pending: '·', active: '▶', done: '✓', failed: '↻', panic: '💥', canceled: '⊘' });
 });
 
 // ── 1. createTree ─────────────────────────────────────────────────────────────
@@ -126,67 +126,9 @@ check('status on a missing path auto-creates ancestors then sets the target', ()
   assert.equal(leaf.status, 'active');
 });
 
-// ── 6b. status guardPending — applies only while the node is still 'pending' ─
-
-check('status guardPending: flips a pending node to the given status, auto-creating first', () => {
-  const t = createTree('fx');
-  apply(t, { op: 'status', path: 'a/b', status: 'active', guardPending: true });
-  const b = findByPath(t, 'a/b');
-  assert.equal(b.status, 'active', 'a brand-new (thus pending) auto-created node is still eligible');
-});
-
-check('status guardPending: a no-op against a node that is already NOT pending — active, done, or failed alike', () => {
-  const t = createTree('fx');
-  apply(t, { op: 'inject', path: 'already-active', status: 'active' });
-  apply(t, { op: 'status', path: 'already-active', status: 'active', guardPending: true, detail: 'should not land' });
-  assert.equal(findByPath(t, 'already-active').detail, null, 'guarded call is a full no-op — detail is not touched either');
-
-  apply(t, { op: 'inject', path: 'already-done', status: 'active' });
-  apply(t, { op: 'status', path: 'already-done', status: 'done' });
-  apply(t, { op: 'status', path: 'already-done', status: 'active', guardPending: true });
-  assert.equal(findByPath(t, 'already-done').status, 'done', 'guardPending must never resurrect a terminal node back to active');
-
-  apply(t, { op: 'inject', path: 'already-failed', status: 'active' });
-  apply(t, { op: 'status', path: 'already-failed', status: 'failed' });
-  apply(t, { op: 'status', path: 'already-failed', status: 'active', guardPending: true });
-  assert.equal(findByPath(t, 'already-failed').status, 'failed', 'guardPending must never resurrect a failed node back to active');
-});
-
-// ── 7. status recursive — skips terminal descendants, always sets the target ─
-
-check('recursive status sets every non-terminal descendant, spares terminal ones, and ALWAYS sets the target (even if the target itself was terminal)', () => {
-  const t = createTree('fx');
-  apply(t, { op: 'inject', path: 'wo' });
-  apply(t, { op: 'status', path: 'wo', status: 'done' }); // target starts terminal
-  apply(t, { op: 'inject', path: 'wo/child-done' });
-  apply(t, { op: 'status', path: 'wo/child-done', status: 'done' });
-  apply(t, { op: 'inject', path: 'wo/child-canceled' });
-  apply(t, { op: 'status', path: 'wo/child-canceled', status: 'canceled' });
-  apply(t, { op: 'inject', path: 'wo/child-active' });
-  apply(t, { op: 'status', path: 'wo/child-active', status: 'active' });
-  apply(t, { op: 'inject', path: 'wo/child-active/grandchild' }); // pending by default
-
-  apply(t, { op: 'status', path: 'wo', status: 'failed', recursive: true });
-
-  assert.equal(findByPath(t, 'wo').status, 'failed', 'target set even though it was terminal (done)');
-  assert.equal(findByPath(t, 'wo/child-done').status, 'done', 'terminal descendant untouched');
-  assert.equal(findByPath(t, 'wo/child-canceled').status, 'canceled', 'terminal descendant untouched');
-  assert.equal(findByPath(t, 'wo/child-active').status, 'failed', 'non-terminal descendant converted');
-  assert.equal(findByPath(t, 'wo/child-active/grandchild').status, 'failed', 'deep non-terminal descendant converted');
-});
-
-// ── 8. recursive status never touches descendants' detail/statusTs ───────────
-
-check('recursive status does not overwrite descendants\' detail or statusTs', () => {
-  const t = createTree('fx');
-  apply(t, { op: 'inject', path: 'wo2/child' });
-  apply(t, { op: 'status', path: 'wo2/child', status: 'active', detail: 'detail-x', ts: '2026-01-01T00:00:00Z' });
-  apply(t, { op: 'status', path: 'wo2', status: 'failed', recursive: true }); // no detail/ts passed
-  const child = findByPath(t, 'wo2/child');
-  assert.equal(child.status, 'failed');
-  assert.equal(child.detail, 'detail-x', 'descendant detail untouched by the recursive sweep');
-  assert.equal(child.statusTs, '2026-01-01T00:00:00Z', 'descendant statusTs untouched by the recursive sweep');
-});
+// (6b/7/8 removed — guardPending and the recursive status sweep are gone. Container status is
+//  now DERIVED from children by displayStatus, so a parent is never swept top-down; see the
+//  displayStatus section below. `status` only ever sets its own target node.)
 
 // ── 9. note — appends {text, ts}; auto-creates on a missing path ─────────────
 
@@ -320,26 +262,9 @@ check('renderMarkdown: glyph+label, 2-space-per-depth indent, detail suffix, sta
   assert.ok(!noteWithoutTs.includes('['), 'a note WITHOUT a ts renders no bracket at all');
 });
 
-// ── 20. status recursive:'active' — sweeps ONLY active descendants, spares pending ───
-
-check("recursive:'active' status sweeps ONLY active descendants (orphaned in-flight), spares pending, and passes through terminal nodes", () => {
-  const t = createTree('fx');
-  apply(t, { op: 'status', path: 'p/active-kid', status: 'active' });
-  apply(t, { op: 'status', path: 'p/pending-kid', status: 'pending' });
-  apply(t, { op: 'status', path: 'p/done-kid', status: 'done' });
-  apply(t, { op: 'status', path: 'p/done-kid/active-grandkid', status: 'active' });
-
-  apply(t, { op: 'status', path: 'p', status: 'done', recursive: 'active' });
-
-  assert.equal(findByPath(t, 'p').status, 'done', 'target set');
-  assert.equal(findByPath(t, 'p/active-kid').status, 'done',
-    'an ACTIVE descendant (orphaned in-flight) is swept to the terminal status');
-  assert.equal(findByPath(t, 'p/pending-kid').status, 'pending',
-    'a PENDING descendant is SPARED — a completed node must not fake-complete a step that never ran (this is what distinguishes \'active\' from true)');
-  assert.equal(findByPath(t, 'p/done-kid').status, 'done', 'a terminal descendant is spared');
-  assert.equal(findByPath(t, 'p/done-kid/active-grandkid').status, 'done',
-    'the sweep passes THROUGH a terminal node to reach its active grandchild');
-});
+// (the recursive:'active' orphan-sweep test is gone — orphans no longer need sweeping: a stray
+//  active leaf simply stops mattering once its live siblings/parent derive done/panic. See the
+//  displayStatus section for the derivation that replaces it.)
 
 // ── 16. [audit finding #1 — DEFECT] inject must not mutate ahead of validation ────
 
@@ -377,18 +302,6 @@ check('inject atomicity: a thrown TypeError (bad op.status) leaves the tree byte
 });
 
 // ── 17. [audit finding #2 — GAP] recursive sweep passes THROUGH a terminal node ───
-
-check('recursive status sweep passes THROUGH a terminal node into its non-terminal children', () => {
-  const t = createTree('fx');
-  apply(t, { op: 'inject', path: 'wo/child-done/grandchild' });
-  apply(t, { op: 'status', path: 'wo/child-done', status: 'done' });
-  apply(t, { op: 'status', path: 'wo/child-done/grandchild', status: 'active' });
-
-  apply(t, { op: 'status', path: 'wo', status: 'failed', recursive: true });
-
-  assert.equal(findByPath(t, 'wo/child-done').status, 'done', 'the terminal node itself is spared by the sweep');
-  assert.equal(findByPath(t, 'wo/child-done/grandchild').status, 'failed', 'the sweep still recurses into a terminal node\'s own children');
-});
 
 // ── 18. [audit finding #3 — GAP] findById: depth-asymmetric discriminator ────────
 
@@ -459,30 +372,48 @@ check('displayStatus: a detail-LESS container failure is a cascade scar → deri
     'no reason on the failure means it came from a sweep, not an event — derive past it');
 });
 
-check('displayStatus: a container with a genuinely failed live child derives failed', () => {
+check('displayStatus: a live `failed` child (under investigation) reads as active — in motion, not terminal', () => {
   const t = createTree('fx');
   apply(t, { op: 'inject', path: 'WO/a', status: 'done' });
-  apply(t, { op: 'inject', path: 'WO/b', status: 'failed' }); // real failed leaf, no recovery
-  assert.equal(displayStatus(findByPath(t, 'WO')), 'failed');
+  apply(t, { op: 'inject', path: 'WO/b', status: 'failed' }); // down + under investigation
+  assert.equal(displayStatus(findByPath(t, 'WO')), 'active',
+    'failed is non-terminal — the unit is still in motion (an investigator is on it), not itself failed');
 });
 
-check('displayStatus: active dominates failed among live children (work still in motion)', () => {
+check('displayStatus: a live `panic` child compromises the unit — the container derives panic', () => {
   const t = createTree('fx');
-  apply(t, { op: 'inject', path: 'WO/a', status: 'failed' });
-  apply(t, { op: 'inject', path: 'WO/b', status: 'active' });
-  assert.equal(displayStatus(findByPath(t, 'WO')), 'active');
+  apply(t, { op: 'inject', path: 'WO/a', status: 'done' });
+  apply(t, { op: 'inject', path: 'WO/b', status: 'panic' }); // terminal, unrecoverable
+  assert.equal(displayStatus(findByPath(t, 'WO')), 'panic', 'a terminal failure of a child dooms the parent');
 });
 
-check('displayStatus: a superseded attempt-N is excluded — WO with failed attempt-1 + done attempt-2 shows done', () => {
+check('displayStatus: panic dominates active — one panicked child compromises the unit even while siblings run', () => {
   const t = createTree('fx');
-  apply(t, { op: 'inject', path: 'WO/attempt-1/x', status: 'failed' });
-  apply(t, { op: 'status', path: 'WO/attempt-1', status: 'failed' });
+  apply(t, { op: 'inject', path: 'WO/a', status: 'active' });
+  apply(t, { op: 'inject', path: 'WO/b', status: 'panic' });
+  assert.equal(displayStatus(findByPath(t, 'WO')), 'panic');
+});
+
+check('displayStatus: a superseded attempt (name[k] sibling) is excluded — failed WO + done WO[2] shows done at the parent', () => {
+  const t = createTree('fx');
+  apply(t, { op: 'inject', path: 'slice/WO/x', status: 'done' });
+  apply(t, { op: 'status', path: 'slice/WO', status: 'failed', detail: 'wall hit' }); // first attempt, sealed
+  apply(t, { op: 'inject', path: 'slice/WO[2]/x', status: 'done' });
+  apply(t, { op: 'status', path: 'slice/WO[2]', status: 'done' });
+  assert.equal(displayStatus(findByPath(t, 'slice')), 'done',
+    'the live attempt (highest [k]) represents the family; the superseded WO is excluded from the parent');
+  assert.equal(displayStatus(findByPath(t, 'slice/WO')), 'failed',
+    'but the superseded first attempt is still SHOWN as failed history (authored, detail-bearing)');
+  assert.equal(displayStatus(findByPath(t, 'slice/WO[2]')), 'done');
+});
+
+check('displayStatus: legacy `attempt-N` wrapper siblings still group — old ledgers read cleanly', () => {
+  const t = createTree('fx');
+  apply(t, { op: 'inject', path: 'WO/attempt-1/x', status: 'done' });
+  apply(t, { op: 'status', path: 'WO/attempt-1', status: 'failed', detail: 'crash' });
   apply(t, { op: 'inject', path: 'WO/attempt-2/x', status: 'done' });
   apply(t, { op: 'status', path: 'WO/attempt-2', status: 'done' });
-  assert.equal(displayStatus(findByPath(t, 'WO')), 'done',
-    'the live attempt (highest N) represents the family; the failed attempt-1 is excluded from derivation');
-  assert.equal(displayStatus(findByPath(t, 'WO/attempt-1')), 'failed',
-    'but the superseded attempt-1 is still SHOWN as failed — visible history, just not counted toward the parent');
+  assert.equal(displayStatus(findByPath(t, 'WO')), 'done', 'attempt-2 is the live wrapper; attempt-1 excluded');
 });
 
 check('displayStatus: a mix of done + pending (nothing active) reads as active — in progress', () => {

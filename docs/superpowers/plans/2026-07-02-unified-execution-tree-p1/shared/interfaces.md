@@ -8,9 +8,9 @@ these EXACTLY; a red task asserts against these EXACTLY. Drift = bug.
 ## 1. `lib/progress-tree.mjs` (produced by T01b; consumed by T02b, T03b, T04)
 
 ```js
-export const STATUSES = ['pending', 'active', 'done', 'failed', 'canceled'];
-export const TERMINAL = ['done', 'canceled'];           // skipped by recursive status
-export const GLYPH = { pending: '·', active: '▶', done: '✓', failed: '✗', canceled: '⊘' };
+export const STATUSES = ['pending', 'active', 'done', 'failed', 'panic', 'canceled'];
+export const TERMINAL = ['done', 'panic', 'canceled'];  // failed is NON-terminal (under investigation)
+export const GLYPH = { pending: '·', active: '▶', done: '✓', failed: '↻', panic: '💥', canceled: '⊘' };
 
 // Node shape (also the progress.json shape — the tree serializes as-is):
 // { id: string, label: string, status: string, detail: string|null,
@@ -56,18 +56,11 @@ export function renderMarkdown(tree)     // → markdown of the tree BODY only (
 //   status is NOT touched on merge (only a brand-new node takes op.status, default 'pending').
 { op: 'update', path, label?, detail? }
 // Sets provided fields. Missing node/ancestors auto-created (pending stubs) first.
-{ op: 'status', path, status, detail?, recursive?, ts?, guardPending? }
-// ALWAYS sets the target node's status (+ detail if provided, + statusTs = ts if provided).
-// recursive: true → every DESCENDANT whose status is not in TERMINAL is also set to `status`
-//   (their detail/statusTs untouched). The target itself is always set, terminal or not.
-// recursive: 'active' → sweeps ONLY descendants whose status is 'active' (orphaned in-flight
-//   nodes whose own finish event was lost), leaving pending ones untouched — used by the
-//   terminal transitions (node-completed/report-finished/node-failed) so a completed parent
-//   never leaves a stale ▶active leaf, yet never fake-completes a step that never ran.
-// guardPending: true → the ENTIRE op (status/detail/ts) is skipped unless the node's CURRENT
-//   status is 'pending'. Used by progress-map.mjs to nudge a container (attempt-N folder,
-//   implementation/section folder, ...) to 'active' the moment work starts under it, without
-//   ever demoting an already-active node or resurrecting a terminal one back to active.
+{ op: 'status', path, status, detail?, ts? }
+// Sets ONLY the target node's own status (+ detail if provided, + statusTs = ts if provided).
+// There is NO cascade: a container's status is DERIVED from its children (displayStatus below),
+// so nothing is ever swept top-down and nothing needs healing. (The old recursive/guardPending
+// options are gone — derivation makes both unnecessary.)
 // Missing node → auto-created then set.
 { op: 'note', path, text, ts? }
 // Pushes { text, ts: ts ?? null } onto node.notes. Missing node → auto-created.
@@ -86,15 +79,20 @@ the tree needs no downward cascade and no heal). Rules, in order:
 1. **Leaf** (no children) → its own stored status.
 2. **Authored container terminal wins:** stored `done` (a container only reaches `done` via a
    node-completed event — trusted even over a crashed/superseded attempt beneath it); or stored
-   `failed`/`canceled` **with a `detail`** (set by a real node-failed / node-downgraded "lost-work
-   crash" / node-canceled event, not a detail-less cascade sweep) → that status.
-3. Otherwise **derive from LIVE direct children** (canceled children excluded from the outcome;
-   among `attempt-<n>` siblings only the highest is live, lower ones are shown but excluded):
-   all live done → `done`; else any live active → `active`; else any live failed → `failed`; else a
-   mix of done+pending → `active`; else `pending`. All children canceled → `canceled`.
+   `failed`/`panic`/`canceled` **with a `detail`** (set by a real node-failed / node-downgraded
+   "lost-work crash" / node-panicked / node-canceled event, not a detail-less cascade scar) → that
+   status.
+3. Otherwise **derive from LIVE direct children** (canceled children excluded from the outcome; an
+   attempt is a sibling `name[k]` — among a family only the highest `[k]` is live, lower ones are
+   shown but excluded; legacy `attempt-<n>` wrapper siblings group the same way):
+   any live `panic` → `panic` (a terminal failure compromises the unit); else all live done →
+   `done`; else any live `active` OR `failed` → `active` (`failed` = under investigation = in
+   motion); else a mix of done+pending → `active`; else `pending`. All children canceled → `canceled`.
 
-A detail-LESS stored `failed` on a container is a cascade scar and is derived straight past — the
-slice-4 fix (a slice transiently blocked while its work finished shows `done`, block kept as a note).
+`failed` is NON-terminal and never derives onto a container — it is the "under investigation" leaf
+state; a container with a failed child reads `active` (in motion) until the child recovers (a
+`[k]` sibling supersedes it) or escalates to `panic`. A detail-LESS stored `failed` on a container
+is a legacy cascade scar and is derived straight past (the slice-4 fix).
 
 ---
 
@@ -110,12 +108,13 @@ UTC, controller's clock — an agent-supplied ts is OVERWRITTEN). Additional per
 | type | required fields | controller stamps | EVENT_MAP ops |
 |---|---|---|---|
 | `node-planned` | `node`, `kind`, `title` | — | `inject {path:node, label:title, status:'pending'}` |
-| `node-dispatched` | `node`, `kind` | `attempt` (see arithmetic) | if `attempt>1`: `status {path: node+'/attempt-'+(attempt-1), status:'failed', recursive:true}` (NO detail — preserves a crash detail already there); always: `inject {path: node+'/attempt-'+attempt, label:'attempt '+attempt, status:'active'}` (the fresh attempt folder itself opens active, not pending), a `status {..., status:'active', guardPending:true}` per proper ancestor of `node` (so a containing slice/phase shows active too), `status {path:node, status:'active', ts}` |
+| `node-dispatched` | `node`, `kind` | `attempt` + rewrites `node` to `base[k]` on a reopen (see arithmetic) | `inject {path:node, status:'active'}`, `status {path:node, status:'active', detail:null, ts}` — opens the node (a fresh WO, or the `name[k]` retry sibling the controller minted). No prior-attempt seal (the prior attempt was already sealed by whatever failed it); no ancestor activation (derivation shows the parent active). |
 | `node-checkpointed` | `node` | — | `status {path:node, status:'pending', detail:'checkpointed'}` |
-| `node-downgraded` | `node` | `attempt` (current) | `status {path: node+'/attempt-'+attempt, status:'failed', recursive:true, detail:'lost-work crash'}`, `status {path:node, status:'pending', detail:'downgraded — awaiting redispatch'}` |
-| `node-completed` | `node` | — | `status {path:node, status:'done', detail:null, ts, recursive:'active'}` (sweeps orphaned in-flight descendants closed) |
-| `node-failed` | `node` (`reason` optional) | — | `status {path:node, status:'failed', detail:reason, ts, recursive:'active'}` |
-| `node-canceled` | `node`, `reason` | — | `status {path:node, status:'canceled', recursive:true, detail:reason}` |
+| `node-downgraded` | `node` | rewrites `node` to the live attempt | `status {path:node, status:'failed', detail:'lost-work crash', ts}` — seals the live attempt; the next dispatch mints the retry sibling. |
+| `node-completed` | `node` | — | `status {path:node, status:'done', detail:null, ts}` |
+| `node-failed` | `node` (`reason` optional) | — | `status {path:node, status:'failed', detail:reason, ts}` — `failed` is NON-terminal: down, under investigation. |
+| `node-panicked` | `node` (`reason` optional) | — | `status {path:node, status:'panic', detail:reason, ts}` — terminal, unrecoverable; escalates + (via derivation) compromises the parent. |
+| `node-canceled` | `node`, `reason` | — | `status {path:node, status:'canceled', detail:reason}` |
 | `approval-resolved` | `id` | — | `note {path:'', text:'approval resolved: '+id}` (banner fold arrives in Plan 2) |
 | `concluded` (existing) | — | — | `status {path:'', status:'done'}` |
 
@@ -129,9 +128,9 @@ tree is thin).
 
 | type | agent supplies | controller stamps | EVENT_MAP ops |
 |---|---|---|---|
-| `report-started` | `under` (node id), `node` (RELATIVE path), `label?` | absolute `node` = path(under) + '/attempt-N/' + relative | a `status {..., status:'active', guardPending:true}` per proper ancestor of `node` (attempt-N, section folders, ...), `inject {path:node, label}`, `status {path:node, status:'active', ts}` |
-| `report-finished` | `under`, `node` (relative) | same | same ancestor-activation ops, `inject {path:node}`, `status {path:node, status:'done', ts, recursive:'active'}` (sweeps orphaned in-flight descendants closed) |
-| `report-canceled` | `under`, `node` (relative), `reason` | same | same ancestor-activation ops, `inject {path:node}`, `status {path:node, status:'canceled', detail:reason}` |
+| `report-started` | `under` (BASE node id), `node` (RELATIVE path), `label?` | absolute `node` = `<live attempt path>/<relative>` (the live `[k]` of the family — no attempt wrapper) | `inject {path:node, label}`, `status {path:node, status:'active', ts}` |
+| `report-finished` | `under`, `node` (relative) | same | `inject {path:node}`, `status {path:node, status:'done', ts}` |
+| `report-canceled` | `under`, `node` (relative), `reason` | same | `inject {path:node}`, `status {path:node, status:'canceled', detail:reason}` |
 
 After stamping, the event on disk carries the ABSOLUTE `node`; `under` is kept as provenance.
 The mapper never sees a relative path.
@@ -204,16 +203,23 @@ export function append(root, event, opts = {})
 // → { ok:true, event: <stamped> } | { ok:false, error }
 ```
 
-### Attempt arithmetic (exact, deterministic in durable state)
+### Attempt arithmetic — `name[k]` siblings (exact, deterministic in durable state)
 
-For the target node in `buildTree(root)`'s result, let `latest` = max N over children matching
-`/^attempt-(\d+)$/` (0 if none):
-- `node-dispatched`: no attempts → stamp 1. `latest` attempt's status `failed` OR the node's own
-  status `failed` → stamp `latest + 1` (a reopen). Otherwise → stamp `latest` (continuation —
-  checkpoint reclaim; if `latest` is 0 for an undispatched node, stamp 1).
-- `node-downgraded`: stamp `max(latest, 1)`.
-- `report-*` absolute path: `path(under) + '/attempt-' + max(latest, 1) + '/' + relative`.
-- `under` id not found in the tree → `{ ok:false, error }` (fail loud, no guessing).
+An attempt is a SIBLING, not a wrapper. Attempt 1 IS the base node (`slice/WO`); a re-run is the
+sibling `slice/WO[2]`, `slice/WO[3]`, … The agent always sends the BASE path; the controller owns
+the `[k]`. For a base path, let its FAMILY under the shared parent be `{base, base[2], base[3], …}`
+(legacy `attempt-<n>` grouping still honored); `latest` = the highest attempt present (0 if the
+base was never even planned), `liveMember` = that attempt's node.
+
+- `node-dispatched`: `latest` is 0 → reject (unplanned). `liveMember` sealed `failed`/`panic` →
+  stamp `latest + 1` and rewrite `node` to `base[latest+1]` (a reopen mints the sibling).
+  Otherwise → stamp `latest` and leave `node` as the base (a fresh first dispatch stays attempt 1;
+  a checkpoint reclaim keeps the same number).
+- `node-downgraded`: `latest` 0 → reject (unplanned); `liveMember` still `pending` → reject (never
+  dispatched). Otherwise stamp `latest` and rewrite `node` to `liveMember` (seal the live attempt).
+- `report-*` absolute path: `<liveMember path>/<relative>` — landed under the live attempt, no
+  wrapper. `under` not found, or its live member still `pending` (never dispatched) → `{ ok:false,
+  error }` (fail loud, no guessing).
 
 ### CLI
 

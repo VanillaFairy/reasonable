@@ -38,8 +38,10 @@ import `effort.mjs` helpers. `progress-map` NEVER imports `ledger`.
    idempotent inject). It DOES throw on malformed ops — that is a mapper bug, and tests assert it.
 3. **Script-authoritative stamps.** Agents never supply `seq`, `ts`, `attempt`, or an absolute
    `node` for report events; the controller computes/overwrites them from durable state.
-4. **Never remove.** No delete op exists. Retirement = `canceled`. Retry = seal old attempt
-   subtree `failed` + inject fresh `attempt-N`.
+4. **Never remove.** No delete op exists. Retirement = `canceled`. Retry = the old attempt stays
+   (sealed `failed`/`panic` by whatever ended it) and a fresh SIBLING `name[k]` is minted — an
+   attempt is a sibling, never a wrapper node. Container status is DERIVED from live children, so
+   there is no cascade to sweep and nothing to heal.
 5. **Clean break.** Legacy `action-*` events fold to plain notes. No label-matching, no epoch
    inference, no enrichment-derived sections — that code is deleted, not ported.
 6. **Presentation-only exceptions (Plan 1):** the header cost line reads `journal.cost`, and the
