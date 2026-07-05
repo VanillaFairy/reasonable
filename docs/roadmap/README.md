@@ -41,10 +41,16 @@ its problem file.
   be cut before its provider's commit is reachable. Interim mitigation: the route-planner folds a
   same-slice hard dependency into one work order instead of splitting (2026-07-03); the real fix is
   wave-granularity merging gated on each work order's own green OUTCOME.
+- [dead-end-blast-radius.md](dead-end-blast-radius.md) — **a dead end refutes a premise, but the
+  system only records a work order.** Id-level retirement (landed v2.3.0: briefing surfacing +
+  RETIRED drop + frontier-stuck escalation) cannot catch a rebranded dead idea. Candidate fix:
+  reify the refuted premise in the dead-end event grammar, compute blast radius as a widen-only
+  citation closure, self-route dead-end records into intersecting footprints, and supersede
+  D§5.8's hash-unbind with permanent id retirement — a deliberate DESIGN.md + glossary amendment.
 
 ## Anticipated next (not yet defined)
 
 - **Semantic fence** — the fence gates the *bytes* an agent writes, not the *meaning* it changes (in-locus
   edits to shared deps / generated files / shared state escape it).
-- **Standalone bugs** — e.g. the redispatch guard that never fires, the unwired `mode` field, the unbuilt
+- **Standalone bugs** — e.g. the unwired `mode` field, the unbuilt
   ratchet-weaken check.
