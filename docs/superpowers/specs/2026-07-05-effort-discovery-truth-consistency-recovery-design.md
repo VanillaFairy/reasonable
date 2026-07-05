@@ -1,6 +1,12 @@
 # Effort discovery, truth-consistency, and self-explaining recovery
 
 **Status:** design, approved to spec (2026-07-05). Adversarially reviewed (12 attacks, all findings folded in).
+**Revised 2026-07-05 (v2), pre-implementation:** three post-review corrections, each verified against `lib/` at
+head: §5.2 is replaced (retiring the journal's `status` field supersedes scribe persist-back — reconcile
+already lands its corrections as `node-downgraded` ledger events); §5.6(b)'s structured drop record moves
+from the journal to the ledger (consequence of §5.2); §7.1's next-action persistence is re-based on a
+ledger event + mirror render (the original wrote into `progress.json`, which `writeMirror` regenerates
+wholesale on every append — the value would be clobbered).
 **Motivating incident:** the `graph-editor-ux-overhaul` false RECONCILE HALT (below).
 
 ---
@@ -82,12 +88,28 @@ later restoring ratification = DROPPED — and treats `journal.workOrders` as a 
 warns on mismatch*, never the source. This is the same shape reconcile already uses for `trustStaleness()`,
 so it is proportionate, not a redesign.
 
-### 5.2 Reconcile downgrades are persisted (F8)
-Reconcile's downgrade currently mutates only its in-memory journal object; `journal.json` is fenced to
-`journal-writer`, so the correction never lands, and the ledger-fold tree maps `node-downgraded` → `failed`
-while the journal still says `dispatched` — three disagreeing values. Change: reconcile emits its status
-corrections through the `journal-writer` scribe (the one fenced hand) so a subsequent raw read is
-consistent; the derived index stops diverging from the ledger it derives from.
+### 5.2 Work-order status leaves the journal (F8)
+Reconcile's corrections *already* land in the truth layer: it appends `node-downgraded` through the ledger
+controller with a mirror regen ([reconcile.mjs:170](../../../lib/reconcile.mjs)), so ledger and
+`progress.*` agree. The one value that stays stale is `journal.workOrders[].status` — journal.json is
+fenced to `journal-writer`, so reconcile's in-memory downgrade never lands there: three disagreeing values.
+
+The original fix (reconcile routes corrections through the `journal-writer` scribe) treats the symptom —
+it keeps a *second, writable copy* of a value §5.1 just made fold-authoritative, plus the choreography to
+sync it. A copy that can drift will drift; a field that does not exist cannot lie.
+
+Change: **retire the `status` field.** `journal.workOrders` conflates two data classes:
+- **lane registry** — worktree path, reported `commits` SHAs, `mergedCommits`. No ledger twin; read by
+  commit-accounting ([commit-accounting.mjs:27](../../../lib/commit-accounting.mjs)) and reconcile's
+  orphan-worktree accounting. **Stays exactly as is.**
+- **`status`** — a lossy duplicate of the §5.1 ledger fold. **Removed:** `journal-writer` stops writing
+  it; every reader (reconcile's `terminalWorkOrders`, `liveLanes`, the briefing's by-status view) consumes
+  the §5.1 fold instead. A legacy journal that still carries `status` is cross-checked and warned on
+  mismatch, never trusted — no migration needed.
+
+Raw-read consistency holds by construction, with zero persist-back choreography and journal.json keeping
+its single writer. The journal's job sharpens to what only it records: the lane registry and the
+program-counter pointers (current slice/phase) that have no ledger derivation.
 
 ### 5.3 Mirror writes are atomic and lock-covered (F1a)
 `writeMirror` runs *outside* the ledger lock with plain `writeFileSync` overwrites ([progress-map.mjs:216-229](../../../lib/progress-map.mjs)),
@@ -112,12 +134,14 @@ by `session-start` surfaces "another session is active on this effort" in the br
 ### 5.6 Drop/blocking vocabulary is consistent and structured (F12)
 `redispatch-guard.mjs` keys on `type:"verdict"`/`type:"dead-end"`, which this pipeline **never emits** — it
 is dead code that always returns "Clear." And an `amendment` drop is enforced *only* by a hand-deleted WO
-file; `journal.workOrders` gets no structured `{status:"dropped"}` (unlike the slice-3 drops, which did).
+file — no structured, machine-foldable drop record exists anywhere.
 Changes: (a) rekey `redispatch-guard` on the events actually produced (`node-failed` with a blocking-class
-`reason`, `amendment` drops); (b) require a structured `{status:"dropped", supersededBy?, resolvesSeq}`
-journal entry, written atomically with the ratification; (c) add `resolvesSeq` linkage on every
-ratification/amendment that closes a `node-failed`, and use it as reconcile's closure fold — never a scan
-for coincidental id mentions.
+`reason`, `amendment` drops); (b) require the drop to be a **structured field on the amendment/ratification
+ledger event itself** — `drops: [{workOrder, supersededBy?}]` + `resolvesSeq` — never inferred from a
+hand-deleted WO file (the deletion remains the fence-visible act; the ledger event is the truth record the
+§5.1 fold keys on — with §5.2 the journal carries no status, so the ledger is the only place a drop can
+live); (c) add `resolvesSeq` linkage on every ratification/amendment that closes a `node-failed`, and use
+it as reconcile's closure fold — never a scan for coincidental id mentions.
 
 ## 6. Layer 1 — discovery, birth-location, lifecycle
 
@@ -201,7 +225,8 @@ as stale.
 ### 6.6 Cheap multi-effort briefing (F7)
 SessionStart does **not** reconcile every effort. It:
 - lists efforts by the cheap name/existence scan (concluded/abandoned filtered for free),
-- for each, **reads the last-persisted, timestamped `nextAction`** from its `progress.json` (no git),
+- for each, **reads the last-rendered, timestamped `nextAction`** from its `progress.json` (no git —
+  the regen keeps it current with the last `next-action` ledger event, §7.1),
 - **freshly reconciles only the effort being acted on** (or on demand),
 - wraps **each iteration in its own try/catch** (never one around the loop — one bad effort degrades to
   "N−1 briefed, 1 flagged", honoring the fail-open law),
@@ -213,9 +238,23 @@ SessionStart does **not** reconcile every effort. It:
 `nextAction` is computed **only inside `reconcile()`** — the one place git-ancestry + ledger + journal +
 halts coexist — from the fully-reconciled result, *after* its ledger writes land. The PostToolUse progress
 hook keeps projecting ledger facts into the tree; it **never** computes NEXT (it has no git visibility).
-The computed directive is persisted via `journal-writer` into `progress.json.nextAction` and a `▶ NEXT`
-block atop `progress.md`, **timestamped and marked `stale-until-next-reconcile`**. `session-start.mjs` and
-`reconcile.mjs` surface it verbatim; the multi-effort briefing reads the persisted value (§6.6).
+
+**Persistence rides the ledger, not the mirror.** (The v1 shape — `journal-writer` writes
+`progress.json.nextAction` — is defective twice over: `writeMirror` regenerates `progress.json` and
+`progress.md` **wholesale** on every ledger append ([progress-map.mjs:216-229](../../../lib/progress-map.mjs)),
+so the value is clobbered by the very next append; and it puts a second writer on a single-writer mirror.)
+Instead, reconcile appends a **`next-action` ledger event** through the controller —
+`{type:'next-action', directives:[...], computedFrom: <ledger seq at computation>}` — via the same
+`append(..., {regen:true})` path its `node-downgraded` corrections already use. The regen renders the
+**latest** `next-action` event into `progress.json.nextAction` and a `▶ NEXT` block atop `progress.md`,
+so the directive survives every regen by construction and the mirror keeps exactly one writer. No
+`journal-writer` involvement; a reconcile verdict is a recorded event, exactly like the verdicts the
+ledger already carries.
+
+Staleness becomes **mechanical instead of declarative**: the renderer shows the controller-stamped
+timestamp plus "computed at seq N — K events since" (K = appends after `computedFrom`), which is the
+`stale-until-next-reconcile` marker readers can actually check. `session-start.mjs` and `reconcile.mjs`
+surface the rendered value verbatim; the multi-effort briefing reads it from `progress.json` (§6.6).
 
 ### 7.2 Inputs (all structured/append-only) (F9, A)
 Ledger fold (authoritative) + `journal.json` current slice/phase (cross-check) + **new `route.json`**
@@ -278,19 +317,32 @@ the adversarial verification of the projection itself.
 - **Layer 0:** concurrency tests (interleaved appends → no torn mirror, no dup attempt slot; main-session
   direct ledger write denied); WO-status ledger-fold unit tests over the real incident state (journal
   missing S5 while ledger+worktrees show it → RUNNING, not "ready"); redispatch-guard fires on `node-failed`;
-  drop produces structured journal status.
+  a drop is a structured ledger-event field (`drops` + `resolvesSeq`) and a hand-deleted WO file without
+  one is flagged; post-§5.2 the journal-writer emits no `status` field, a legacy journal carrying one
+  warns-on-mismatch but never governs, and commit-accounting output is unchanged (registry fields intact).
 - **Layer 1:** `effortBirthState` fixtures (absent/empty/corrupt/missing-signature/ok); `resolveActiveEffort`
   across S1–S10 incl. N-parallel, `…-bak`, `.done-*`, depth≠1 loud fail; path-norm/round-trip on Windows;
   birth-location refusal when siblings exist; reconcile duplicate-root AMBIGUOUS.
 - **Layer 2:** decision-projection table over reconstructed states (mixed running+ready set; blocked+ready;
   at-7a-gate LAND; resurrection refused by self-check); `route.json` frontier ordering; `dependsOn` predicate;
-  persisted-NEXT staleness marker; hook-path never writes NEXT.
+  the regen-clobber regression (a ledger append *after* reconcile re-renders — never erases — the NEXT
+  block); latest-`next-action`-event-wins fold; the mechanical staleness counter (K events since
+  `computedFrom`); the hook path renders NEXT but never computes it.
 
 ## 10. Build order
 
 Forced by dependency: **Layer 0 → Layer 1 → Layer 2.** Layer 0 makes the ledger trustworthy; Layer 1 makes
 discovery/birth robust and already kills the false-HALT incident; Layer 2 builds the honest, self-checking
 NEXT on the now-trustworthy foundation. Each layer lands independently green.
+
+**Doc-sync obligations (repo invariants, land with the code):**
+- `route.json` and the `next-action` / `drops`+`resolvesSeq` ledger grammars are machine-parsed — pin them
+  in `docs/artifacts.md` **in the same change** as their parsers (invariant 3), including the journal's
+  narrowed shape (lane registry + program-counter pointers, no `status`).
+- Update DESIGN.md/architecture.md cross-refs: D3b's journal-writer scope (derived index minus WO status),
+  D19's mirror (now also renders the latest `next-action` event), and glossary entries touched by
+  `reasonable:abandon`.
+- Version bump per repo policy at each layer's landing (minor — backward-compatible new capability).
 
 ## 11. Open risks
 
@@ -299,5 +351,11 @@ NEXT on the now-trustworthy foundation. Each layer lands independently green.
   from the repo-root interactive context.
 - SessionStart hook timeout under many efforts is mitigated by §6.6 (no per-effort reconcile), but the
   harness's hook-timeout default was not independently confirmed — verify during implementation.
-- Persisted `nextAction` staleness: a reader trusts a value only as fresh as the last reconcile; the
-  timestamp + `stale-until-next-reconcile` marker makes that explicit, but consumers must honor it.
+- Rendered `nextAction` staleness: a reader trusts a directive only as fresh as the last reconcile. The
+  §7.1 counter ("K events since `computedFrom`") makes staleness mechanically checkable rather than
+  declared, but consumers must still honor it — a directive with K > 0 is a hint, not an order.
+- The `next-action` event is a projection appended into the truth log. Accepted deliberately: the ledger
+  already records verdicts and ratifications (interpretations, not just facts), the event is small, and
+  the alternative — a separate mutable artifact — reintroduces exactly the cache-drift class this spec
+  exists to kill. The fold must simply ignore `next-action` events when computing WO status (§5.1), so a
+  stale directive can never influence the state it describes.
