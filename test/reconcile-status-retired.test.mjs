@@ -143,6 +143,47 @@ check('plain dispatched (no checkpoint) in the same git shape → downgrade, not
   assert.ok(!/checkpoint anchor/.test(r.haltReason || ''), 'no checkpoint-anchor ambiguity for a plain dispatch');
 });
 
+// 5 — T0.5 (§5.6, F12): an UNRESOLVED node-failed surfaces the WO as BLOCKED (the resolvesSeq closure
+//     fold). reconcile derives it from the ledger fold (the same rule wo-status.mjs uses) and surfaces
+//     it in result.blockedWorkOrders + a note — an open wall a human must decide, never a silent
+//     downgrade and never a halt.
+check('an unresolved node-failed surfaces the WO as blocked (blockedWorkOrders + a note)', () => {
+  const root = newEffort(
+    { 'WO-1': { verticalSlice: 'slice-1', role: 'implementer' } },
+    [
+      { seq: 1, type: 'node-planned', node: 'slice-1/WO-1', kind: 'work-order', title: 'w' },
+      { seq: 2, type: 'node-dispatched', node: 'slice-1/WO-1', kind: 'work-order', attempt: 1 },
+      { seq: 3, type: 'node-failed', node: 'slice-1/WO-1', reason: 'wall' },
+    ],
+  );
+  const r = reconcile(root);
+  assert.equal(r.halt, false, `an open failure surfaces, never halts; haltReason: ${r.haltReason || ''}`);
+  assert.equal(r.workOrderStatuses['WO-1'], 'blocked', 'the fold reads blocked');
+  assert.ok(r.blockedWorkOrders.some((b) => b.workOrder === 'WO-1' && b.blockedBy === 3),
+    `expected WO-1 in blockedWorkOrders naming the node-failed seq; got: ${JSON.stringify(r.blockedWorkOrders)}`);
+  assert.ok(r.notes.some((n) => /WO-1/.test(n) && /BLOCKED/.test(n)),
+    `expected a BLOCKED note; got: ${JSON.stringify(r.notes)}`);
+});
+
+// 6 — DISCRIMINATOR: the same node-failed CLOSED by a later ratification{resolvesSeq} is no longer
+//     blocked (the closure fold clears it to pending) — never surfaced, never re-blocked by a
+//     coincidental id mention.
+check('a node-failed closed by a later ratification{resolvesSeq} is NOT surfaced blocked (closed)', () => {
+  const root = newEffort(
+    { 'WO-1': { verticalSlice: 'slice-1', role: 'implementer' } },
+    [
+      { seq: 1, type: 'node-planned', node: 'slice-1/WO-1', kind: 'work-order', title: 'w' },
+      { seq: 2, type: 'node-dispatched', node: 'slice-1/WO-1', kind: 'work-order', attempt: 1 },
+      { seq: 3, type: 'node-failed', node: 'slice-1/WO-1', reason: 'wall' },
+      { seq: 4, type: 'ratification', gate: 'retro', resolvesSeq: 3 }, // closes seq 3
+    ],
+  );
+  const r = reconcile(root);
+  assert.notEqual(r.workOrderStatuses['WO-1'], 'blocked', 'the closure fold cleared the block');
+  assert.ok(!r.blockedWorkOrders.some((b) => b.workOrder === 'WO-1'),
+    `a closed failure must not be surfaced blocked; got: ${JSON.stringify(r.blockedWorkOrders)}`);
+});
+
 for (const t of tmps) { try { rmSync(t, { recursive: true, force: true }); } catch { /* best effort */ } }
 
 if (process.exitCode) console.error(`\nreconcile-status-retired: FAILURES above (${passed} passed).`);

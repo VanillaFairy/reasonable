@@ -129,6 +129,36 @@ check('validateEvent: approval-resolved requires id; concluded has no required f
   assert.equal(validateEvent({ type: 'concluded' }).ok, true);
 });
 
+// ── T0.5 (§5.6, F12): amendment/ratification carry OPTIONAL structured drops + resolvesSeq ──────
+// Both fields are additive and never required (old events lack them); the shape is validated only
+// when present, so a malformed drop can never land raw and detonate at fold time.
+
+check('validateEvent: amendment with well-formed drops + resolvesSeq validates', () => {
+  assert.equal(validateEvent({
+    type: 'amendment', component: 'c',
+    drops: [{ workOrder: 'WO-1' }, { workOrder: 'WO-2', supersededBy: 'WO-9' }], resolvesSeq: 7,
+  }).ok, true);
+});
+
+check('validateEvent: ratification with resolvesSeq validates; a bare amendment/ratification still validates (fields optional)', () => {
+  assert.equal(validateEvent({ type: 'ratification', gate: 'retro', resolvesSeq: 3 }).ok, true);
+  assert.equal(validateEvent({ type: 'amendment', component: 'c' }).ok, true);
+  assert.equal(validateEvent({ type: 'ratification', gate: 'retro' }).ok, true);
+});
+
+check('validateEvent: malformed drops are rejected (not an array / missing workOrder / bad supersededBy / null entry)', () => {
+  assert.equal(validateEvent({ type: 'amendment', drops: 'WO-1' }).ok, false, 'drops must be an array');
+  assert.equal(validateEvent({ type: 'amendment', drops: [{ supersededBy: 'WO-9' }] }).ok, false, 'each drop needs a workOrder');
+  assert.equal(validateEvent({ type: 'amendment', drops: [{ workOrder: '' }] }).ok, false, 'workOrder must be non-empty');
+  assert.equal(validateEvent({ type: 'amendment', drops: [{ workOrder: 'WO-1', supersededBy: 5 }] }).ok, false, 'supersededBy, when present, must be a string');
+  assert.equal(validateEvent({ type: 'amendment', drops: [null] }).ok, false, 'a null drop is malformed');
+});
+
+check('validateEvent: a non-numeric resolvesSeq is rejected on both amendment and ratification', () => {
+  assert.equal(validateEvent({ type: 'ratification', gate: 'retro', resolvesSeq: 'three' }).ok, false);
+  assert.equal(validateEvent({ type: 'amendment', component: 'c', resolvesSeq: null }).ok, false);
+});
+
 check('exports: KINDS is exact; EVENT_SCHEMAS is a registry that excludes legacy action-* types', () => {
   assert.deepEqual(KINDS, ['work-order', 'spike', 'scaffold', 'grill-pass', 'slice', 'phase']);
   assert.equal(typeof EVENT_SCHEMAS, 'object');
