@@ -7,9 +7,11 @@
 // authoritative journalWrite handed the scribe `greenWorkOrders` with only "record the transitions".
 // The scribe mapped green -> the only terminal status "merged", which content-references a mergeSha it
 // was never given; D21 (never originate a SHA) forced persisted:false, and the runner turned a
-// genuinely-green slice into {kind:'halt'}. A gate-passed WO is NOT merged: the merge to
-// `merged`+SHA is the main session's post-run membrane act, so in-run the WO stays `dispatched` and
-// nothing needs a SHA. The journalWrite prompt now says exactly that.
+// genuinely-green slice into {kind:'halt'}. A gate-passed WO is NOT merged: the merge to `merged`+SHA
+// is the main session's post-run membrane act, so in-run nothing needs a SHA. Since T0.4/T0.5 retired
+// the per-WO `status` field (status is a fold of the ledger, lib/wo-status.mjs), the scribe has no
+// status to set AT ALL — the journalWrite prompt now says exactly that (leave the lane registry as-is,
+// no merged:true, no SHA), instead of the old "leave green WOs at status:'dispatched'".
 //
 // This test also pins BUG 3's new stage: `commit-blind-tests` must run in the happy path (the narrow
 // lane-committer that lands the blind-test-writer's tests onto the lane).
@@ -97,7 +99,7 @@ await check('a fully-green slice returns green (never halt), no mergeSha asked o
     if (label === 'route-plan') return routePlan;
     if (label === 'persist-work-orders') return { persisted: true, written: [WO] };
     if (label === 'footprint') return footprintReport;
-    if (label === 'scribe:write-ahead') return { persisted: true, transition: 'dispatched' };
+    if (label === 'scribe:write-ahead') return { persisted: true, transition: 'lane-registered' };
     if (label === `provision:${WO}` || label === `reprovision-blind-test:${WO}`) {
       return {
         provisioned: true, worktree: WORKTREE, branch: `lane/${WO}`,
@@ -136,10 +138,13 @@ await check('a fully-green slice returns green (never halt), no mergeSha asked o
 
   assert.equal(result.kind, 'green', `expected a green GATE_RESULT, got ${JSON.stringify(result)}`);
 
-  // BUG 5: the scribe must be told a gate-passed WO stays dispatched — not merged, no SHA.
+  // BUG 5 (post status-retirement): the scribe must be told a gate-passed WO is NOT merged and needs
+  // no SHA, and that there is no per-WO `status` field to set at all (T0.4/T0.5 retired it).
   assert.ok(scribeJournalPrompt, 'the authoritative journal scribe must have been dispatched');
   assert.match(scribeJournalPrompt, /GATE-PASSED IS NOT MERGED/, 'the scribe prompt must carry the no-merge/no-SHA guard');
-  assert.match(scribeJournalPrompt, /do NOT set status "merged"/, 'the scribe must be told to leave green WOs dispatched');
+  assert.match(scribeJournalPrompt, /do NOT set merged:true/, 'the scribe must be told NOT to mark a green WO merged');
+  assert.match(scribeJournalPrompt, /NO per-WO status field/, 'the scribe must be told there is no per-WO status to set (retired)');
+  assert.doesNotMatch(scribeJournalPrompt, /status:"dispatched"|status "merged"/, 'the retired status vocabulary must be gone from the scribe prompt');
 
   // BUG 3: the commit-blind-tests stage must have run in the happy path.
   assert.ok(labels.includes(`commit-blind-tests:${WO}`), 'the commit-blind-tests stage must run for a green WO');
