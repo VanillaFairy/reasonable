@@ -4,9 +4,14 @@
 //
 // Plan 1 "organs" rework, T06: lib/ledger.mjs's `append()` is now the sole sanctioned write path
 // to `.reasonable/ledger.jsonl`. This pins the ONE reconcile call site that must use it — the
-// lost-work crash downgrade (dispatched → pending, no worktree, no commits landed) — and its
+// lost-work crash downgrade (running-per-the-fold, no worktree, no commits landed) — and its
 // non-fatal posture: recovery must never die because the progress tree hasn't seen this work
-// order yet (no prior node-planned/node-dispatched to resolve `workOrder` against).
+// order yet.
+//
+// T0.4 (retire the journal per-WO `status`): the journals here carry NO `status` field. The
+// downgrade is driven by the LEDGER FOLD (a `node-dispatched` with no terminal folds to `running`),
+// never by a journal status. A legacy `status` that disagrees with the fold NEVER governs the live
+// decision (test 2).
 
 import assert from 'node:assert';
 import { execFileSync } from 'node:child_process';
@@ -23,9 +28,9 @@ const write = (root, rel, content) => {
 
 const tmps = [];
 
-// A dispatched WO with no registered worktree and no branch → the exact lost-work-crash shape
-// (`!wtExists && ahead === 0`, status !== 'checkpointed') the downgrade site handles.
-function newEffort(ledgerLines) {
+// Build an effort. `workOrder` is the lane-registry record for WO-1 (NO `status` field by default —
+// T0.4 retired it); pass one to model a legacy journal that still carries `status`.
+function newEffort(ledgerLines, workOrder = { verticalSlice: 'slice-1', role: 'implementer' }) {
   const root = mkdtempSync(join(tmpdir(), 'rdge-')); tmps.push(root);
   git(root, 'init', '-q');
   const hooks = join(root, '.nohooks'); mkdirSync(hooks, { recursive: true });
@@ -41,7 +46,7 @@ function newEffort(ledgerLines) {
   write(root, '.reasonable/config.json', JSON.stringify({ effort: 'demo', runMode: 'autonomous', effortBranch: 'effort/demo' }) + '\n');
   write(root, '.reasonable/journal.json', JSON.stringify({
     effort: 'demo', currentVerticalSlice: 'slice-1', phase: 'vertical-slice-execution', supervision: 'standard',
-    workOrders: { 'WO-1': { status: 'dispatched', verticalSlice: 'slice-1', role: 'implementer' } },
+    workOrders: { 'WO-1': workOrder },
     lanes: {}, inbox: [],
   }, null, 2) + '\n');
   write(root, '.reasonable/ledger.jsonl', ledgerLines.map((e) => JSON.stringify(e)).join('\n') + (ledgerLines.length ? '\n' : ''));
@@ -65,10 +70,10 @@ function check(name, fn) {
   catch (e) { console.error(`FAIL  ${name}\n      ${e.stack || e.message}`); process.exitCode = 1; }
 }
 
-// 1 — the node-planned/node-dispatched history exists → append() resolves WO-1 and lands a
-//     node-downgraded line; the regenerated progress.json shows the attempt subtree failed with
-//     detail "lost-work crash", and WO-1 itself pending (awaiting redispatch).
-check('lost-work downgrade with a resolvable WO emits node-downgraded and regenerates progress.json', () => {
+// 1 — the node-planned/node-dispatched history folds WO-1 to `running` (no journal status needed) →
+//     append() resolves WO-1 and lands a node-downgraded line; the regenerated progress.json shows the
+//     attempt subtree failed with detail "lost-work crash", and WO-1 itself pending.
+check('status-free journal: a fold-running WO with no lane on disk downgrades, emitting node-downgraded', () => {
   const root = newEffort([
     { seq: 1, type: 'node-planned', node: 'WO-1', kind: 'work-order', title: 'wire the widget' },
     { seq: 2, type: 'node-dispatched', node: 'WO-1', kind: 'work-order', attempt: 1 },
@@ -77,7 +82,9 @@ check('lost-work downgrade with a resolvable WO emits node-downgraded and regene
 
   const r = reconcile(root);
 
-  assert.equal(r.workOrders['WO-1'].status, 'pending', 'journal-side downgrade still happens');
+  // No journal `status` exists; the DERIVED status map reflects the downgrade, and resolved[] records it.
+  assert.equal(r.workOrderStatuses['WO-1'], 'pending', 'derived status reflects the downgrade (no journal field written)');
+  assert.equal(r.workOrders['WO-1'].status, undefined, 'the journal carries NO per-WO status field (T0.4)');
   assert.ok(r.resolved.some((x) => x.kind === 'downgrade' && x.workOrder === 'WO-1'), 'downgrade recorded in resolved[]');
 
   const lines = readLedgerLines(root);
@@ -98,49 +105,61 @@ check('lost-work downgrade with a resolvable WO emits node-downgraded and regene
   assert.deepEqual(wo1.children.map((c) => c.id), [], 'no attempt wrapper — attempt 1 IS the WO node itself');
 });
 
-// 2 — DISCRIMINATOR: no prior node-planned/node-dispatched for WO-1 → append() cannot resolve
-//     `workOrder` in the tree and returns {ok:false}. reconcile must still downgrade the journal
-//     side, append NO ledger line, and never throw.
-check('lost-work downgrade with an UNRESOLVABLE WO tolerates the append() miss: no ledger line, no throw', () => {
-  const root = newEffort([]); // empty ledger — WO-1 has never been planned/dispatched in the tree
+// 2 — T0.4 DISCRIMINATOR: a LEGACY journal still carrying status:'dispatched', but with an EMPTY ledger
+//     (fold absent) AND no lane registry (no worktree/branch), is NOT treated as live. The fold governs,
+//     not the journal status: reconcile does NOT downgrade it, appends NO ledger line, and never throws.
+check('legacy status:"dispatched" does NOT govern: no fold + no lane → not live, no downgrade, no ledger line', () => {
+  const root = newEffort([], { status: 'dispatched', verticalSlice: 'slice-1', role: 'implementer' });
+  const before = readLedgerLines(root).length;
+  assert.equal(before, 0, 'sanity: ledger starts empty (fold has no entry for WO-1)');
+
+  let r;
+  assert.doesNotThrow(() => { r = reconcile(root); }, 'reconcile must never throw on a status-only legacy claim');
+
+  assert.ok(!r.resolved.some((x) => x.kind === 'downgrade' && x.workOrder === 'WO-1'),
+    'the retired status must NOT drive a downgrade — the fold (absent) governs');
+  assert.equal(readLedgerLines(root).length, before, 'no ledger line appended (the WO is not live per the fold+registry)');
+  assert.equal(r.workOrderStatuses['WO-1'], 'pending', 'a registered WO with no ledger events reads pending in the derived map');
+});
+
+// 3 — IDEMPOTENCY: reconcile() runs unconditionally on every SessionStart. A stuck WO kept LIVE by its
+//     registered lane (a `branch` — a lane-registry fact) re-enters the downgrade branch on the second
+//     call; the `alreadyRecorded` tree guard must still land exactly ONE node-downgraded line, not two.
+check('calling reconcile() twice against the same stuck WO appends node-downgraded only ONCE', () => {
+  const root = newEffort([
+    { seq: 1, type: 'node-planned', node: 'WO-1', kind: 'work-order', title: 'wire the widget' },
+    { seq: 2, type: 'node-dispatched', node: 'WO-1', kind: 'work-order', attempt: 1 },
+  ], { verticalSlice: 'slice-1', role: 'implementer', branch: 'lane/WO-1' }); // branch keeps it live on re-pass
+
+  const r1 = reconcile(root);
+  assert.equal(r1.workOrderStatuses['WO-1'], 'pending', 'first call downgrades (derived status)');
+  const afterFirst = readLedgerLines(root);
+  const downgradesAfterFirst = afterFirst.filter((l) => l.type === 'node-downgraded' && l.workOrder === 'WO-1');
+  assert.equal(downgradesAfterFirst.length, 1, 'first call appends exactly one node-downgraded line');
+
+  const r2 = reconcile(root);
+  assert.equal(r2.workOrderStatuses['WO-1'], 'pending', 'second call still reports the downgrade (derived status)');
+  const afterSecond = readLedgerLines(root);
+  const downgradesAfterSecond = afterSecond.filter((l) => l.type === 'node-downgraded' && l.workOrder === 'WO-1');
+  assert.equal(downgradesAfterSecond.length, 1, 'second call is a no-op on the ledger: still exactly one node-downgraded line, not two');
+  assert.equal(afterSecond.length, afterFirst.length, 'no new ledger line of any kind landed on the second call');
+});
+
+// 4 — an UNRESOLVABLE downgrade tolerates the append() miss: a WO kept live by its branch registry but
+//     with NO node-planned/node-dispatched in the ledger → append() cannot resolve the tree node and
+//     returns {ok:false}. reconcile records the downgrade (derived status), appends NO line, never throws.
+check('lost-work downgrade with an UNRESOLVABLE tree node tolerates the append() miss: no ledger line, no throw', () => {
+  const root = newEffort([], { verticalSlice: 'slice-1', role: 'implementer', branch: 'lane/WO-1' });
   const before = readLedgerLines(root).length;
   assert.equal(before, 0, 'sanity: ledger starts empty');
 
   let r;
   assert.doesNotThrow(() => { r = reconcile(root); }, 'an unresolvable node-downgraded must never throw');
 
-  assert.equal(r.workOrders['WO-1'].status, 'pending', 'journal-side downgrade still happens despite the ledger miss');
+  assert.equal(r.workOrderStatuses['WO-1'], 'pending', 'derived downgrade still recorded despite the ledger miss');
   assert.ok(r.resolved.some((x) => x.kind === 'downgrade' && x.workOrder === 'WO-1'), 'downgrade still recorded in resolved[]');
   assert.ok(r.notes.some((n) => /WO-1/.test(n) && /not recorded/.test(n)), 'a non-fatal note records the ledger miss');
-
-  const lines = readLedgerLines(root);
-  assert.equal(lines.length, before, 'no ledger line appended when the node cannot be resolved');
-});
-
-// 3 — IDEMPOTENCY: reconcile() runs unconditionally on every SessionStart and has always been
-//     safe to call repeatedly (pure reads, before this change). Calling it twice against the
-//     SAME stuck fixture (journal.json is not rewritten between calls — that's the journal-
-//     writer's job, not reconcile's) must land exactly ONE node-downgraded line, not two: the
-//     second call must see the tree already reflects the downgrade (pending, detail "downgraded
-//     — awaiting redispatch") and skip the append.
-check('calling reconcile() twice against the same stuck WO appends node-downgraded only ONCE', () => {
-  const root = newEffort([
-    { seq: 1, type: 'node-planned', node: 'WO-1', kind: 'work-order', title: 'wire the widget' },
-    { seq: 2, type: 'node-dispatched', node: 'WO-1', kind: 'work-order', attempt: 1 },
-  ]);
-
-  const r1 = reconcile(root);
-  assert.equal(r1.workOrders['WO-1'].status, 'pending', 'first call downgrades journal-side');
-  const afterFirst = readLedgerLines(root);
-  const downgradesAfterFirst = afterFirst.filter((l) => l.type === 'node-downgraded' && l.workOrder === 'WO-1');
-  assert.equal(downgradesAfterFirst.length, 1, 'first call appends exactly one node-downgraded line');
-
-  const r2 = reconcile(root);
-  assert.equal(r2.workOrders['WO-1'].status, 'pending', 'second call still reports the downgrade journal-side');
-  const afterSecond = readLedgerLines(root);
-  const downgradesAfterSecond = afterSecond.filter((l) => l.type === 'node-downgraded' && l.workOrder === 'WO-1');
-  assert.equal(downgradesAfterSecond.length, 1, 'second call is a no-op on the ledger: still exactly one node-downgraded line, not two');
-  assert.equal(afterSecond.length, afterFirst.length, 'no new ledger line of any kind landed on the second call');
+  assert.equal(readLedgerLines(root).length, before, 'no ledger line appended when the node cannot be resolved');
 });
 
 for (const t of tmps) { try { rmSync(t, { recursive: true, force: true }); } catch { /* best effort */ } }

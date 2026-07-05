@@ -24,7 +24,7 @@ const write = (root, rel, content) => {
 };
 
 const tmps = [];
-function newEffort(workOrders) {
+function newEffort(workOrders, ledgerLines = [{ seq: 1, type: 'ratification', gate: 'analysis' }]) {
   const root = mkdtempSync(join(tmpdir(), 'rtw-')); tmps.push(root);
   git(root, 'init', '-q');
   const hooks = join(root, '.nohooks'); mkdirSync(hooks, { recursive: true });
@@ -42,7 +42,7 @@ function newEffort(workOrders) {
     effort: 'demo', currentVerticalSlice: 'slice-2', phase: 'vertical-slice-execution', supervision: 'standard',
     workOrders, lanes: {}, inbox: [],
   }, null, 2) + '\n');
-  write(root, '.reasonable/ledger.jsonl', JSON.stringify({ seq: 1, type: 'ratification', gate: 'analysis' }) + '\n');
+  write(root, '.reasonable/ledger.jsonl', ledgerLines.map((e) => JSON.stringify(e)).join('\n') + '\n');
   return root;
 }
 
@@ -63,25 +63,28 @@ check('a work order with status:"green", merged:true is reported terminal', () =
     `expected only the merged WO in terminalWorkOrders, got ${JSON.stringify(r.terminalWorkOrders)}`);
 });
 
-// 2 — the canonical docs/artifacts.md shape: status:"merged" with no separate merged field.
-check('a work order with status:"merged" (no merged field) is also reported terminal', () => {
-  const root = newEffort({
-    'WO-A': { status: 'merged', verticalSlice: 'slice-1', role: 'implementer' },
-  });
+// 2 — T0.4: the authoritative merged signal is now the ledger FOLD's `done`. The merge membrane act
+//     appends node-completed (skills/vertical-slice-execution/SKILL.md §7), which folds to `done` — so a
+//     status-free journal WO whose ledger shows node-completed is reported terminal (no journal status).
+check('a status-free WO whose ledger folds to done (node-completed at merge) is reported terminal', () => {
+  const root = newEffort(
+    { 'WO-A': { verticalSlice: 'slice-1', role: 'implementer' } }, // NO status field (T0.4)
+    [{ seq: 1, type: 'node-planned', node: 'slice-1/WO-A', kind: 'work-order', title: 'a' },
+     { seq: 2, type: 'node-dispatched', node: 'slice-1/WO-A', kind: 'work-order', attempt: 1 },
+     { seq: 3, type: 'node-completed', node: 'slice-1/WO-A' }],
+  );
   const r = reconcile(root);
   assert.deepEqual(r.terminalWorkOrders, ['WO-A']);
 });
 
-// 3 — pending/dispatched/checkpointed/dead-end work orders are NOT terminal (a
-//     dead-end may still un-bind and be re-dispatched once an input changes —
-//     that is redispatch-guard.mjs's job, not this mechanical set).
-check('pending/dispatched/checkpointed/dead-end work orders are not terminal', () => {
-  const root = newEffort({
-    'WO-B': { status: 'pending', verticalSlice: 's', role: 'implementer' },
-    'WO-C': { status: 'dispatched', verticalSlice: 's', role: 'implementer' },
-    'WO-D': { status: 'checkpointed', verticalSlice: 's', role: 'implementer' },
-    'WO-E': { status: 'dead-end', verticalSlice: 's', role: 'implementer' },
-  });
+// 3 — a status-free WO whose fold is pending (or absent) is NOT terminal (a dead-end may still un-bind
+//     and be re-dispatched once an input changes — that is redispatch-guard.mjs's job, not this set).
+check('a fold-pending / not-yet-merged work order is not terminal', () => {
+  const root = newEffort(
+    { 'WO-B': { verticalSlice: 's', role: 'implementer' },   // no ledger events → absent from fold
+      'WO-C': { verticalSlice: 's', role: 'implementer' } }, // planned-not-dispatched → pending
+    [{ seq: 1, type: 'node-planned', node: 's/WO-C', kind: 'work-order', title: 'c' }],
+  );
   const r = reconcile(root);
   assert.deepEqual(r.terminalWorkOrders, []);
 });
