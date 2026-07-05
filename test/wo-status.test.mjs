@@ -85,6 +85,21 @@ check('resolution matches ONLY by resolvesSeq, never by a coincidental workOrder
   assert.equal(f.get('WO-1').status, 'blocked');
 });
 
+check('two blocked WOs + one ratification: ONLY the resolvesSeq-matched WO clears (no cross-talk)', () => {
+  // THE load-bearing invariant of the fold: resolution is by EXACT seq — not by id, not by a blanket
+  // "any WO currently blocked". A regression to id-based or bare status==='blocked' matching would
+  // wrongly clear BOTH. WO-A (failed at seq 3, the ratification's target) clears; WO-B (failed at
+  // seq 4) stays blocked with its own blockedBy.
+  const f = foldWorkOrderStatuses([
+    planned(1, 'S/WO-A'), planned(2, 'S/WO-B'),
+    failed(3, 'S/WO-A', 'wall-a'),   // WO-A → blocked, blockedBy 3
+    failed(4, 'S/WO-B', 'wall-b'),   // WO-B → blocked, blockedBy 4
+    { seq: 5, type: 'ratification', gate: 'retro', resolvesSeq: 3 }, // closes ONLY seq 3 (WO-A)
+  ]);
+  assert.deepEqual(f.get('WO-A'), { status: 'pending', lastSeq: 5 }, 'WO-A: block cleared by resolvesSeq:3');
+  assert.deepEqual(f.get('WO-B'), { status: 'blocked', lastSeq: 4, blockedBy: 4 }, 'WO-B: untouched, still blocked');
+});
+
 // ── drop / restore ────────────────────────────────────────────────────────────────────────
 
 check('amendment drops → dropped (droppedBy names the amendment seq)', () => {
@@ -109,6 +124,17 @@ check('a dropped WO that never appeared in a plan/dispatch is still known via th
     { seq: 1, type: 'amendment', component: 'c', drops: [{ workOrder: 'WO-orphan' }] },
   ]);
   assert.deepEqual(f.get('WO-orphan'), { status: 'dropped', lastSeq: 1, droppedBy: 1 });
+});
+
+check('drop then a bare redispatch (no restoring ratification) → running (a later dispatch reopens)', () => {
+  // The dual of the reopen-after-failed rule: ANY later node-dispatched reopens the WO to running,
+  // a prior amendment drop included. No resolvesSeq is needed — the dispatch itself is the reopen.
+  const f = foldWorkOrderStatuses([
+    planned(1, 'S/WO-1'), dispatched(2, 'S/WO-1'),
+    { seq: 3, type: 'amendment', component: 'c', drops: [{ workOrder: 'WO-1' }] }, // → dropped
+    dispatched(4, 'S/WO-1[2]', 2),                                                 // → running
+  ]);
+  assert.deepEqual(f.get('WO-1'), { status: 'running', lastSeq: 4 });
 });
 
 // ── reopen / downgrade / cancel ─────────────────────────────────────────────────────────
