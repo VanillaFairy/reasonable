@@ -140,6 +140,22 @@ const BRIEFING = {
     // set right after the route-planner returns - a mechanical backstop beside
     // the route-planner's own prose filter (capability beats discipline).
     terminalWorkOrders: { type: 'array', items: { type: 'string' } },
+    // Refutation-surviving dead-ends (minus merged ids), reconcile.mjs-computed via
+    // lib/dead-ends.mjs. RETIREMENT semantics: the planner never re-proposes one of
+    // these ids (successor work gets a NEW id via a replan); the script drops any
+    // that slip through - capability beside discipline, the terminalWorkOrders twin.
+    deadEnds: {
+      type: 'array',
+      items: {
+        type: 'object',
+        additionalProperties: true,
+        properties: {
+          workOrder: { type: 'string' },
+          ledgerSeq: { type: ['integer', 'null'] },
+          hash: { type: ['string', 'null'] },
+        },
+      },
+    },
     inbox: {
       type: 'array',
       items: {
@@ -630,6 +646,7 @@ function reconcilePrompt(a) {
     'Report floorUnexplained = reconcile.mjs `floorIntegrity.unexplained` (surfaced floor diffs with NO accept verdict). D13 - the UNEXPLAINED-BREACH STOP: in AUTONOMOUS mode floorUnexplained>0 is the FIFTH always-escalate class - something bypassed the pre-integration adversary, so set halt:true (queue BREAKING + STOP, do not grind on). An EXPLAINED floor diff (surfaced but floorUnexplained:0) is a non-blocking NOTICE: log it and continue. In GATED mode both just surface in the briefing for the present human (no halt).',
     'Report staleTrusted EXACTLY as reconcile.mjs computed it (result.staleTrusted) — the trusted-green test ids whose governing clause was amended/extended since last verification (D13). lib/trust-staleness.mjs derives this mechanically from the ledger; do NOT eyeball the ledger or re-derive it in prose — copy the script\'s computed list verbatim, like terminalWorkOrders.',
     'Report terminalWorkOrders EXACTLY as reconcile.mjs computed it (result.terminalWorkOrders) - the ids of every work order already merged (status:"merged", or status:"green" with merged:true). Do NOT eyeball journal.workOrders yourself; copy the script\'s computed set verbatim. These are DONE, permanently - the route-planner and the script both refuse to re-dispatch them no matter what still sits in .reasonable/work-orders/*.json.',
+    'Report deadEnds EXACTLY as reconcile.mjs computed it (result.deadEnds) - the refutation-surviving infeasibility verdicts, minus already-merged ids, each { workOrder, ledgerSeq, hash }. lib/dead-ends.mjs folds this from the ledger; do NOT eyeball ledger events or re-derive the set in prose - copy the computed set verbatim, like terminalWorkOrders and staleTrusted.',
     'Return the BRIEFING. Set halt:true with haltReason+evidence for ANY of the four first-line AMBIGUOUS classes, or for an UNEXPLAINED autonomous floor breach (haltClass:"floor-integrity-unexplained") - never guess a recovery state.',
     callShapeReminder,
   ].join('\n');
@@ -643,6 +660,7 @@ function routePrompt(state, a) {
     `Route snapshot: ${j(a.route || null)}`,
     `Reconcile briefing (current state): ${j({ runMode: state.runMode, brownfield: state.brownfield, staleTrusted: state.staleTrusted || [] })}`,
     `TERMINAL work orders (already merged, reconcile.mjs-computed): ${j(state.terminalWorkOrders || [])}. NEVER include one of these ids in the DECOMPOSITION - not even if a stale .reasonable/work-orders/<id>.json spec file still sits on disk, and not as a re-verify pass. A merged work order's code already landed; there is nothing left to dispatch.`,
+    `DEAD-ENDED work orders (refutation-surviving, reconcile.mjs-computed): ${j(state.deadEnds || [])}. These ids are RETIRED - NEVER re-propose one, even if you believe an input changed (resurrection is a REPLAN decision that produces a NEW work-order id from a cut that consumed the dead-end - never an in-band re-proposal of the old id). Treat each as feedback with a blast radius: the premise that died there is likely shared by its neighborhood - re-price siblings leaning on the same assumption and route around the crater. If the refuted premise reaches the route ordering or the intention itself, do NOT paper over it with a decomposition: return zero work orders and say why in the rationale - the script escalates a stuck frontier to the human.`,
     'For EACH work order return: id, role, verticalSlice, the DECLARED locus (the glob paths it will touch), contractSeeds (the contracts it DIRECTLY cites - NOT the closure; the footprint step folds the transitive closure from these seeds), and resources (resource-lexicon claims). Do NOT run lib/footprint.mjs and do NOT compute a closure yourself.',
     'DECOMPOSE for reviewable commits (one work order = one atomic commit = one merge): prefer FINER work orders split along public-operation / file fault lines, EVEN WHEN they serialize (no parallelism benefit). Litmus - if a work order\'s closing commit message would need an "AND" (two components / two unrelated operations), split it. HARD FLOOR - each work order must be independently gate-green: a complete public operation or self-contained layer with its own contract clauses + tests, NEVER a non-building fragment (a bare dataclass file imported by nothing is over-splitting, worse than the blob). Sequence a producer/consumer split provider-first.',
     'Mark characterizationNeeded:true for any work order whose first touch crosses ungoverned brownfield code (BF7).',
@@ -1621,6 +1639,35 @@ if (droppedTerminal.length > 0) {
   plan.workOrders = (plan.workOrders || []).filter((wo) => !terminal.has(wo.id));
   log(`route-planner returned ${droppedTerminal.length} already-terminal (merged) work order(s) ` +
     `[${droppedTerminal.map((wo) => wo.id).join(', ')}] - dropped before dispatch, never re-run a merged WO.`);
+}
+
+// Retirement backstop (the terminal filter's twin): a dead-ended work-order id is
+// RETIRED - the planner is handed the same set above, but if one slips through, drop
+// it here rather than re-run a confirmed crater (capability beside discipline).
+// Successor work must arrive under a NEW id via a replan that consumed the dead-end
+// (docs/roadmap/dead-end-blast-radius.md).
+const deadEnded = new Set((state.deadEnds || []).map((d) => d.workOrder));
+const droppedDead = (plan.workOrders || []).filter((wo) => deadEnded.has(wo.id));
+if (droppedDead.length > 0) {
+  plan.workOrders = (plan.workOrders || []).filter((wo) => !deadEnded.has(wo.id));
+  log(`route-planner re-proposed ${droppedDead.length} RETIRED (dead-ended) work order(s) ` +
+    `[${droppedDead.map((wo) => wo.id).join(', ')}] - dropped; a dead end is replanned around, never re-run.`);
+}
+
+// A stuck frontier is a human decision, never a silent grind: zero dispatchable work
+// orders (the planner returned none, or every proposal was terminal/dead-ended) means
+// the slice cannot proceed as planned - escalate BREAKING with the rationale instead
+// of limping into a mislabeled budget-exhausted.
+if ((plan.workOrders || []).length === 0) {
+  return { kind: 'blocked', outcome: { kind: 'trap', items: [{
+    class: 'BREAKING', kind: 'other',
+    detail: {
+      reason: 'frontier-stuck: zero dispatchable work orders after terminal/dead-end filtering - the slice needs a replan around the dead end(s), or is already done',
+      droppedTerminal: droppedTerminal.map((w) => w.id),
+      droppedDeadEnds: droppedDead.map((w) => w.id),
+      rationale: plan.rationale || null,
+    },
+  }] } };
 }
 
 // PERSIST the route-planner's PROPOSED plan (D7): the route-planner computes the footprints in
