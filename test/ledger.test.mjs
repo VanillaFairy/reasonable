@@ -13,14 +13,14 @@
 
 import assert from 'node:assert';
 import { spawn, spawnSync } from 'node:child_process';
-import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, rmSync, existsSync } from 'node:fs';
+import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, readdirSync, rmSync, existsSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 import { KINDS, EVENT_SCHEMAS, validateEvent, append } from '../lib/ledger.mjs';
 import { buildTree } from '../lib/progress-map.mjs';
-import { findByPath } from '../lib/progress-tree.mjs';
+import { findByPath, countByStatus } from '../lib/progress-tree.mjs';
 
 const LIB = join(dirname(fileURLToPath(import.meta.url)), '..', 'lib', 'ledger.mjs');
 const tmps = [];
@@ -448,13 +448,21 @@ check('CLI: writeMirror throwing after a successful ledger append must not crash
   assert.equal(readLedgerLines(root).length, 1, 'the ledger write already succeeded before the mirror regen ran');
 });
 
-// ── audit round 3: same-node concurrent dispatch race (finding 3) ─────────────────────────
-// buildTree(root) (a full ledger re-read + attempt computation) runs OUTSIDE the lock that
-// protects appendJsonl's seq assignment. N concurrent node-dispatched calls against the SAME
-// node therefore all read identical pre-dispatch history and independently compute the same
-// attempt number.
+// ── T0.2: locking correctness (§5.3 mirror atomicity + §5.4 attempt-slot race) ─────────────
+// append() now runs attempt-resolution + seq + file-append + mirror-regen under ONE hold of the
+// ledger lock (buildTree()/attempt arithmetic and writeMirror used to run OUTSIDE it). Two things
+// to pin under concurrency: seqs stay gapless AND the mirror is never torn/stale (regenerated
+// atomically inside the lock via tmp+rename). See shared/interfaces.md §T0.2.
+//
+// NOTE — why NOT "N concurrent dispatches → attempts 1..N": the attempt state machine treats a
+// plain re-dispatch of a LIVE (non-failed) attempt as a continuation (same slot); a reopen mints
+// the next `[k]` only after an intervening seal (node-failed / node-downgraded). So N concurrent
+// PLAIN dispatches on one node all resolve to the one live slot — the correct answer, lock or no
+// lock (verified empirically: the fold collapses them onto a single node). The distinct-slot path
+// is a genuine REOPEN chain, asserted deterministically in the check below this one. What the lock
+// buys HERE is seq/mirror consistency, which is what this check pins.
 
-await checkAsync('CLI concurrency: 8 parallel node-dispatched on the SAME never-dispatched node all succeed but compute the SAME attempt number', async () => {
+await checkAsync('CLI concurrency: N same-node node-dispatched serialize cleanly — gapless seqs, an untorn mirror that agrees with the ledger, no leftover temp', async () => {
   const root = newEffort();
   seedLedger(root, [
     { seq: 1, type: 'node-planned', node: 'WO-race', kind: 'work-order', title: 'race target' },
@@ -471,14 +479,54 @@ await checkAsync('CLI concurrency: 8 parallel node-dispatched on the SAME never-
     child.on('close', (code) => (code === 0 ? resolve() : reject(new Error(`racer ${i} exited ${code}: ${stderr}`))));
   }));
   await Promise.all(runs); // all 8 dispatches succeed — no crash, no ok:false
-  const lines = readLedgerLines(root).filter((l) => l.type === 'node-dispatched');
-  assert.equal(lines.length, N, 'all 8 node-dispatched lines landed');
-  const attempts = new Set(lines.map((l) => l.attempt));
-  // KNOWN LIMITATION: concurrent same-node dispatch is not currently serialized; all N racers
-  // compute the same attempt number. Acceptable under Plan 1's single-vertical-slice-in-flight
-  // default; revisit if cross-slice parallelism becomes standard.
-  assert.equal(attempts.size, 1, 'all racers computed the SAME attempt number (buildTree runs outside the append lock)');
-  assert.ok(attempts.has(1), 'a never-before-dispatched node races to attempt 1, not some other number');
+  const lines = readLedgerLines(root);
+  const dispatched = lines.filter((l) => l.type === 'node-dispatched');
+  assert.equal(dispatched.length, N, 'all 8 node-dispatched lines landed');
+  // seq gaplessness: the lock now covers the WHOLE resolve→seq→append sequence, and seqs stay a
+  // unique, contiguous 1..M run under concurrency (no lost update).
+  const seqs = lines.map((l) => l.seq).sort((a, b) => a - b);
+  assert.equal(new Set(seqs).size, lines.length, 'no duplicate seq under concurrency');
+  assert.deepEqual(seqs, Array.from({ length: lines.length }, (_, i) => i + 1), 'seq is gapless 1..M');
+  // Correct continuation, not a race: all racers resolve to the one live attempt slot (see NOTE).
+  assert.deepEqual([...new Set(dispatched.map((l) => l.attempt))], [1], 'all racers resolve to the one live attempt (continuation) — no phantom sibling slot');
+  // §5.3: the mirror is regenerated INSIDE the lock via tmp+rename, so progress.json always parses
+  // and always agrees with a fresh fold of the FINAL ledger — never a torn or stale read.
+  const mirror = JSON.parse(readFileSync(join(root, '.reasonable', 'progress.json'), 'utf8'));
+  assert.deepEqual(mirror.counts, countByStatus(buildTree(root)), 'progress.json counts agree with a fresh ledger fold — no torn/stale mirror');
+  // No stray temp survives a successful regen (tmp is renamed over the target, not left behind).
+  const leftovers = readdirSync(join(root, '.reasonable')).filter((f) => /\.tmp-/.test(f));
+  assert.deepEqual(leftovers, [], 'no progress.*.tmp-* left behind after the atomic writes');
+});
+
+check('CLI: a reopen chain mints DISTINCT [k] attempt slots 1..N — attempt resolution reads committed ledger state under the lock (§5.4)', () => {
+  const root = newEffort();
+  seedLedger(root, [
+    { seq: 1, type: 'node-planned', node: 's1/WO', kind: 'work-order', title: 'reopen target' },
+  ]);
+  const N = 5;
+  const attempts = [];
+  for (let k = 1; k <= N; k++) {
+    // Each dispatch, resolving under the lock against the fully-committed ledger, either opens the
+    // fresh base (attempt 1) or reopens the sealed live attempt to the next distinct slot.
+    const d = runCli(['append', '--root', root, '--type', 'node-dispatched', '--workOrder', 'WO', '--kind', 'work-order']);
+    assert.equal(d.status, 0, d.stderr);
+    const disp = readLedgerLines(root).filter((l) => l.type === 'node-dispatched');
+    attempts.push(disp[disp.length - 1].attempt);
+    // Seal it failed so the NEXT dispatch is a genuine reopen (not a continuation).
+    const g = runCli(['append', '--root', root, '--type', 'node-downgraded', '--workOrder', 'WO']);
+    assert.equal(g.status, 0, g.stderr);
+  }
+  assert.deepEqual(attempts, [1, 2, 3, 4, 5], 'each reopen mints the next DISTINCT attempt slot — no two reopens collide on one [k]');
+});
+
+check('append: the mirror is published atomically — progress.json parses and no progress.*.tmp-* is left behind (uncontended)', () => {
+  const root = newEffort();
+  const r = append(root, { type: 'node-planned', node: 'WO-solo', kind: 'work-order', title: 'solo' });
+  assert.equal(r.ok, true, r.error);
+  const mirror = JSON.parse(readFileSync(join(root, '.reasonable', 'progress.json'), 'utf8'));
+  assert.ok(mirror && typeof mirror === 'object', 'progress.json parses (never a torn read)');
+  const leftovers = readdirSync(join(root, '.reasonable')).filter((f) => /\.tmp-/.test(f));
+  assert.deepEqual(leftovers, [], 'atomic tmp+rename leaves no stray temp file after a successful regen');
 });
 
 // ── audit round 3: other required string fields aren't type-checked (finding 4) ───────────
