@@ -2,17 +2,21 @@
 // orders must be PERSISTED to .reasonable/work-orders/<id>.json before the lane-provisioner
 // runs, or the provisioner (which reads that immutable file as its locus license) refuses.
 //
-// THE BUG (sofia-plays, 2026-07-02). The route-planner returns a ROUTE_PLAN with fully-computed
-// footprints, but that plan lived ONLY in memory — nothing authored the immutable work-order
-// spec files. On a slice whose WO files did not already exist on disk, the lane-provisioner
-// correctly refused ("the immutable work-order file that must license locus/contracts was never
-// authored"), which surfaced as {kind:'blocked', outcome:{kind:'trap', items:[{class:'BREAKING',
-// kind:'other', ...}]}} on the very first NEW slice. Slices 1-2 hid the gap only because an
-// earlier flow version had left their WO files on disk (the files are gitignored runtime state).
+// THE BUG (sofia-plays, 2026-07-02). The route-planner returns a plan, but that plan lived ONLY
+// in memory — nothing authored the immutable work-order spec files. On a slice whose WO files did
+// not already exist on disk, the lane-provisioner correctly refused ("the immutable work-order
+// file that must license locus/contracts was never authored"), which surfaced as {kind:'blocked',
+// outcome:{kind:'trap', items:[{class:'BREAKING', kind:'other', ...}]}} on the very first NEW
+// slice. Slices 1-2 hid the gap only because an earlier flow version had left their WO files on
+// disk (the files are gitignored runtime state).
 //
 // The fix: a dedicated narrow work-order-writer, dispatched serially right after the route-planner
-// returns and BEFORE the wave loop provisions any lane, persists each work order's footprint into
-// its on-disk spec. This pins that ordering + gating contract.
+// returns and BEFORE the wave loop provisions any lane, persists each work order's spec.
+//
+// THIN-PLANNER UPDATE (docs/roadmap/thin-planner.md). The planner now returns a DECOMPOSITION
+// (declared locus + contract SEEDS, NO computed footprint); a dedicated FOOTPRINT step runs
+// lib/footprint.mjs over the persisted specs to fold the closure. So the Plan-phase ordering
+// contract this file pins is now three-step: persist specs -> footprint them -> provision.
 // Run: node test/vertical-slice-runner-persist-work-orders.test.mjs
 
 import assert from 'node:assert';
@@ -60,11 +64,13 @@ function briefing() {
     floorUnexplained: 0, inbox: [], effortBranch: 'effort/demo',
   };
 }
-function routePlan() {
+// The THIN planner returns a DECOMPOSITION: declared locus + contract SEEDS + resources per
+// work order — NO computed footprint (the dedicated footprint step folds the closure downstream).
+function decomposition() {
   return {
     workOrders: [{
       id: WO_ID, role: 'implementer', verticalSlice: 'slice-1',
-      footprint: { locus: [LOCUS], contracts: [CONTRACT], resources: [] },
+      locus: [LOCUS], contractSeeds: [CONTRACT], resources: [],
     }],
     rationale: 'single work order for the new slice',
   };
@@ -78,9 +84,14 @@ function makeAgent(calls, { persistOk = true } = {}) {
     const label = (opts && opts.label) || '';
     calls.push({ label, agentType: opts && opts.agentType, prompt });
     if (label === 'reconcile') return briefing();
-    if (label === 'route-plan') return routePlan();
+    if (label === 'route-plan') return decomposition();
     if (opts && opts.agentType === 'reasonable:work-order-writer') {
       return { persisted: persistOk, written: persistOk ? [WO_ID] : [], note: null };
+    }
+    // The dedicated FOOTPRINT step: runs lib/footprint.mjs over the persisted specs and returns
+    // the closure + independence. Echoes the seed as the (trivial) closure for this one-WO slice.
+    if (opts && opts.agentType === 'reasonable:footprinter') {
+      return { footprints: [{ id: WO_ID, locus: [LOCUS], contracts: [CONTRACT], resources: [] }], independence: [] };
     }
     if (label.startsWith('scribe:')) return { persisted: true, transition: label, note: null };
     // BUG 3: the narrow lane-committer that lands the blind-test-writer's tests onto the lane.
@@ -120,25 +131,51 @@ await check('a work-order-writer persists the WO specs BEFORE any lane is provis
   const result = await run();
 
   const persistIdx = calls.findIndex((c) => c.agentType === 'reasonable:work-order-writer');
+  const footprintIdx = calls.findIndex((c) => c.agentType === 'reasonable:footprinter');
   const provisionIdx = calls.findIndex((c) => (c.label || '').startsWith('provision:'));
   assert.notEqual(persistIdx, -1, 'the runner must dispatch a work-order-writer to persist the WO specs');
+  assert.notEqual(footprintIdx, -1, 'the runner must dispatch a footprint step to compute the closure over the persisted specs');
   assert.notEqual(provisionIdx, -1, 'a lane must be provisioned on a healthy slice');
-  assert.ok(persistIdx < provisionIdx,
-    `WO specs must be persisted BEFORE provisioning (persist@${persistIdx} vs provision@${provisionIdx})`);
+  // The ordering contract of the thin-planner flow: persist the specs, THEN footprint them (the
+  // closure needs the specs on disk), THEN provision (grouping needs the footprints).
+  assert.ok(persistIdx < footprintIdx,
+    `specs must be persisted BEFORE footprinting (persist@${persistIdx} vs footprint@${footprintIdx})`);
+  assert.ok(footprintIdx < provisionIdx,
+    `footprints must be computed BEFORE provisioning (footprint@${footprintIdx} vs provision@${provisionIdx})`);
 
   // A NEW slice must not blow up on the missing WO file: it drives to a green gate, not blocked/other.
   assert.equal(result.kind, 'green', `expected a green gate, got ${JSON.stringify(result).slice(0, 300)}`);
 });
 
-await check("the route-planner's computed footprint round-trips into the persist request", async () => {
+await check("the thin planner's declared locus + contract seeds round-trip into the persist request", async () => {
   const calls = [];
   const run = loadRunner()(baseArgs(), mockBudget, noop, noop, makeAgent(calls), parallel, pipeline, noop);
   await run();
   const persist = calls.find((c) => c.agentType === 'reasonable:work-order-writer');
   assert.ok(persist, 'work-order-writer must be dispatched');
   assert.match(persist.prompt, new RegExp(WO_ID), 'the persist request must name the work order id');
-  assert.match(persist.prompt, /src\/layout/, 'the persist request must carry the computed locus');
-  assert.match(persist.prompt, new RegExp(CONTRACT), 'the persist request must carry the computed contracts');
+  assert.match(persist.prompt, /src\/layout/, 'the persist request must carry the declared locus');
+  assert.match(persist.prompt, new RegExp(CONTRACT), 'the persist request must carry the contract seeds');
+});
+
+await check('a footprint step returning fewer footprints than work orders HALTs (never groups a partial set)', async () => {
+  const calls = [];
+  // A footprint agent that drops the only WO's footprint (an under-computed set). The runner must
+  // HALT rather than group a wave on it — an under-computed overlap could run conflicting WOs together.
+  const shortFootprintAgent = async (prompt, opts) => {
+    const label = (opts && opts.label) || '';
+    calls.push({ label, agentType: opts && opts.agentType });
+    if (label === 'reconcile') return briefing();
+    if (label === 'route-plan') return decomposition();
+    if (opts && opts.agentType === 'reasonable:work-order-writer') return { persisted: true, written: [WO_ID], note: null };
+    if (opts && opts.agentType === 'reasonable:footprinter') return { footprints: [], independence: [], note: 'spec missing' };
+    throw new Error(`unexpected agent() call after a short footprint report: ${label}`);
+  };
+  const run = loadRunner()(baseArgs(), mockBudget, noop, noop, shortFootprintAgent, parallel, pipeline, noop);
+  const result = await run();
+  assert.equal(result.kind, 'halt', `a short footprint report must HALT, got ${JSON.stringify(result).slice(0, 200)}`);
+  const provisioned = calls.some((c) => (c.label || '').startsWith('provision:'));
+  assert.equal(provisioned, false, 'no lane may be provisioned when the footprint set is partial (D11)');
 });
 
 await check('if WO specs cannot be persisted, the runner HALTs and NEVER provisions a lane-less worker', async () => {

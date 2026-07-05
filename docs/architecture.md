@@ -690,8 +690,10 @@ Twelve greenfield components, plus three brownfield ones (gated on `config.brown
 export const meta = { /* pure literal */ }
 const state = await agent(reconcilePrompt(args), { agentType:'reasonable:reconciler', schema:BRIEFING })
 if (state.halt) return { kind:'halt', reason: state.haltReason }
-const plan = await agent(routePrompt(state, args), { agentType:'reasonable:route-planner', schema:ROUTE_PLAN }) // footprints + resources + staleness
-const waves = groupDisjoint(plan)              // pure set-algebra: locus | contract | resource
+const plan = await agent(routePrompt(state, args), { agentType:'reasonable:route-planner', schema:DECOMPOSITION }) // THIN: cut + locus + contract SEEDS (no closure)
+await persistWorkOrders(plan, args)            // narrow writer -> immutable specs (D7)
+const fp = await agent(footprintPrompt(ids, args), { agentType:'reasonable:footprinter', schema:FOOTPRINT_REPORT }) // decidable fence: footprint.mjs over the specs -> closure + independence
+const waves = groupDisjoint(attachFootprints(plan, fp)) // pure set-algebra: locus | contract | resource
 let verticalSliceGreen = false
 while (!verticalSliceGreen && withinBudget(args, budget) && withinAgentCap()) {
   for (const wave of waves) {

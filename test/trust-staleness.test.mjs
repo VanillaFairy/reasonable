@@ -2,11 +2,11 @@
 // persistent, EVENT-invalidated: a trusted-green test is re-verified only when its
 // governing clause is amended or extended SINCE that test's last verification — never
 // on a churn schedule. This logic was extracted verbatim from reconcile.mjs (which had
-// it as a private, untested function) so it has a home, a test, and a second consumer
-// (per-work-order distribution, distributeStaleness). Run: node test/trust-staleness.test.mjs
+// it as a private, untested function) so it has a home and a test. reconcile.mjs threads
+// the derived flat staleTrusted id list into the briefing. Run: node test/trust-staleness.test.mjs
 
 import assert from 'node:assert';
-import { trustStaleness, distributeStaleness } from '../lib/trust-staleness.mjs';
+import { trustStaleness } from '../lib/trust-staleness.mjs';
 
 let passed = 0;
 function check(name, fn) {
@@ -95,34 +95,6 @@ check('a non-green verdict does not count as a verification', () => {
   ];
   const { staleTests } = trustStaleness(ledger);
   assert.strictEqual(staleTests.length, 0);
-});
-
-// ── distributeStaleness: pure set-algebra, staleTest → the work orders that touch its
-// component's contract (via the footprint's citation closure). This is the per-work-order
-// distribution the route-planner used to do in PROSE (routePrompt "attach the per-work-order
-// trust-staleness set"); it is decidable, so it moves to code.
-check('distributeStaleness routes a stale test to the WOs whose closure includes its component', () => {
-  const staleTests = [
-    { test: 'eval_add_test', component: 'evaluator', clause: '§1' },
-    { test: 'parse_test', component: 'parser', clause: '§3' },
-  ];
-  const footprints = [
-    { id: 'WO-1', locus: ['src/eval/**'], contracts: ['evaluator', 'ast'], resources: [] },
-    { id: 'WO-2', locus: ['src/render/**'], contracts: ['renderer'], resources: [] },
-    { id: 'WO-3', locus: ['src/parse/**'], contracts: ['parser', 'evaluator'], resources: [] },
-  ];
-  const perWo = distributeStaleness(staleTests, footprints);
-  assert.deepStrictEqual(perWo['WO-1'], ['eval_add_test'], 'WO-1 touches evaluator');
-  assert.deepStrictEqual(perWo['WO-2'], [], 'WO-2 touches neither');
-  assert.deepStrictEqual(
-    perWo['WO-3'].sort(), ['eval_add_test', 'parse_test'],
-    'WO-3 closure includes both parser and evaluator',
-  );
-});
-
-check('distributeStaleness is empty-safe (no stale tests, or a footprint with no contracts)', () => {
-  assert.deepStrictEqual(distributeStaleness([], [{ id: 'WO-1', contracts: ['a'] }]), { 'WO-1': [] });
-  assert.deepStrictEqual(distributeStaleness([{ test: 't', component: 'a' }], [{ id: 'WO-1' }]), { 'WO-1': [] });
 });
 
 if (process.exitCode) console.error(`\ntrust-staleness: FAILURES above (${passed} passed).`);

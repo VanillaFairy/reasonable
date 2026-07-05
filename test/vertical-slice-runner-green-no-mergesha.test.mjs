@@ -61,14 +61,17 @@ const briefing = {
   brownfield: false, effortBranch: 'effort/x', baseBranch: 'master',
   terminalWorkOrders: [], trusted: [], staleTrusted: [], floor: [], floorUnexplained: 0, inbox: [],
 };
+// Thin-planner DECOMPOSITION: declared locus + contract SEEDS, no computed footprint.
 const routePlan = {
   workOrders: [{
     id: WO, role: 'implementer', verticalSlice: 'slice-1',
-    footprint: { locus: ['src/**'], contracts: ['comp'], resources: [] },
-    characterizationNeeded: false, behaviorDelta: [], staleTrusted: [],
+    locus: ['src/**'], contractSeeds: ['comp'], resources: [],
+    characterizationNeeded: false, behaviorDelta: [], forkCitations: [],
   }],
   rationale: 'one op',
 };
+// The dedicated footprint step's report over the persisted spec.
+const footprintReport = { footprints: [{ id: WO, locus: ['src/**'], contracts: ['comp'], resources: [] }], independence: [] };
 
 // A faithful audit leaf: green, with the positive executed-suite evidence the gate keys on.
 const auditLeaf = (check) => ({
@@ -93,6 +96,7 @@ await check('a fully-green slice returns green (never halt), no mergeSha asked o
     if (label === 'reconcile') return briefing;
     if (label === 'route-plan') return routePlan;
     if (label === 'persist-work-orders') return { persisted: true, written: [WO] };
+    if (label === 'footprint') return footprintReport;
     if (label === 'scribe:write-ahead') return { persisted: true, transition: 'dispatched' };
     if (label === `provision:${WO}` || label === `reprovision-blind-test:${WO}`) {
       return {

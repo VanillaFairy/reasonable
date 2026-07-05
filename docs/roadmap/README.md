@@ -26,13 +26,15 @@ its problem file.
   instead of passing schema fields as top-level args; each fails validation and burns a retry, five in a
   row crash the agent (the reconciler-crash class). Root fix is engine-side unwrap-before-validate; the
   `callShapeReminder` prompt mitigation now covers all six workflows (2026-07-03).
-- [thin-planner.md](thin-planner.md) — **route planning pays an O(effort-history) opus turn for
-  mostly-decidable work.** The Plan phase's single fat agent turn derives footprints in prose (the
-  propose/persist chicken-and-egg blocks `footprint.mjs` for new WOs), derives trust-staleness by
-  prose twice (no lib exists), and re-reads stable docs + full history uncached every slice — up to
-  ~1 h observed on sofia-plays. Candidate fix: a thin judgment-only planner (slim `DECOMPOSITION`
-  schema, delta briefing, `Read/Grep/Glob` only) + `lib/trust-staleness.mjs` in the reconcile
-  briefing + the footprint run riding the work-order-writer's ACK — zero new agent turns.
+- [thin-planner.md](thin-planner.md) — **LANDED 2026-07-05.** Route planning paid an
+  O(effort-history) opus turn for mostly-decidable work — the fat Plan turn derived footprints and
+  trust-staleness in prose and re-read stable docs + full history uncached every slice (~1 h on
+  sofia-plays). **Shipped:** a thin judgment-only route-planner returning a slim `DECOMPOSITION`
+  (`Read/Grep/Glob` only, no Bash/Edit, no doc preamble); `lib/trust-staleness.mjs` extracted +
+  tested, its derived `staleTrusted` copied verbatim by the reconciler; and a dedicated
+  `footprinter` agent computing closure + independence over the persisted specs (the "ride the
+  writer / zero new turns" idea was infeasible — the writer is Bash-less). See the file's banner for
+  the two corrections to the original definition.
 - [intra-slice-provider-merge.md](intra-slice-provider-merge.md) — **a same-slice producer→consumer
   split has no merge boundary to cut the consumer from.** The effort-branch merge only lands a green
   lane between vertical-slice runs, not between waves inside one run — a same-slice consumer's lane can

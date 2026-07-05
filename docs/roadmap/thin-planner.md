@@ -1,11 +1,33 @@
 # Problem: route planning pays an O(effort-history) opus turn for mostly-decidable work
 
-**Status:** TODO — design direction worked out below (this file), implementation deferred to a
-dedicated session.
+**Status:** LANDED 2026-07-05 (branch `feat/thin-planner`) — the problem definition below stands; two
+claims in it were corrected during implementation (see the banner). Implementation deferred *nothing*:
+the thin planner, the dedicated footprint step, and the trust-staleness extraction all shipped.
 **Origin:** surfaced on sofia-plays runs — the vertical-slice runner's Plan phase took **up to an
 hour** on late slices, growing with effort history. Diagnosed 2026-07-05 against the workflow and
-libs; the numbers below should still be confirmed against the slow slice's route-planner transcript
-(output-token size, StructuredOutput retry count) before implementation.
+libs; the sofia-plays transcript numbers (output-token size, StructuredOutput retry count) are still
+worth confirming to attribute the *measured* dominant cost, but the structural fix landed regardless.
+
+> **What actually shipped (and two corrections to the definition below).**
+> 1. **Trust-staleness already existed** as a private, untested function inside `reconcile.mjs` — the
+>    definition's "no lib exists… derived by prose twice" overstated it. Reality: it was computed
+>    mechanically but flattened to `staleTrusted` by the reconciler *agent* in prose. **Shipped:**
+>    extracted to `lib/trust-staleness.mjs` (exported, 7 unit tests), reconcile emits a **derived**
+>    `staleTrusted` list, and the reconciler now copies it verbatim (like `terminalWorkOrders`). The
+>    planned per-work-order `distributeStaleness` was **dropped** — the old per-WO `staleTrusted` had
+>    no consumer (the audit re-verifies at slice level), so it was YAGNI.
+> 2. **"Zero new agent turns" was infeasible.** The footprint run could not "ride the work-order-writer
+>    ACK": that writer is **Bash-less by charter**, and the citation closure needs the contract graph
+>    on disk (the pure script can't read it). **Shipped:** a dedicated **`footprinter`** agent (haiku,
+>    read-only + Bash) runs `footprint.mjs` over the persisted specs between persist and grouping —
+>    one cheap new turn, membrane-clean, single-responsibility. The three-step Plan ordering
+>    (persist → footprint → group) is pinned by
+>    `test/vertical-slice-runner-persist-work-orders.test.mjs`, including a HALT-on-partial-set guard.
+>
+> Net effect on the planner turn: it now returns a slim **`DECOMPOSITION`** (cut + declared locus +
+> contract *seeds* + fork citations — no closure, no staleness, no wave sizing), its constitution
+> dropped the mandatory `glossary.md`/`artifacts.md`/`component-contract` re-reads, and its allowlist
+> tightened to `Read, Grep, Glob` (no Bash, no Edit) — so it *cannot* narrate the fence's arithmetic.
 
 > **Sibling problems.** [mechanical-step-executor.md](mechanical-step-executor.md) is the same
 > disease in the *scribes* (deterministic file/git work paying an LLM cold-start; interim Haiku

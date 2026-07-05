@@ -17,7 +17,11 @@
 //     reconciler sets halt=true (queue BREAKING + stop), so it returns {kind:'halt'}
 //     above. An EXPLAINED floor diff is a non-blocking notice (surfaces, run continues).
 //     In GATED mode both just surface in the briefing for the present human.
-//   route-planner (agent)       - footprints + resources + trust-staleness (S6, S16, D11/D13)
+//   route-planner (agent)       - THIN: the DECOMPOSITION only (work-order cut + ordering +
+//                                  fork resolution). No closure, no staleness, no wave sizing.
+//   work-order-writer (agent)   - persist each proposed WO to its immutable spec (D7)
+//   footprint (agent)           - the decidable fence: runs lib/footprint.mjs over the persisted
+//                                  specs -> footprints (closure) + independence (S6, D11/D12)
 //   groupDisjoint (pure)        - set-algebra over locus | contract | resource (mirrors
 //                                  lib/footprint.mjs independent(), D11)
 //   budget + agent-cap guarded while loop (S15, D16a/D16c)
@@ -74,7 +78,7 @@ export const meta = {
   whenToUse: 'Launched once per vertical slice by the reasonable main-session orchestrator, with the vertical-slice id, route snapshot, contract paths, per-slice budget, supervision profile, and run mode in args.',
   phases: [
     { title: 'Reconcile', detail: 'Unconditional, total, halting recovery prologue - re-derive truth from git+ledger+contracts; halt on any AMBIGUOUS configuration.' },
-    { title: 'Plan', detail: 'Route-planner computes per-work-order footprints (locus union citation closure), resource claims, and the trust-staleness set.' },
+    { title: 'Plan', detail: 'Thin route-planner proposes the DECOMPOSITION (work-order cut + ordering + fork resolution); the writer persists specs; a dedicated footprint step computes closure + independence over them.' },
     { title: 'Enrich', detail: 'Per disjoint wave, the enrichment pipeline: provision+implement (with conditional brownfield characterization genesis) -> blind test -> adjudicate -> audit.' },
     { title: 'Gate', detail: 'Compute floorGreen && trustedGreen and return the typed GATE_RESULT for the main-session retro.' },
   ],
@@ -149,10 +153,15 @@ const BRIEFING = {
   },
 };
 
-// ROUTE_PLAN - what the route-planner returns: per work order, BOTH the
-// locus/citation footprint AND the resource-claim set, so groupDisjoint can run
-// pure set-algebra (architecture S6, D11). Footprint mirrors lib/footprint.mjs.
-const ROUTE_PLAN = {
+// DECOMPOSITION - what the (thin) route-planner returns: JUDGMENT ONLY. It proposes the
+// work-order cut (id, role, slice), each order's DECLARED locus + directly-cited contract
+// SEEDS + resource claims, and the ordering/fork rationale. It does NOT compute the citation
+// closure or pairwise independence - that is a decidable fence (D12) computed downstream by a
+// dedicated footprint step (footprintCompute, running lib/footprint.mjs over the persisted
+// specs) and packed into waves by groupDisjoint. Keeping the closure OUT of the planner's turn
+// is the point of the thin-planner change (docs/roadmap/thin-planner.md): the planner narrates
+// no set-algebra, so its turn stays small and flat across slices.
+const DECOMPOSITION = {
   type: 'object',
   required: ['workOrders'],
   additionalProperties: true,
@@ -161,32 +170,56 @@ const ROUTE_PLAN = {
       type: 'array',
       items: {
         type: 'object',
-        required: ['id', 'footprint'],
+        required: ['id', 'locus', 'contractSeeds'],
         additionalProperties: true,
         properties: {
           id: { type: 'string' },
           role: { type: 'string' },
           verticalSlice: { type: 'string' },
-          footprint: {
-            type: 'object',
-            required: ['locus', 'contracts', 'resources'],
-            additionalProperties: true,
-            properties: {
-              locus: { type: 'array', items: { type: 'string' } },      // glob loci
-              contracts: { type: 'array', items: { type: 'string' } },  // incl. citation closure
-              resources: { type: 'array', items: { type: 'string' } },  // resource-lexicon claims
-            },
-          },
+          locus: { type: 'array', items: { type: 'string' } },          // glob loci (declared)
+          contractSeeds: { type: 'array', items: { type: 'string' } },  // directly-cited contracts (SEEDS, not the closure)
+          resources: { type: 'array', items: { type: 'string' } },      // resource-lexicon claims
           // Marks a work order whose first touch crosses ungoverned brownfield code
           // -> the in-run characterization genesis fires before implementation (BF7).
           characterizationNeeded: { type: 'boolean' },
           behaviorDelta: { type: 'array', items: { type: 'string' } },
-          // The trust-staleness re-verify flag for this work order (D13).
-          staleTrusted: { type: 'array', items: { type: 'string' } },
+          // The intention.md clause(s) a priority/scope fork on this order turned on (D5b).
+          forkCitations: { type: 'array', items: { type: 'string' } },
         },
       },
     },
     rationale: { type: 'string' },
+  },
+};
+
+// FOOTPRINT_REPORT - what the dedicated footprint step returns: the machine output of
+// `node lib/footprint.mjs --root <effortRoot> --json <ids...>` run over the just-persisted
+// specs (architecture S6, D11/D12). footprints carry the citation CLOSURE (computed from the
+// contract graph on disk); independence is the pairwise set-algebra footprint.mjs already
+// emits. groupDisjoint consumes footprints; the agent invents nothing - it runs the script and
+// returns its JSON verbatim (a decidable fence, never trio-wrapped).
+const FOOTPRINT_REPORT = {
+  type: 'object',
+  required: ['footprints'],
+  additionalProperties: true,
+  properties: {
+    footprints: {
+      type: 'array',
+      items: {
+        type: 'object',
+        required: ['id', 'locus', 'contracts', 'resources'],
+        additionalProperties: true,
+        properties: {
+          id: { type: 'string' },
+          locus: { type: 'array', items: { type: 'string' } },      // glob loci
+          contracts: { type: 'array', items: { type: 'string' } },  // incl. citation closure
+          resources: { type: 'array', items: { type: 'string' } },  // resource-lexicon claims
+        },
+      },
+    },
+    // footprint.mjs --json also emits pairwise independence; carried for the log/audit trail,
+    // but groupDisjoint recomputes from footprints (the set-algebra is the script's, D12).
+    independence: { type: 'array', items: { type: 'object', additionalProperties: true } },
   },
 };
 
@@ -604,20 +637,17 @@ function reconcilePrompt(a) {
 
 function routePrompt(state, a) {
   return [
-    'Plan this vertical slice into work orders with computed footprints.',
+    'Plan this vertical slice into work orders - JUDGMENT ONLY. You propose the DECOMPOSITION (the work-order cut, ordering, and fork resolution). You do NOT compute footprints, the citation closure, pairwise independence, wave packing, or the trust-staleness set - those are DECIDABLE FENCES computed downstream by dedicated steps (the footprint step runs lib/footprint.mjs over the persisted specs; the script packs waves; reconcile computes staleness). Keep your turn small: propose the cut, cite the oracle, stop.',
     `Effort root (canonical .reasonable/): ${a.effortRoot}`,
-    `Pass --root ${a.effortRoot} to lib/footprint.mjs (and any reasonable lib) so it targets THIS effort, not whichever .reasonable/ sits above your cwd (several efforts may share one repo).`,
     `Vertical slice: ${a.verticalSliceId}`,
     `Route snapshot: ${j(a.route || null)}`,
     `Reconcile briefing (current state): ${j({ runMode: state.runMode, brownfield: state.brownfield, staleTrusted: state.staleTrusted || [] })}`,
-    `TERMINAL work orders (already merged, reconcile.mjs-computed): ${j(state.terminalWorkOrders || [])}. NEVER include one of these ids in the ROUTE_PLAN - not even if a stale .reasonable/work-orders/<id>.json spec file still sits on disk, and not as a re-verify pass. A merged work order's code already landed; there is nothing left to dispatch.`,
-    'For EACH work order return: id, role, verticalSlice, and the footprint = { locus, contracts (incl. citation closure), resources } via lib/footprint.mjs.',
+    `TERMINAL work orders (already merged, reconcile.mjs-computed): ${j(state.terminalWorkOrders || [])}. NEVER include one of these ids in the DECOMPOSITION - not even if a stale .reasonable/work-orders/<id>.json spec file still sits on disk, and not as a re-verify pass. A merged work order's code already landed; there is nothing left to dispatch.`,
+    'For EACH work order return: id, role, verticalSlice, the DECLARED locus (the glob paths it will touch), contractSeeds (the contracts it DIRECTLY cites - NOT the closure; the footprint step folds the transitive closure from these seeds), and resources (resource-lexicon claims). Do NOT run lib/footprint.mjs and do NOT compute a closure yourself.',
     'DECOMPOSE for reviewable commits (one work order = one atomic commit = one merge): prefer FINER work orders split along public-operation / file fault lines, EVEN WHEN they serialize (no parallelism benefit). Litmus - if a work order\'s closing commit message would need an "AND" (two components / two unrelated operations), split it. HARD FLOOR - each work order must be independently gate-green: a complete public operation or self-contained layer with its own contract clauses + tests, NEVER a non-building fragment (a bare dataclass file imported by nothing is over-splitting, worse than the blob). Sequence a producer/consumer split provider-first.',
     'Mark characterizationNeeded:true for any work order whose first touch crosses ungoverned brownfield code (BF7).',
-    'Attach the per-work-order trust-staleness set (tests whose governing clause changed) so audit re-verifies exactly those (D13).',
-    'Cite .reasonable/intention.md (the oracle) on every priority/scope fork; an unsettleable fork is an intent-fork, not a silent guess (D5b).',
-    'Size waves so the slice cannot plausibly approach the 1000-agent lifetime cap (D16c).',
-    'Return the ROUTE_PLAN.',
+    'Cite .reasonable/intention.md (the oracle) on every priority/scope fork, and record the clause(s) in forkCitations; an unsettleable fork is an intent-fork, not a silent guess (D5b).',
+    'Return the DECOMPOSITION.',
     callShapeReminder,
   ].join('\n');
 }
@@ -636,11 +666,26 @@ function persistWorkOrdersPrompt(wos, a) {
     `Vertical slice: ${a.verticalSliceId}`,
     'For EACH work order, write .reasonable/work-orders/<id>.json with EXACTLY the docs/artifacts.md dispatch-record schema:',
     '  { id, role, verticalSlice, inputs:{ spec:"vertical-slices/<slice-id>.md", contracts:[...] }, output, gate:"vertical-slices/<slice-id>.md#gate", locus:[...], resourceClaims:[...], behaviorDelta:[...], floorImpact:[], contractBirth:false }',
-    'RECONCILE the route-planner footprint into that schema, faithfully: locus <- footprint.locus; inputs.contracts <- footprint.contracts; resourceClaims <- footprint.resources; behaviorDelta <- the work order behaviorDelta (else []). Derive inputs.spec + gate from the vertical-slice id. Set output to a short "code + contract enrichment for <primary component>" string. floorImpact is [] (the implementer declares it); contractBirth is false (the orchestrator sets it on a characterizer lane, never you). Do NOT write a `hash` - it is documentary and the redispatch-guard recomputes it; you originate no SHA.',
+    'RECONCILE the thin planner\'s work order into that schema, faithfully: locus <- locus; inputs.contracts <- contractSeeds (the DIRECTLY-cited contracts; the downstream footprint step computes the citation closure from these seeds - you store the seeds, never a closure); resourceClaims <- resources; behaviorDelta <- the work order behaviorDelta (else []). Derive inputs.spec + gate from the vertical-slice id. Set output to a short "code + contract enrichment for <primary component>" string. floorImpact is [] (the implementer declares it); contractBirth is false (the orchestrator sets it on a characterizer lane, never you). Do NOT write a `hash` - it is documentary and the redispatch-guard recomputes it; you originate no SHA.',
     'IMMUTABLE - write-if-absent: a work-order spec is written ONCE. If .reasonable/work-orders/<id>.json ALREADY exists, DO NOT rewrite it (rewriting churns the redispatch-guard input hash and can un-bind a dead-end verdict) - confirm it and move on (idempotent; a re-pass or a slice with earlier specs already on disk must produce ZERO churn).',
     'Write ONLY files under .reasonable/work-orders/. Touch nothing else - not the ledger, not journal.json/inbox.json, not contracts, not route.md, not config.',
     `The work orders to persist (footprint carried verbatim): ${j(wos)}`,
     'Return the WORKORDER_ACK: persisted:true once EVERY listed work order has a faithful spec on disk (written = the ids you authored this call; an already-present spec is confirmed, not re-listed). persisted:false with a one-line note if you cannot write one faithfully - the runner HALTs (a lane cannot be licensed without its spec).',
+    callShapeReminder,
+  ].join('\n');
+}
+
+// footprintPrompt - the dedicated FOOTPRINT step (D11/D12). A read-only Bash agent runs ONE
+// script over the just-persisted specs and returns its JSON verbatim. This is a DECIDABLE FENCE
+// (a conservative computed set intersection), never wrapped in a verification trio: the agent
+// decides nothing, re-orders nothing, edits nothing - it runs footprint.mjs and reports.
+function footprintPrompt(ids, a) {
+  return [
+    'Compute the work-order FOOTPRINTS for this wave. This is a DECIDABLE FENCE, not a judgment (D12): you run ONE read-only script and return its JSON verbatim. You decide nothing, re-order nothing, and never edit a contract or a spec.',
+    `Effort root (canonical .reasonable/): ${a.effortRoot}`,
+    `Run EXACTLY: node ${a.reasonableRoot || '$CLAUDE_PLUGIN_ROOT'}/lib/footprint.mjs --root ${a.effortRoot} --json ${ids.join(' ')}`,
+    'That command reads each just-persisted .reasonable/work-orders/<id>.json spec (its declared locus + contract SEEDS + resourceClaims) and the contract graph on disk, and prints { footprints:[{id,locus,contracts,resources}], independence:[...] } - where `contracts` is the citation CLOSURE of the seeds (the transitive fold the planner deliberately did NOT compute).',
+    'Return the FOOTPRINT_REPORT with `footprints` (and `independence`) EXACTLY as the script printed them - one footprint per id you were given. If the script errors or a spec is missing (fewer footprints than ids), return `footprints` with whatever it produced and put the stderr/first-missing id in a `note`: the runner HALTs on a short footprint set rather than grouping a wave on a partial one (an under-computed overlap could run two conflicting work orders in parallel).',
     callShapeReminder,
   ].join('\n');
 }
@@ -1403,7 +1448,12 @@ async function persistWorkOrders(plan, a) {
     id: wo.id,
     role: wo.role || 'implementer',
     verticalSlice: wo.verticalSlice || a.verticalSliceId,
-    footprint: wo.footprint || { locus: [], contracts: [], resources: [] },
+    // The thin planner proposes locus + directly-cited contract SEEDS + resources; the spec
+    // stores the SEEDS (footprint.mjs computes the closure from them downstream). No nested
+    // footprint object crosses here anymore - closure/independence is the footprint step's job.
+    locus: wo.locus || [],
+    contractSeeds: wo.contractSeeds || [],
+    resources: wo.resources || [],
     behaviorDelta: wo.behaviorDelta || [],
   }));
   try {
@@ -1414,6 +1464,41 @@ async function persistWorkOrders(plan, a) {
     log(`persist-work-orders agent failed: ${String((e && e.message) || e)}`);
     return null;
   }
+}
+
+// footprintCompute - the dedicated FOOTPRINT step (D11/D12). The thin route-planner proposes
+// only locus + contract SEEDS; the citation closure + pairwise independence are a DECIDABLE
+// FENCE computed HERE by a read-only Bash agent running lib/footprint.mjs over the specs the
+// work-order-writer just persisted. It is a SEPARATE single-responsibility role, not folded
+// into the writer (the writer is Bash-less by charter - it computes nothing). Runs ONCE, after
+// persist and BEFORE groupDisjoint. A hard throw folds into the null sentinel the caller HALTs
+// on - grouping on a partial footprint set could run two genuinely-overlapping work orders in
+// parallel (a correctness loss, not just forfeited throughput).
+async function footprintCompute(plan, a) {
+  const ids = (plan.workOrders || []).map((wo) => wo.id);
+  if (ids.length === 0) return { footprints: [] };
+  try {
+    return await agent(footprintPrompt(ids, a), {
+      label: 'footprint', phase: 'Plan', agentType: 'reasonable:footprinter', schema: FOOTPRINT_REPORT,
+    });
+  } catch (e) {
+    log(`footprint agent failed: ${String((e && e.message) || e)}`);
+    return null;
+  }
+}
+
+// attachFootprints - fold the footprint report back onto the plan's work orders as wo.footprint,
+// the exact shape groupDisjoint (and the implementer's own-contract prompt) already read. Pure;
+// no I/O. A missing entry falls back to the SEEDS (conservative: a seed-only footprint can only
+// over-approximate overlap, forfeiting parallelism, never correctness).
+function attachFootprints(plan, report) {
+  const byId = {};
+  for (const f of (report && report.footprints) || []) byId[f.id] = f;
+  for (const wo of plan.workOrders || []) {
+    wo.footprint = byId[wo.id]
+      || { locus: wo.locus || [], contracts: wo.contractSeeds || [], resources: wo.resources || [] };
+  }
+  return plan;
 }
 
 // withinBudget - guard on min(per-slice-remaining, engine turn-pool remaining) (S15
@@ -1514,12 +1599,12 @@ let state = {
 phase('Plan');
 let plan;
 try {
-  plan = await agent(routePrompt(state, a), { label: 'route-plan', agentType: 'reasonable:route-planner', schema: ROUTE_PLAN });
+  plan = await agent(routePrompt(state, a), { label: 'route-plan', agentType: 'reasonable:route-planner', schema: DECOMPOSITION });
 } catch (e) {
   // Same class of gap as the reconcile prologue above: a hard agent() throw (e.g. the
   // StructuredOutput retry cap) never reaches the `!plan` check below, so it must be
   // caught here too or it crashes the whole run instead of halting.
-  return { kind: 'halt', reason: `route-planner agent failed before producing a ROUTE_PLAN: ${String((e && e.message) || e)}` };
+  return { kind: 'halt', reason: `route-planner agent failed before producing a DECOMPOSITION: ${String((e && e.message) || e)}` };
 }
 if (!plan) {
   return { kind: 'halt', reason: 'route-planner returned null - cannot plan the slice' };
@@ -1550,6 +1635,21 @@ const woAck = await persistWorkOrders(plan, a);
 if (!woAck || woAck.kind === 'checkpoint' || woAck.persisted !== true) {
   return { kind: 'halt', reason: 'work-order specs not persisted (null / checkpoint / persisted:false) - the lane-provisioner cannot license a lane without .reasonable/work-orders/<id>.json (D7); nothing dispatched, no truth lost.' };
 }
+
+// Dedicated FOOTPRINT step (D11/D12): the thin planner proposed only locus + contract SEEDS;
+// the citation CLOSURE + pairwise independence are computed HERE, by a read-only Bash agent
+// running lib/footprint.mjs over the specs just persisted (the pure script cannot read the
+// contract graph itself). A short/missing report HALTs: grouping a wave on a partial footprint
+// set could run two genuinely-overlapping work orders in parallel - a correctness loss, not a
+// throughput one. Runs after persist (specs must exist) and before groupDisjoint (which needs
+// the closure).
+state.agentsDispatched += 1;
+const footprintReport = await footprintCompute(plan, a);
+if (!footprintReport || !Array.isArray(footprintReport.footprints)
+    || footprintReport.footprints.length !== (plan.workOrders || []).length) {
+  return { kind: 'halt', reason: `footprint step did not return one footprint per persisted work order (got ${footprintReport && Array.isArray(footprintReport.footprints) ? footprintReport.footprints.length : 'none'} of ${(plan.workOrders || []).length}) - cannot group a wave on a partial footprint set (D11).` };
+}
+attachFootprints(plan, footprintReport);
 
 // Pure set-algebra: pack work orders into waves of pairwise-disjoint footprints (D11).
 const waves = groupDisjoint(plan);

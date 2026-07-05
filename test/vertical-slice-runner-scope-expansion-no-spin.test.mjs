@@ -59,14 +59,17 @@ const briefing = {
   brownfield: false, effortBranch: 'effort/x', baseBranch: 'master',
   terminalWorkOrders: [], trusted: [], staleTrusted: [], floor: [], floorUnexplained: 0, inbox: [],
 };
+// Thin-planner DECOMPOSITION: declared locus + contract SEEDS, no computed footprint.
 const routePlan = {
   workOrders: [{
     id: WO, role: 'implementer', verticalSlice: 'slice-1',
-    footprint: { locus: ['src/**'], contracts: ['comp'], resources: [] },
-    characterizationNeeded: false, behaviorDelta: [], staleTrusted: [],
+    locus: ['src/**'], contractSeeds: ['comp'], resources: [],
+    characterizationNeeded: false, behaviorDelta: [], forkCitations: [],
   }],
   rationale: 'one op',
 };
+// The dedicated footprint step's report over the persisted spec.
+const footprintReport = { footprints: [{ id: WO, locus: ['src/**'], contracts: ['comp'], resources: [] }], independence: [] };
 
 let passed = 0;
 async function check(name, fn) {
@@ -82,6 +85,7 @@ await check('a scope-expansion escalates once (no spin) and surfaces past a co-o
     if (label === 'reconcile') return briefing;
     if (label === 'route-plan') return routePlan;
     if (label === 'persist-work-orders') return { persisted: true, written: [WO] };
+    if (label === 'footprint') return footprintReport;
     if (label === 'scribe:write-ahead') return { persisted: true, transition: 'dispatched' };
     if (label === `provision:${WO}` || label === `reprovision-blind-test:${WO}`) {
       return {
