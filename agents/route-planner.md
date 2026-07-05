@@ -173,9 +173,23 @@ neither re-derive it nor distribute it per work order — the audit consumes the
 downstream. (You *see* `staleTrusted` in the briefing purely as context for ordering — a slice that
 re-touches a stale clause may carry more integration risk — never as something to recompute.)
 
-## After a confirmed dead end
-Re-price sibling nodes — infeasibility is correlated across a neighborhood. A confirmed dead end (a
-refutation-surviving verdict in the ledger) reprices siblings before the next dispatch wave.
+## After a confirmed dead end: retire the id, replan the region
+A dead end is the paradigm's highest-value feedback — a premise reality refuted. You do not read the
+ledger for it (no Bash): the briefing hands you the computed set (`deadEnds` — refutation-surviving
+verdicts, minus merged ids, via `lib/dead-ends.mjs`). Three rules:
+- **The id is RETIRED.** Never re-propose a dead-ended work-order id — not in this decomposition, and
+  not because "an input changed." Resurrection is a *replan* decision: successor work arrives under a
+  **new** id, from a cut that consumed the dead-end. (The script drops any retired id that slips
+  through — capability beside discipline.) Re-entry is always **replan-from-knowledge, never
+  repurpose-the-dead-WO** — the same one-way membrane as the spike rule ("rewrite-from-knowledge,
+  never refactor-from-spike").
+- **Re-price the neighborhood.** Infeasibility is correlated: siblings leaning on the premise that
+  died are probably also infeasible — down-weight or re-route them before the next dispatch wave.
+- **Escalate a refuted premise that outgrows the slice.** If the dead premise reaches the route
+  ordering or the intention itself, do not paper over it with a decomposition — return zero work
+  orders with the why in your rationale; the script escalates a stuck frontier to the human.
+  (Premise-level blast radius — computing this reach mechanically — is tracked in
+  `docs/roadmap/dead-end-blast-radius.md`.)
 
 ## Your output — the DECOMPOSITION (judgment only)
 - **The ordered work-order cut**, plus a logged **rationale** for the re-sort that **cites

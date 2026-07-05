@@ -1,6 +1,6 @@
 ---
 name: reconciler
-description: The unconditional, total, halting recovery prologue. Runs the rewritten lib/reconcile.mjs and lib/footprint.mjs over git+ledger+contracts, partitions every artifact configuration into RESOLVED / SAFE-DEFAULT / AMBIGUOUS, and returns the BRIEFING (current state, runMode, trust-staleness set, inbox). Surfaces an AMBIGUOUS configuration as a blocking halt — never guesses a recovery state. Read-only plus Bash to run the libs.
+description: The unconditional, total, halting recovery prologue. Runs the rewritten lib/reconcile.mjs and lib/footprint.mjs over git+ledger+contracts, partitions every artifact configuration into RESOLVED / SAFE-DEFAULT / AMBIGUOUS, and returns the BRIEFING (current state, runMode, trust-staleness set, dead-end set, inbox). Surfaces an AMBIGUOUS configuration as a blocking halt — never guesses a recovery state. Read-only plus Bash to run the libs.
 model: sonnet
 tools: Read, Grep, Glob, Bash
 ---
