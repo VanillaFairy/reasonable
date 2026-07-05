@@ -1,17 +1,21 @@
 // test/redispatch-guard.test.mjs — the insanity guard (DESIGN §5.8; §5.6 / F12).
 // Run: node test/redispatch-guard.test.mjs
 //
-// Pins the redispatch-guard's blocking predicate after T0.5. The guard now binds on THREE event
-// shapes and stays CLEAR otherwise (exit 2 = blocked, 0 = clear):
+// Pins the redispatch-guard's blocking predicate after T0.5. The guard binds on TWO event shapes and
+// stays CLEAR otherwise (exit 2 = blocked, 0 = clear):
 //   (KEPT)  a refutation-surviving dead-end / verdict(infeasible, survivedSkeptic) whose `hash` still
-//           matches the WO's current inputs — Defect B, in lockstep with dead-ends.mjs.
-//   (NEW)   an UNRESOLVED blocking-class node-failed — a node-failed carrying a NON-EMPTY `reason`
-//           (a reason-less node-failed is the schema's recoverable / "under investigation" transient
-//           case and never binds).
-//   (NEW)   an UNRESOLVED amendment drop for the WO (amendment.drops[].workOrder === id).
-// Closure of the two NEW bindings is by `resolvesSeq` — the SAME rule lib/wo-status.mjs's
-// blocked/dropped fold uses: a later ratification/amendment whose resolvesSeq equals the blocking
-// event's own seq closes it, never a coincidental id mention.
+//           matches the WO's current inputs — Defect B, in lockstep with dead-ends.mjs. A changed
+//           input un-binds it (the hash no longer matches).
+//   (NEW)   an UNRESOLVED amendment drop for the WO (amendment.drops[].workOrder === id) — a
+//           deliberate supersession: a dropped WO STAYS dropped until a restoring ratification whose
+//           `resolvesSeq` equals the drop's own seq (never a coincidental id mention).
+//
+// A node-failed does NOT bind. It is a D19 non-terminal `failed ↻` lifecycle event — the WO is under
+// investigation, not infeasible — so it must stay redispatchable. `resolvesSeq` has no real emitter,
+// so a node-failed binding could never be cleared and would WEDGE the WO forever; and the only
+// WO-addressed reason-bearing node-failed the pipeline emits is the dead-end ceremony's, already
+// blocked by the hash-gated dead-end binding with the correct input-changed escape (see the
+// ANTI-WEDGE discriminator at the end).
 
 import assert from 'node:assert';
 import { createHash } from 'node:crypto';
@@ -80,60 +84,29 @@ check('KEPT: a dead-end whose hash no longer matches (inputs changed) is CLEAR (
   assert.equal(r.status, 0, `expected CLEAR (inputs changed un-binds); stderr=${r.stderr}`);
 });
 
-// ── (NEW) blocking-class node-failed binding ──────────────────────────────────────────────────
+// ── node-failed is NON-blocking (under-investigation stays redispatchable) ──────────────────────
 
-check('NEW: an unresolved blocking node-failed (with a reason) blocks re-dispatch (exit 2)', () => {
+check('a reason-bearing node-failed ALONE does not block re-dispatch (under-investigation → exit 0)', () => {
+  // A node-failed is a D19 `failed ↻` non-terminal lifecycle event — the WO is being investigated,
+  // NOT an infeasibility verdict — so it must stay redispatchable. (It would also be uncloseable:
+  // resolvesSeq has no real emitter, so a node-failed binding would wedge the WO forever.)
   const root = newEffort('WO-1', { gate: 'g' }, [
     { seq: 1, type: 'node-planned', node: 's1/WO-1', kind: 'work-order', title: 'x' },
     { seq: 2, type: 'node-dispatched', node: 's1/WO-1', kind: 'work-order', attempt: 1 },
     { seq: 3, type: 'node-failed', workOrder: 'WO-1', node: 's1/WO-1', reason: 'binding constraint' },
   ]);
   const r = run(root, 'WO-1');
-  assert.equal(r.status, 2, `expected BLOCKED on the open failure; stderr=${r.stderr} stdout=${r.stdout}`);
+  assert.equal(r.status, 0, `a node-failed is under-investigation, not a wall — must stay redispatchable; stderr=${r.stderr} stdout=${r.stdout}`);
 });
 
-check('NEW: a node-failed closed by a later ratification{resolvesSeq} is CLEAR (exit 0)', () => {
-  const root = newEffort('WO-1', { gate: 'g' }, [
-    { seq: 1, type: 'node-planned', node: 's1/WO-1', kind: 'work-order', title: 'x' },
-    { seq: 2, type: 'node-dispatched', node: 's1/WO-1', kind: 'work-order', attempt: 1 },
-    { seq: 3, type: 'node-failed', workOrder: 'WO-1', node: 's1/WO-1', reason: 'wall' },
-    { seq: 4, type: 'ratification', gate: 'retro', resolvesSeq: 3 }, // closes seq 3
-  ]);
-  const r = run(root, 'WO-1');
-  assert.equal(r.status, 0, `a resolvesSeq-closed failure must clear; stderr=${r.stderr}`);
-});
-
-check('NEW: a REASON-LESS node-failed is transient (recoverable) and never binds (exit 0)', () => {
-  // The blocking-class discriminator: reason-less = the schema's "recoverable / under investigation"
-  // case. It must NOT block re-dispatch (only a reason-bearing wall does).
+check('a reason-LESS node-failed also does not block (exit 0)', () => {
   const root = newEffort('WO-1', { gate: 'g' }, [
     { seq: 1, type: 'node-planned', node: 's1/WO-1', kind: 'work-order', title: 'x' },
     { seq: 2, type: 'node-dispatched', node: 's1/WO-1', kind: 'work-order', attempt: 1 },
     { seq: 3, type: 'node-failed', workOrder: 'WO-1', node: 's1/WO-1' }, // no reason
   ]);
   const r = run(root, 'WO-1');
-  assert.equal(r.status, 0, `a reason-less node-failed is transient and must not block; stderr=${r.stderr}`);
-});
-
-check('NEW: a node-failed addressed by NODE PATH (no workOrder field) still binds via the WO id (exit 2)', () => {
-  const root = newEffort('WO-1', { gate: 'g' }, [
-    { seq: 1, type: 'node-planned', node: 's1/WO-1', kind: 'work-order', title: 'x' },
-    { seq: 2, type: 'node-dispatched', node: 's1/WO-1', kind: 'work-order', attempt: 1 },
-    { seq: 3, type: 'node-failed', node: 's1/WO-1', reason: 'wall' }, // addressed only by node path
-  ]);
-  const r = run(root, 'WO-1');
-  assert.equal(r.status, 2, `the node path's last segment IS the WO id — it must bind; stderr=${r.stderr}`);
-});
-
-check('NEW: closure is by EXACT resolvesSeq — a ratification naming the wrong seq does NOT clear (exit 2)', () => {
-  const root = newEffort('WO-1', { gate: 'g' }, [
-    { seq: 1, type: 'node-planned', node: 's1/WO-1', kind: 'work-order', title: 'x' },
-    { seq: 2, type: 'node-dispatched', node: 's1/WO-1', kind: 'work-order', attempt: 1 },
-    { seq: 3, type: 'node-failed', workOrder: 'WO-1', node: 's1/WO-1', reason: 'wall' },
-    { seq: 4, type: 'ratification', gate: 'retro', workOrder: 'WO-1', resolvesSeq: 99 }, // wrong seq
-  ]);
-  const r = run(root, 'WO-1');
-  assert.equal(r.status, 2, `a coincidental id mention with the wrong resolvesSeq must NOT clear; stderr=${r.stderr}`);
+  assert.equal(r.status, 0, `no node-failed binding at all — must be clear; stderr=${r.stderr}`);
 });
 
 // ── (NEW) amendment-drop binding ──────────────────────────────────────────────────────────────
@@ -166,6 +139,16 @@ check('NEW: a drop naming a DIFFERENT work order does not bind THIS WO (exit 0)'
   assert.equal(r.status, 0, `a drop of another WO must not block this one; stderr=${r.stderr}`);
 });
 
+check('NEW: drop closure is by EXACT resolvesSeq — a ratification naming the wrong seq does NOT restore (exit 2)', () => {
+  const root = newEffort('WO-1', { gate: 'g' }, [
+    { seq: 1, type: 'node-planned', node: 's1/WO-1', kind: 'work-order', title: 'x' },
+    { seq: 2, type: 'amendment', component: 'c', drops: [{ workOrder: 'WO-1' }] },
+    { seq: 3, type: 'ratification', gate: 'retro', workOrder: 'WO-1', resolvesSeq: 99 }, // wrong seq
+  ]);
+  const r = run(root, 'WO-1');
+  assert.equal(r.status, 2, `a coincidental mention with the wrong resolvesSeq must NOT un-drop; stderr=${r.stderr}`);
+});
+
 // ── clean WO ──────────────────────────────────────────────────────────────────────────────────
 
 check('a clean WO with no binding event is CLEAR (exit 0)', () => {
@@ -175,6 +158,26 @@ check('a clean WO with no binding event is CLEAR (exit 0)', () => {
   ]);
   const r = run(root, 'WO-1');
   assert.equal(r.status, 0, `no binding event — must be clear; stderr=${r.stderr}`);
+});
+
+// ── ANTI-WEDGE DISCRIMINATOR ────────────────────────────────────────────────────────────────────
+// The exact wedge a node-failed binding would cause. The dead-end ceremony emits a reason-bearing
+// `node-failed --workOrder` ALONGSIDE its `dead-end` event (skills/vertical-slice-execution §4). When
+// the WO's inputs later CHANGE, the hash-gated dead-end binding correctly clears (redispatch is
+// allowed) — but a node-failed binding is UNCLOSEABLE (resolvesSeq has no real emitter), so it would
+// block FOREVER, breaking the guard's own "blocked unless an input changed" contract. With node-failed
+// NON-binding, the input-change escape works. This FAILS (exit 2) with the node-failed binding present
+// and PASSES (exit 0) once it is removed — the regression guard for the wedge.
+check('ANTI-WEDGE: a dead-ended WO whose inputs later CHANGE is redispatchable despite its node-failed (exit 0)', () => {
+  const root = newEffort('WO-1', { gate: 'NEW gate' }, [
+    { seq: 1, type: 'node-planned', node: 's1/WO-1', kind: 'work-order', title: 'x' },
+    { seq: 2, type: 'node-dispatched', node: 's1/WO-1', kind: 'work-order', attempt: 1 },
+    // The dead-end ceremony's two ledger lines: the accompanying failure + the hash-gated verdict.
+    { seq: 3, type: 'node-failed', workOrder: 'WO-1', node: 's1/WO-1', reason: 'binding constraint' },
+    { seq: 4, type: 'dead-end', workOrder: 'WO-1', hash: gateHash('OLD gate') }, // stale hash → inputs changed
+  ]);
+  const r = run(root, 'WO-1');
+  assert.equal(r.status, 0, `inputs changed (dead-end hash stale) — the WO must be redispatchable; a node-failed must not wedge it; stderr=${r.stderr} stdout=${r.stdout}`);
 });
 
 for (const t of tmps) { try { rmSync(t, { recursive: true, force: true }); } catch { /* best effort */ } }
