@@ -12,7 +12,7 @@
 
 import assert from 'node:assert';
 import { execFileSync } from 'node:child_process';
-import { mkdtempSync, mkdirSync, writeFileSync, rmSync } from 'node:fs';
+import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, rmSync, existsSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, dirname } from 'node:path';
 
@@ -87,6 +87,38 @@ check('a fold-pending / not-yet-merged work order is not terminal', () => {
   );
   const r = reconcile(root);
   assert.deepEqual(r.terminalWorkOrders, []);
+});
+
+// 4 — REGRESSION (the merged-terminal exemption defect). A merged WO can carry a still-live-LOOKING
+//     lane registry (branch + worktree) in the exact legacy/migration resume state this effort targets:
+//     the lane was merged into the effort branch (0 ahead), its worktree is gone, and its ledger has
+//     node-planned+node-dispatched but NO node-completed yet (so the fold reads `running`). Without the
+//     merged exemption in isLive, the per-WO recovery loop treated it as live and appended a spurious
+//     node-downgraded — a genuinely-merged terminal WO then drifts to `pending` on the next reconcile.
+//     A merged WO must be terminal EVERYWHERE (isLive returns false), never a recovery subject.
+check('a merged WO with a live-looking lane registry (no node-completed) is NOT downgraded — stays terminal', () => {
+  const readLedger = (root) => {
+    const p = join(root, '.reasonable', 'ledger.jsonl');
+    return existsSync(p) ? readFileSync(p, 'utf8').split(/\r?\n/).map((l) => l.trim()).filter(Boolean).map((l) => JSON.parse(l)) : [];
+  };
+  const root = newEffort(
+    { 'WO-1': { verticalSlice: 'slice-1', role: 'implementer', branch: 'lane/WO-1', worktree: '.worktrees/WO-1', merged: true } },
+    [{ seq: 1, type: 'node-planned', node: 'WO-1', kind: 'work-order', title: 'w' },
+     { seq: 2, type: 'node-dispatched', node: 'WO-1', kind: 'work-order', attempt: 1 }], // NO node-completed
+  );
+  // The lane branch exists at the effort-branch tip (merged → 0 ahead); the worktree is gone (never created).
+  git(root, 'branch', 'lane/WO-1', 'effort/demo');
+  const before = readLedger(root);
+
+  const r = reconcile(root);
+
+  assert.ok(!readLedger(root).some((l) => l.type === 'node-downgraded' && l.workOrder === 'WO-1'),
+    'a merged WO must NEVER get a spurious node-downgraded');
+  assert.equal(readLedger(root).length, before.length, 'no new ledger line landed for the merged WO');
+  assert.ok(!r.resolved.some((x) => x.kind === 'downgrade' && x.workOrder === 'WO-1'),
+    'a merged WO is never a downgrade subject');
+  assert.deepEqual(r.terminalWorkOrders, ['WO-1'], 'the merged WO is terminal');
+  assert.equal(r.workOrderStatuses['WO-1'], 'done', 'the derived status is done (terminal), never drifted to pending/running');
 });
 
 for (const t of tmps) { try { rmSync(t, { recursive: true, force: true }); } catch { /* best effort */ } }
