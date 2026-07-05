@@ -46,10 +46,20 @@ No public signature changes. Behavioral contract:
   `writeMirror()` run OUTSIDE the lock — that is the bug.
 - `writeMirror()` writes each mirror file **atomically**: write `progress.json.tmp-<pid>` /
   `progress.md.tmp-<pid>`, then `renameSync` over the target (atomic same-volume on NTFS + POSIX).
-- Uncontended behavior is unchanged. **Observable change:** N concurrent same-node `node-dispatched` now
-  resolve to **distinct** attempts. `test/ledger.test.mjs` currently asserts they collide (~lines 451-482)
-  — that assertion inverts; update it to assert distinct attempts, with a note.
-- Keep the lock hold as short as correctness allows; `regen:false` still suppresses the mirror.
+- Uncontended behavior is unchanged. Keep the lock hold as short as correctness allows; `regen:false` still
+  suppresses the mirror.
+- **CORRECTION (v2, confirmed in review):** the original assertion here — "N concurrent same-node
+  `node-dispatched` → distinct attempts" — was **wrong** and is withdrawn. A plain re-dispatch of a *live,
+  non-failed* attempt is a **continuation** (same slot) by the existing attempt state machine
+  (`nextDispatchAttempt` returns `latest` unless the live attempt sealed failed/panic; forcing distinct
+  slots would break checkpoint-reclaim continuation, D19). So concurrent plain dispatches **correctly
+  collapse to one slot**. The real §5.4 property is that **attempt resolution reads committed state under
+  the lock**, so concurrent *reopens* (dispatch after a seal) don't both mint the same `[k]`. Tests must
+  **discriminate** — pass on the fix, FAIL on the pre-task commit (`a6348eb`). The §5.3 discriminator is a
+  **non-idempotent** concurrent scenario (N appends each driving a *distinct* node to `done`, so
+  `progress.json.counts` must equal `countByStatus(buildTree(root))` — this fails on the old
+  outside-the-lock last-writer-wins mirror). A deterministic reopen-chain test proves *correctness* but is
+  NOT the concurrency discriminator; label it as such.
 
 ### T0.3 — fence denies direct ledger writes for ALL roles — `fence.mjs`
 
