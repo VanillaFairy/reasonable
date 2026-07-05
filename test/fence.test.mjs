@@ -122,27 +122,81 @@ check('Bash write to in-locus src → allow (locus not policed for Bash)', () =>
   assert.equal(runFence(root, bash('echo x > src/main.rs')).denied, false);
 });
 
-// ── no-lane: Bash stays open (census/orchestrator); structured edit stays closed ─
-check('no-lane Bash to ledger → allow (census/orchestrator path)', () => {
+// ── no-lane: Bash stays open for NON-ledger writes; structured edit stays closed ─
+// The LEDGER is the one exception — F1c (§5.5) denies a direct ledger write for EVERY
+// role, the main session included (dedicated block further below). A non-ledger no-lane
+// main-session Bash write stays open (census/orchestrator path).
+check('no-lane Bash to config.json (main session) → allow', () => {
   const root = newEffort(); // effort, but NO lane descriptor
-  assert.equal(runFence(root, bash('echo x >> .reasonable/ledger.jsonl')).denied, false);
+  assert.equal(runFence(root, bash('echo x >> .reasonable/config.json')).denied, false);
 });
 // Identity model: the MAIN SESSION (no agent_type) is the trusted control plane and
 // is not fenced; a SUBAGENT (agent_type set) is governed. This replaces the old blanket
 // "no-lane structured edit inside an effort → deny": the discriminator is now WHO acts.
-check('main-session Edit to .reasonable/ → allow (trusted control plane)', () => {
+// (The one carve-out is the ledger — categorically off-limits even to main, see F1c below.)
+check('main-session Edit to a non-ledger .reasonable/ file → allow (trusted control plane)', () => {
   const root = newEffort();
-  assert.equal(runFence(root, edit(root, '.reasonable/ledger.jsonl')).denied, false);
+  assert.equal(runFence(root, edit(root, '.reasonable/route.md')).denied, false);
 });
 check('subagent (non-owner) Edit to .reasonable/ → deny (identity-governed)', () => {
   const root = newEffort();
-  const r = runFence(root, as(edit(root, '.reasonable/ledger.jsonl'), 'reasonable:auditor'));
-  assert.ok(r.denied, 'an auditor may not write the ledger');
+  // A non-ledger canonical artifact, so this exercises the IDENTITY matrix (the ledger
+  // is denied categorically for all roles by F1c, not by identity — covered below).
+  const r = runFence(root, as(edit(root, '.reasonable/journal.json'), 'reasonable:auditor'));
+  assert.ok(r.denied, 'an auditor may not write the derived index');
   assert.match(r.reason, /Identity-governed/);
 });
 check('subagent code edit outside any lane → deny (presumed hostile)', () => {
   const root = newEffort();
   assert.ok(runFence(root, as(edit(root, 'src/main.rs'), 'reasonable:implementer')).denied);
+});
+
+// ── F1c (§5.5): a DIRECT ledger write is denied for EVERY role, the main session included ──
+// The append-only ledger is mutated only through ledger.mjs append() under its lock; two
+// trusted parallel main sessions doing Edit/`echo >>` on the file race that lock and silently
+// lose an update. T0.3 removes the role===null exemption for THIS one file only — main keeps
+// its trust for every OTHER .reasonable/ path. `node ledger.mjs append` (the locked CLI) stays
+// allowed; only a raw write to the file is denied.
+const writeTo = (root, rel) => ({ tool_name: 'Write', tool_input: { file_path: join(root, rel) } });
+check('F1c: main-session Edit to the ledger → deny (names the file + the CLI)', () => {
+  const root = newEffort();
+  const r = runFence(root, edit(root, '.reasonable/ledger.jsonl'));
+  assert.ok(r.denied, 'the trusted main session may not Edit the ledger directly');
+  assert.match(r.reason, /\.reasonable\/ledger\.jsonl/);
+  assert.match(r.reason, /lib\/ledger\.mjs/);
+});
+check('F1c: main-session Write to the ledger → deny', () => {
+  const root = newEffort();
+  assert.ok(runFence(root, writeTo(root, '.reasonable/ledger.jsonl')).denied);
+});
+check('F1c: main-session shell append (echo >>) to the ledger → deny', () => {
+  const root = newEffort();
+  const r = runFence(root, bash('echo x >> .reasonable/ledger.jsonl'));
+  assert.ok(r.denied, 'main session may not echo >> the ledger');
+  assert.match(r.reason, /lib\/ledger\.mjs/);
+});
+check('F1c: main-session tee onto the ledger → deny', () => {
+  const root = newEffort();
+  assert.ok(runFence(root, bash('echo x | tee .reasonable/ledger.jsonl')).denied);
+});
+check('F1c: main-session cp onto the ledger → deny', () => {
+  const root = newEffort();
+  assert.ok(runFence(root, bash('cp /tmp/x .reasonable/ledger.jsonl')).denied);
+});
+check('F1c: main-session Write to a NON-ledger .reasonable/ file → allow (trust preserved)', () => {
+  const root = newEffort();
+  assert.equal(runFence(root, writeTo(root, '.reasonable/route.md')).denied, false, 'route.md unaffected');
+  assert.equal(runFence(root, writeTo(root, '.reasonable/config.json')).denied, false, 'config.json unaffected');
+});
+check('F1c: main-session Bash INVOKING ledger.mjs append → allow (the sanctioned locked path)', () => {
+  const root = newEffort();
+  const cmd = `node ${join(root, '..', 'plugin', 'lib', 'ledger.mjs')} append --root "${root}" --type verdict --node WO-1`;
+  assert.equal(runFence(root, bash(cmd)).denied, false, 'invoking the controller CLI is not a direct write');
+});
+check('F1c: outside any effort, a ledger-shaped write is allowed (fail-open preserved)', () => {
+  const plain = mkdtempSync(join(tmpdir(), 'fence-plain-')); tmps.push(plain); // NO .reasonable/ up-tree
+  assert.equal(runFence(plain, writeTo(plain, '.reasonable/ledger.jsonl')).denied, false, 'no effort ⇒ allow');
+  assert.equal(runFence(plain, bash('echo x >> .reasonable/ledger.jsonl')).denied, false, 'no effort ⇒ allow');
 });
 
 // ── Two-root layout (the lane-root fix) + identity governance of canonical writes ──
