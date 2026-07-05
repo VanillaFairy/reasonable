@@ -450,55 +450,116 @@ check('CLI: writeMirror throwing after a successful ledger append must not crash
 
 // ── T0.2: locking correctness (§5.3 mirror atomicity + §5.4 attempt-slot race) ─────────────
 // append() now runs attempt-resolution + seq + file-append + mirror-regen under ONE hold of the
-// ledger lock (buildTree()/attempt arithmetic and writeMirror used to run OUTSIDE it). Two things
-// to pin under concurrency: seqs stay gapless AND the mirror is never torn/stale (regenerated
-// atomically inside the lock via tmp+rename). See shared/interfaces.md §T0.2.
+// ledger lock. buildTree()/attempt arithmetic used to run BEFORE the lock and writeMirror AFTER it.
+// The two checks below are DISCRIMINATORS: each was confirmed to go RED on the pre-fix lib
+// (commit a6348eb) and GREEN on the fix (see the task report's discriminator evidence). Both drive
+// a genuine race and seed a slow prior ledger (BASELINE noise) so the pre-fix unlocked regen /
+// resolution window is wide enough to lose reliably. See shared/interfaces.md §T0.2.
 //
-// NOTE — why NOT "N concurrent dispatches → attempts 1..N": the attempt state machine treats a
-// plain re-dispatch of a LIVE (non-failed) attempt as a continuation (same slot); a reopen mints
-// the next `[k]` only after an intervening seal (node-failed / node-downgraded). So N concurrent
-// PLAIN dispatches on one node all resolve to the one live slot — the correct answer, lock or no
-// lock (verified empirically: the fold collapses them onto a single node). The distinct-slot path
-// is a genuine REOPEN chain, asserted deterministically in the check below this one. What the lock
-// buys HERE is seq/mirror consistency, which is what this check pins.
+// NOTE — there is deliberately no "N concurrent dispatches → attempts 1..N" test: the attempt state
+// machine treats a plain re-dispatch of a LIVE (non-failed) attempt as a continuation (same slot),
+// so N concurrent PLAIN dispatches on one node all resolve to the one live slot — the correct
+// answer, lock or no lock (the fold collapses them). Distinct slots require an intervening seal;
+// that path is the §5.4 race below plus the sequential reopen-chain correctness check.
 
-await checkAsync('CLI concurrency: N same-node node-dispatched serialize cleanly — gapless seqs, an untorn mirror that agrees with the ledger, no leftover temp', async () => {
-  const root = newEffort();
-  seedLedger(root, [
-    { seq: 1, type: 'node-planned', node: 'WO-race', kind: 'work-order', title: 'race target' },
-  ]);
-  const N = 8;
-  const runs = Array.from({ length: N }, (_, i) => new Promise((resolve, reject) => {
-    const child = spawn(process.execPath, [
-      LIB, 'append', '--root', root, '--type', 'node-dispatched',
-      '--workOrder', 'WO-race', '--kind', 'work-order',
-    ], { stdio: ['ignore', 'ignore', 'pipe'] });
-    let stderr = '';
-    child.stderr.on('data', (d) => { stderr += d; });
-    child.on('error', reject);
-    child.on('close', (code) => (code === 0 ? resolve() : reject(new Error(`racer ${i} exited ${code}: ${stderr}`))));
-  }));
-  await Promise.all(runs); // all 8 dispatches succeed — no crash, no ok:false
-  const lines = readLedgerLines(root);
-  const dispatched = lines.filter((l) => l.type === 'node-dispatched');
-  assert.equal(dispatched.length, N, 'all 8 node-dispatched lines landed');
-  // seq gaplessness: the lock now covers the WHOLE resolve→seq→append sequence, and seqs stay a
-  // unique, contiguous 1..M run under concurrency (no lost update).
-  const seqs = lines.map((l) => l.seq).sort((a, b) => a - b);
-  assert.equal(new Set(seqs).size, lines.length, 'no duplicate seq under concurrency');
-  assert.deepEqual(seqs, Array.from({ length: lines.length }, (_, i) => i + 1), 'seq is gapless 1..M');
-  // Correct continuation, not a race: all racers resolve to the one live attempt slot (see NOTE).
-  assert.deepEqual([...new Set(dispatched.map((l) => l.attempt))], [1], 'all racers resolve to the one live attempt (continuation) — no phantom sibling slot');
-  // §5.3: the mirror is regenerated INSIDE the lock via tmp+rename, so progress.json always parses
-  // and always agrees with a fresh fold of the FINAL ledger — never a torn or stale read.
-  const mirror = JSON.parse(readFileSync(join(root, '.reasonable', 'progress.json'), 'utf8'));
-  assert.deepEqual(mirror.counts, countByStatus(buildTree(root)), 'progress.json counts agree with a fresh ledger fold — no torn/stale mirror');
-  // No stray temp survives a successful regen (tmp is renamed over the target, not left behind).
-  const leftovers = readdirSync(join(root, '.reasonable')).filter((f) => /\.tmp-/.test(f));
-  assert.deepEqual(leftovers, [], 'no progress.*.tmp-* left behind after the atomic writes');
+await checkAsync('CLI concurrency §5.3: the mirror is regenerated atomically under the lock — published counts never go backwards, never tear, and agree with the final ledger', async () => {
+  // NON-idempotent burst: N distinct nodes each driven to `done` concurrently, so counts.done
+  // climbs 0→N. Poll progress.json throughout. On the fix (regen inside the lock, tmp+rename) the
+  // published `done` is monotonic and every read parses; on the pre-fix lib (writeMirror OUTSIDE
+  // the lock, plain overwrite) a slow earlier-computed mirror lands after a fresher one → `done`
+  // goes BACKWARDS (and/or a reader catches a half-written file). RED on a6348eb, GREEN on the fix.
+  const N = 24;
+  const BASELINE = 600; // prior events make each unlocked fold slow enough that regens reorder
+  const ROUNDS = 3;     // per round the pre-fix lib loses reliably (measured 6/6); rounds add margin
+  for (let round = 0; round < ROUNDS; round++) {
+    const root = newEffort();
+    const seed = [];
+    let seq = 1;
+    for (let b = 0; b < BASELINE; b++) seed.push({ seq: seq++, type: 'commit', note: `noise-${b}` });
+    for (let k = 1; k <= N; k++) {
+      seed.push({ seq: seq++, type: 'node-planned', node: `n${k}`, kind: 'work-order', title: `t${k}` });
+      seed.push({ seq: seq++, type: 'node-dispatched', node: `n${k}`, kind: 'work-order', attempt: 1 });
+    }
+    seedLedger(root, seed);
+    const progressPath = join(root, '.reasonable', 'progress.json');
+
+    let running = N;
+    for (let i = 1; i <= N; i++) {
+      const child = spawn(process.execPath, [LIB, 'append', '--root', root, '--type', 'node-completed', '--node', `n${i}`], { stdio: 'ignore' });
+      child.on('close', () => { running -= 1; });
+    }
+
+    // Poll the published mirror while the burst lands. Track the last cleanly-read done count and
+    // whether it ever regressed; count any read that fails to parse as a torn (half-written) read.
+    let lastDone = null; let wentBackwards = null; let torn = 0;
+    while (running > 0) {
+      if (existsSync(progressPath)) {
+        let raw = null;
+        try { raw = readFileSync(progressPath, 'utf8'); } catch { raw = null; }
+        if (raw) {
+          try {
+            const done = JSON.parse(raw).counts.done;
+            if (lastDone !== null && done < lastDone && wentBackwards === null) wentBackwards = `${lastDone}→${done}`;
+            lastDone = done;
+          } catch { torn += 1; }
+        }
+      }
+      await new Promise((r) => setTimeout(r, 0));
+    }
+
+    assert.equal(wentBackwards, null, `published done count went backwards (a stale mirror landed after a fresher one): ${wentBackwards}`);
+    assert.equal(torn, 0, 'progress.json must always parse — a tmp+rename publish is never observed half-written');
+    const mirror = JSON.parse(readFileSync(progressPath, 'utf8'));
+    assert.equal(mirror.counts.done, N, 'the final mirror reflects all N completions (not a stale earlier snapshot)');
+    assert.deepEqual(mirror.counts, countByStatus(buildTree(root)), 'final progress.json agrees with a fresh fold of the ledger');
+    const leftovers = readdirSync(join(root, '.reasonable')).filter((f) => /\.tmp-/.test(f));
+    assert.deepEqual(leftovers, [], 'no progress.*.tmp-* left behind after the atomic writes');
+  }
 });
 
-check('CLI: a reopen chain mints DISTINCT [k] attempt slots 1..N — attempt resolution reads committed ledger state under the lock (§5.4)', () => {
+await checkAsync('CLI concurrency §5.4: a dispatch racing a seal never continues the sealed attempt — attempt resolution reads committed state under the lock', async () => {
+  // Race a node-downgraded (seal attempt 1) against a node-dispatched (reopen) on one live node.
+  // On the fix (resolution + append atomic under the lock) the dispatch either lands BEFORE the
+  // seal or, seeing the committed seal, reopens to attempt 2 — so a node-dispatched(attempt 1) is
+  // never at a higher seq than a node-downgraded(attempt 1). On the pre-fix lib the dispatch
+  // resolves attempt from a pre-seal snapshot and "continues" the sealed attempt 1. RED on a6348eb
+  // (measured 7–11/12 rounds), GREEN on the fix (0/12).
+  const BASELINE = 400; // widens the pre-fix resolve→append window so the stale read lands reliably
+  const ROUNDS = 12;
+  let continuedSealed = 0;
+  for (let round = 0; round < ROUNDS; round++) {
+    const root = newEffort();
+    const seed = [];
+    let seq = 1;
+    for (let b = 0; b < BASELINE; b++) seed.push({ seq: seq++, type: 'commit', note: `noise-${b}` });
+    seed.push({ seq: seq++, type: 'node-planned', node: 'WO', kind: 'work-order', title: 'race' });
+    seed.push({ seq: seq++, type: 'node-dispatched', node: 'WO', kind: 'work-order', attempt: 1 });
+    seedLedger(root, seed);
+
+    const spawnAppend = (args) => new Promise((resolve) => {
+      const c = spawn(process.execPath, [LIB, 'append', '--root', root, ...args], { stdio: 'ignore' });
+      c.on('close', () => resolve());
+    });
+    await Promise.all([
+      spawnAppend(['--type', 'node-downgraded', '--workOrder', 'WO']),
+      spawnAppend(['--type', 'node-dispatched', '--workOrder', 'WO', '--kind', 'work-order']),
+    ]);
+
+    const lines = readLedgerLines(root);
+    const sealed = lines.filter((l) => l.type === 'node-downgraded' && l.attempt === 1).map((l) => l.seq);
+    const maxSealed = sealed.length ? Math.max(...sealed) : -1;
+    const dispatchedAttempt1 = lines.filter((l) => l.type === 'node-dispatched' && l.attempt === 1);
+    // A dispatched(attempt 1) at a HIGHER seq than the seal == a dispatch that continued the sealed
+    // attempt instead of reopening. That is the §5.4 stale-read bug.
+    if (maxSealed >= 0 && dispatchedAttempt1.some((l) => l.seq > maxSealed)) continuedSealed += 1;
+  }
+  assert.equal(continuedSealed, 0, `a dispatch continued a sealed attempt in ${continuedSealed}/${ROUNDS} rounds — attempt resolution must read committed ledger state under the lock`);
+});
+
+check('CLI correctness (sequential): a reopen chain mints DISTINCT [k] attempt slots 1..N — resolution reads committed state', () => {
+  // Deterministic CORRECTNESS test (not a concurrency discriminator — five separate CLI processes
+  // run one after another, so it also passes on the pre-fix lib). It pins that the attempt state
+  // machine mints distinct siblings when each dispatch is preceded by a seal.
   const root = newEffort();
   seedLedger(root, [
     { seq: 1, type: 'node-planned', node: 's1/WO', kind: 'work-order', title: 'reopen target' },
@@ -506,8 +567,6 @@ check('CLI: a reopen chain mints DISTINCT [k] attempt slots 1..N — attempt res
   const N = 5;
   const attempts = [];
   for (let k = 1; k <= N; k++) {
-    // Each dispatch, resolving under the lock against the fully-committed ledger, either opens the
-    // fresh base (attempt 1) or reopens the sealed live attempt to the next distinct slot.
     const d = runCli(['append', '--root', root, '--type', 'node-dispatched', '--workOrder', 'WO', '--kind', 'work-order']);
     assert.equal(d.status, 0, d.stderr);
     const disp = readLedgerLines(root).filter((l) => l.type === 'node-dispatched');
