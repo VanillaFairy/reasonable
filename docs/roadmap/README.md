@@ -26,6 +26,13 @@ its problem file.
   instead of passing schema fields as top-level args; each fails validation and burns a retry, five in a
   row crash the agent (the reconciler-crash class). Root fix is engine-side unwrap-before-validate; the
   `callShapeReminder` prompt mitigation now covers all six workflows (2026-07-03).
+- [thin-planner.md](thin-planner.md) — **route planning pays an O(effort-history) opus turn for
+  mostly-decidable work.** The Plan phase's single fat agent turn derives footprints in prose (the
+  propose/persist chicken-and-egg blocks `footprint.mjs` for new WOs), derives trust-staleness by
+  prose twice (no lib exists), and re-reads stable docs + full history uncached every slice — up to
+  ~1 h observed on sofia-plays. Candidate fix: a thin judgment-only planner (slim `DECOMPOSITION`
+  schema, delta briefing, `Read/Grep/Glob` only) + `lib/trust-staleness.mjs` in the reconcile
+  briefing + the footprint run riding the work-order-writer's ACK — zero new agent turns.
 - [intra-slice-provider-merge.md](intra-slice-provider-merge.md) — **a same-slice producer→consumer
   split has no merge boundary to cut the consumer from.** The effort-branch merge only lands a green
   lane between vertical-slice runs, not between waves inside one run — a same-slice consumer's lane can
