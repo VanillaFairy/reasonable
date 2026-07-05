@@ -198,6 +198,22 @@ check('F1c: outside any effort, a ledger-shaped write is allowed (fail-open pres
   assert.equal(runFence(plain, writeTo(plain, '.reasonable/ledger.jsonl')).denied, false, 'no effort ⇒ allow');
   assert.equal(runFence(plain, bash('echo x >> .reasonable/ledger.jsonl')).denied, false, 'no effort ⇒ allow');
 });
+check('F1c: main-session Write/Edit to CAPITALIZED ledger (Ledger.jsonl) → deny (case-insensitive FS)', () => {
+  const root = newEffort();
+  // The primary platform FS (Windows/NTFS) is case-insensitive, so `.reasonable/Ledger.jsonl`
+  // opens the SAME real ledger — a capital letter must not slip the guard to SEALED.
+  assert.ok(runFence(root, writeTo(root, '.reasonable/Ledger.jsonl')).denied, 'Write to Ledger.jsonl');
+  assert.ok(runFence(root, edit(root, '.reasonable/Ledger.jsonl')).denied, 'Edit to Ledger.jsonl');
+});
+check('F1c: main-session MultiEdit to the ledger → deny (every structured tool, not just Edit/Write)', () => {
+  const root = newEffort();
+  assert.ok(runFence(root, { tool_name: 'MultiEdit', tool_input: { file_path: join(root, '.reasonable/ledger.jsonl') } }).denied);
+});
+check('F1c: main-session shell mv/dd onto the ledger → deny (write-head parity beyond tee/cp)', () => {
+  const root = newEffort();
+  assert.ok(runFence(root, bash('mv /tmp/x .reasonable/ledger.jsonl')).denied, 'mv destination is a write');
+  assert.ok(runFence(root, bash('dd if=/tmp/x of=.reasonable/ledger.jsonl')).denied, 'dd of= is a write');
+});
 
 // ── Two-root layout (the lane-root fix) + identity governance of canonical writes ──
 check('two-root: in-locus code write in the worktree → allow', () => {
