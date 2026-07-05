@@ -60,8 +60,10 @@ check('a ledger dead-end event surfaces in result.deadEnds with seq + hash', () 
 check('a refutation-surviving infeasible verdict surfaces; a merged id is excluded (terminal wins)', () => {
   const root = newEffort(
     {
-      'WO-A': { status: 'dead-end', verticalSlice: 'slice-1', role: 'implementer' },
-      'WO-B': { status: 'merged', verticalSlice: 'slice-1', role: 'implementer' },
+      // T0.4: status-free journals. WO-B is terminal via the `merged` flag (a write-once lane/terminal
+      // fact kept by T0.4 — the retired status:"merged" is gone).
+      'WO-A': { verticalSlice: 'slice-1', role: 'implementer' },
+      'WO-B': { verticalSlice: 'slice-1', role: 'implementer', merged: true },
     },
     [{ seq: 1, type: 'verdict', kind: 'infeasible', survivedSkeptic: true, workOrder: 'WO-A' },
      { seq: 2, type: 'dead-end', workOrder: 'WO-B', hash: null }], // later merged -> excluded
