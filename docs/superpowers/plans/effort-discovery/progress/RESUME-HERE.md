@@ -34,11 +34,17 @@ complete (code + doc-sync). Plugin at **v2.5.0**. Next up: Layer 2.
      canceled via `buildTree`, `retroDone` = slice strictly before `currentVerticalSlice` in route order),
      attaches `result.nextAction`. AMBIGUOUS=any unsettleable-config halt (incl. S7), HALT=floor-integrity
      STOP (T2.doc should document this taxonomy). Verified the halt-reason hoist is behavior-identical.
-   - **T2.3** (authored, in flight) — `next-action` ledger event (Family 3) + mirror render (`progress.json.nextAction` string +
-     `▶ NEXT` block + K-since-`computedFrom` staleness) + **Windows `renameSync` EPERM/EBUSY retry** in
-     `atomicWrite` (layer0-checkpoint flag #4).
-   - **T2.4** — `selfCheckDirectives` (drop-resurrection / guard-flag / retired-slice / land-nonempty refusals)
-     + autonomous escalation; gated BEFORE the T2.3 append.
+   - **T2.3 DONE** (`6f288f2`, suite 48/48) — `next-action` ledger event (Family 3, `validateNextAction`) +
+     mirror render (`progress.json.nextAction` string + `▶ NEXT` block + K-since-`computedFrom` staleness;
+     reconcile appends one per call; existing reconcile tests updated + strengthened to assert no spurious
+     downgrade) + **Windows `renameSync` EPERM/EBUSY retry** in `atomicWrite` (bounded `Atomics.wait` backoff).
+     Regen-clobber regression green (the NEXT block survives a wholesale mirror rebuild). `renderDirectives`
+     shared by mirror + briefing.
+   - **T2.4** (authored, in flight) — extract redispatch-guard's blocking predicate to an exported
+     `redispatchBlock(ledger, wo)` (DRY, behavior-identical); pure `selfCheckDirectives(directives, context)`
+     (guard-flag / retired-slice / land-nonempty refusals → DECIDE) gated BEFORE the T2.3 append.
+     **Correction F:** the self-check does NOT refuse `node-downgraded` (that is the legitimate reopen; the
+     real invariant is drop-authoritative via the guard, matrix S12).
    - **T2.doc** — doc-sync (route.json + `next-action` grammar `*`, D19 render, §7 cross-refs, fix stale
      `route-planner.md:145-146` merged/green prose) + version bump 2.5.0 → 2.6.0.
 2. **Final:** whole-implementation review + `finishing-a-development-branch`.
