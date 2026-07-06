@@ -3,6 +3,41 @@
 These are the contracts parallel tasks agree on. If one is wrong, STOP and report — do not invent a
 variant. Layer 1/2 interfaces are added just-in-time before their waves.
 
+## Layer 1 (pinned as each task opens; foundation shapes here)
+
+### T1.1 — `effortBirthState` + write the birth signature — `lib/effort.mjs`, `skills/develop/SKILL.md`
+
+```js
+// Pure, sync, no git. One shared predicate both discovery and reconcile call, so they cannot disagree.
+export function effortBirthState(effortRoot)  // -> { state, reason? }
+//   state: 'absent'            — no .reasonable/config.json                → NOT an effort (skip; stray/pre-birth)
+//        | 'corrupt'           — config.json exists but does not JSON-parse → born, HALT-worthy
+//        | 'missing-signature' — parses but no non-empty cfg.effort         → born (foreign/hand-edited), HALT-worthy
+//        | 'ok'                — parses, has a non-empty cfg.effort          → born, proceed
+```
+- The birth **signature** is `config.effort` (a non-empty string). Today NOTHING writes it (Defect A): the
+  effort name lives only in `journal.effort`; `loadConfig` has no `effort` default; `conclude.mjs` already
+  (wrongly) reads `loadConfig(...).effort`. **T1.1 makes `develop` Step 0 write `config.effort`** (the same
+  name it derives the effort branch from), so real efforts read `ok`. Without this, every real effort reads
+  `missing-signature` → HALT.
+- `effortBirthState` reads config via a direct parse (it must distinguish `corrupt` from `absent` — do NOT
+  route through `loadConfig`, which swallows a parse failure into defaults). Reuse `readJson` only if it
+  surfaces parse failure distinctly; otherwise a small local `existsSync` + `JSON.parse` in a try/catch.
+- **Consumers (this task only wires the predicate + the write):** later tasks call it — reconcile's
+  runMode-absent HALT (S7) keys off `effortBirthState(root).state !== 'absent'` so a crashed effort HALTs
+  instead of silently skipping; `resolveActiveEffort` (T1.2) uses it to decide "born".
+
+### T1.2 — path normalization + `resolveActiveEffort` — pinned when Wave 1b opens
+### T1.3 — birth-location policy — pinned when it opens
+### T1.4 — lifecycle + `reasonable:abandon` — pinned when it opens
+### T1.5 — multi-effort briefing — pinned when it opens
+
+(Layer-1 is largely SEQUENTIAL — `effort.mjs` (T1.1/T1.2/T1.3) and `reconcile.mjs` (T1.2/T1.3) are the hot
+files. Tentative order, finalized per wave: **T1.1** foundation → **T1.2** path-norm + `resolveActiveEffort`
+(effort.mjs + reconcile) ∥ **T1.4a** abandon *command* (new `abandon.mjs` + ledger `abandoned` + skill —
+the one file-disjoint parallel slot) → **T1.3** birth-location + lifecycle-state (fence + develop +
+reconcile) → **T1.5** multi-effort briefing (session-start) → doc.)
+
 ## Layer 0
 
 ### T0.1 — work-order status ledger fold — `lib/wo-status.mjs` (new)
@@ -84,10 +119,24 @@ allowed (main keeps its trust everywhere else). The ledger is mutated only throu
 - **Ledger grammar (additive):** `amendment` and `ratification` events gain optional
   `drops: [{ workOrder: string, supersededBy?: string }]` and `resolvesSeq: number`. Add to `EVENT_SCHEMAS`
   as optional (do not make required — old events lack them). Validate shape if present.
-- **redispatch-guard:** ADD binding on (`node-failed` with a blocking-class `reason`) and (`amendment` with
-  a matching `drops[].workOrder`). **KEEP** the existing `dead-end`/`verdict`(infeasible+survivedSkeptic)
-  binding (it is real and consumed by `dead-ends.mjs`/`reconcile` — Defect B). Exit codes unchanged
-  (2=blocked, 0=clear). Add `test/redispatch-guard.test.mjs` (none exists).
+- **redispatch-guard:** **KEEP** the existing `dead-end`/`verdict`(infeasible+survivedSkeptic) binding (real,
+  hash-gated, consumed by `dead-ends.mjs`/`reconcile` in lockstep — Defect B). **ADD** a binding on
+  `amendment` with a matching `drops[].workOrder` (a deliberate supersession — a dropped WO stays dropped,
+  cleared only by a restoring `resolvesSeq`; the safe direction). Exit codes unchanged (2=blocked, 0=clear).
+  Add `test/redispatch-guard.test.mjs` (none exists).
+  - **CORRECTION (v2, from T0.5 spec review): do NOT bind the guard on raw `node-failed`.** A `node-failed`
+    is an *under-investigation* lifecycle event (D19 `failed ↻` = non-terminal, being investigated), NOT an
+    infeasibility verdict — such a WO must stay redispatchable. The only WO-addressed reason-bearing
+    `node-failed` the pipeline emits is the dead-end ceremony's, ALREADY blocked by the hash-gated `dead-end`
+    binding (with the correct input-changed escape). Binding the guard on `node-failed` is therefore both
+    redundant and wedging: `resolvesSeq` has no real emitter and `node-failed` carries no hash, so a
+    dead-ended WO whose input later changed could never clear the `node-failed` binding → permanently
+    un-redispatchable, violating the guard's own "blocked unless an input changed" contract. The
+    `node-failed → blocked` mapping stays only in the fold / reconcile surfacing (a display concern,
+    self-clearing on reopen), never in the redispatch gate.
+- **`drops`/`resolvesSeq` emission is future work** (retro/amendment ceremony in `skills/*`), out of Layer 0
+  scope. T0.5 lands the additive grammar + consumers; the amendment-drop binding is forward-looking (no
+  current emitter) and safe until then.
 - **reconcile closure fold:** a `node-failed` is *closed* only by a later `ratification`/`amendment` whose
   `resolvesSeq` equals that failed event's seq — never by a scan for coincidental id mentions. This is the
   same `resolvesSeq` T0.1's `blocked` semantics use; keep them consistent (shared helper if natural).
