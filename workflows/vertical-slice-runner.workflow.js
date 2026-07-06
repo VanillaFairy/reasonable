@@ -131,8 +131,9 @@ const BRIEFING = {
     // The trust-staleness set: trusted-green tests whose governing clause was
     // amended/extended since last verification (S16, D13) - marked for re-verify.
     staleTrusted: { type: 'array', items: { type: 'string' } },
-    // Work-order ids the journal already shows TERMINAL (merged) - reconcile.mjs
-    // computes this mechanically (status:"merged", or status:"green"+merged:true).
+    // Work-order ids that are TERMINAL (already merged) - reconcile.mjs computes this
+    // mechanically from the ledger fold's `done` OR the journal `merged:true` lane flag
+    // (T0.4 retired the per-WO journal `status`; there is no status:"merged"/"green" to read).
     // A merged WO's code already landed on the effort branch; re-running its
     // pipeline is never correct, regardless of what still sits on disk in
     // .reasonable/work-orders/*.json (the graph-editor-ux-overhaul incident: a
@@ -646,7 +647,7 @@ function reconcilePrompt(a) {
     'Run the floor-integrity reconcile pass (brownfield) as a tier-3 BACKSTOP tripwire, NOT a first-line HALT (D6): it always SURFACES every floor diff (report it in evidence + note) and never SILENCES it; an `accept` verifier-verdict ANNOTATES the diff explained-by-verdict (ADVISORY ONLY - that annotation never clears the surfacing).',
     'Report floorUnexplained = reconcile.mjs `floorIntegrity.unexplained` (surfaced floor diffs with NO accept verdict). D13 - the UNEXPLAINED-BREACH STOP: in AUTONOMOUS mode floorUnexplained>0 is the FIFTH always-escalate class - something bypassed the pre-integration adversary, so set halt:true (queue BREAKING + STOP, do not grind on). An EXPLAINED floor diff (surfaced but floorUnexplained:0) is a non-blocking NOTICE: log it and continue. In GATED mode both just surface in the briefing for the present human (no halt).',
     'Report staleTrusted EXACTLY as reconcile.mjs computed it (result.staleTrusted) — the trusted-green test ids whose governing clause was amended/extended since last verification (D13). lib/trust-staleness.mjs derives this mechanically from the ledger; do NOT eyeball the ledger or re-derive it in prose — copy the script\'s computed list verbatim, like terminalWorkOrders.',
-    'Report terminalWorkOrders EXACTLY as reconcile.mjs computed it (result.terminalWorkOrders) - the ids of every work order already merged (status:"merged", or status:"green" with merged:true). Do NOT eyeball journal.workOrders yourself; copy the script\'s computed set verbatim. These are DONE, permanently - the route-planner and the script both refuse to re-dispatch them no matter what still sits in .reasonable/work-orders/*.json.',
+    'Report terminalWorkOrders EXACTLY as reconcile.mjs computed it (result.terminalWorkOrders) - the ids of every work order already merged (the ledger fold reads `done`, or the journal lane carries merged:true - reconcile no longer reads a per-WO journal status, retired T0.4). Do NOT eyeball journal.workOrders yourself; copy the script\'s computed set verbatim. These are DONE, permanently - the route-planner and the script both refuse to re-dispatch them no matter what still sits in .reasonable/work-orders/*.json.',
     'Report deadEnds EXACTLY as reconcile.mjs computed it (result.deadEnds) - the refutation-surviving infeasibility verdicts, minus already-merged ids, each { workOrder, ledgerSeq, hash }. lib/dead-ends.mjs folds this from the ledger; do NOT eyeball ledger events or re-derive the set in prose - copy the computed set verbatim, like terminalWorkOrders and staleTrusted.',
     'Return the BRIEFING. Set halt:true with haltReason+evidence for ANY of the four first-line AMBIGUOUS classes, or for an UNEXPLAINED autonomous floor breach (haltClass:"floor-integrity-unexplained") - never guess a recovery state.',
     callShapeReminder,

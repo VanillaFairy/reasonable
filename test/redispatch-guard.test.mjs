@@ -149,6 +149,31 @@ check('NEW: drop closure is by EXACT resolvesSeq — a ratification naming the w
   assert.equal(r.status, 2, `a coincidental mention with the wrong resolvesSeq must NOT un-drop; stderr=${r.stderr}`);
 });
 
+// LAST-WRITE-WINS among drops (the guard must agree with lib/wo-status.mjs's `dropped` fold): only the
+// LATEST drop of a WO governs. Restoring the latest clears the WO even if an EARLIER drop was never
+// resolved; restoring only an earlier drop leaves the latest still blocking.
+check('double-drop: drop@2, drop@5, ratify resolvesSeq:5 → latest drop restored → CLEAR (exit 0)', () => {
+  const root = newEffort('WO-1', { gate: 'g' }, [
+    { seq: 1, type: 'node-planned', node: 's1/WO-1', kind: 'work-order', title: 'x' },
+    { seq: 2, type: 'amendment', component: 'c', drops: [{ workOrder: 'WO-1' }] },
+    { seq: 5, type: 'amendment', component: 'c', drops: [{ workOrder: 'WO-1' }] },
+    { seq: 6, type: 'ratification', gate: 'retro', resolvesSeq: 5 }, // restores the LATEST drop
+  ]);
+  const r = run(root, 'WO-1');
+  assert.equal(r.status, 0, `the latest drop (seq 5) is restored — the guard must match the fold's pending; stderr=${r.stderr}`);
+});
+
+check('double-drop: drop@2, drop@5, ratify resolvesSeq:2 → latest drop still open → BLOCKED (exit 2)', () => {
+  const root = newEffort('WO-1', { gate: 'g' }, [
+    { seq: 1, type: 'node-planned', node: 's1/WO-1', kind: 'work-order', title: 'x' },
+    { seq: 2, type: 'amendment', component: 'c', drops: [{ workOrder: 'WO-1' }] },
+    { seq: 5, type: 'amendment', component: 'c', drops: [{ workOrder: 'WO-1' }] },
+    { seq: 6, type: 'ratification', gate: 'retro', resolvesSeq: 2 }, // restores only the EARLIER drop
+  ]);
+  const r = run(root, 'WO-1');
+  assert.equal(r.status, 2, `restoring only the earlier drop leaves the latest (seq 5) blocking; stderr=${r.stderr}`);
+});
+
 // ── clean WO ──────────────────────────────────────────────────────────────────────────────────
 
 check('a clean WO with no binding event is CLEAR (exit 0)', () => {

@@ -17,7 +17,7 @@ import { mkdtempSync, mkdirSync, writeFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, dirname } from 'node:path';
 
-import { reconcile } from '../lib/reconcile.mjs';
+import { reconcile, briefing } from '../lib/reconcile.mjs';
 
 const git = (cwd, ...args) => execFileSync('git', args, { cwd, stdio: ['ignore', 'pipe', 'pipe'] }).toString();
 const write = (root, rel, content) => {
@@ -182,6 +182,31 @@ check('a node-failed closed by a later ratification{resolvesSeq} is NOT surfaced
   assert.notEqual(r.workOrderStatuses['WO-1'], 'blocked', 'the closure fold cleared the block');
   assert.ok(!r.blockedWorkOrders.some((b) => b.workOrder === 'WO-1'),
     `a closed failure must not be surfaced blocked; got: ${JSON.stringify(r.blockedWorkOrders)}`);
+});
+
+// 7 — a dead-ended WO double-surfaces without this fix: the dead-end ceremony emits BOTH a WO-addressed
+//     node-failed (→ fold `blocked`) and a `dead-end` event (→ deadEnds). It must appear ONLY in
+//     deadEnds (RETIRED) and be ABSENT from blockedWorkOrders — otherwise the briefing prints two
+//     contradictory lines and the "decide: ratify a redispatch or drop" line is actively wrong (the
+//     redispatch-guard's dead-end binding blocks that WO).
+check('a dead-ended WO surfaces ONLY as a dead end, never also as blocked (no double-surface / no contradictory briefing)', () => {
+  const root = newEffort(
+    { 'WO-1': { verticalSlice: 'slice-1', role: 'implementer' } },
+    [
+      { seq: 1, type: 'node-planned', node: 'slice-1/WO-1', kind: 'work-order', title: 'w' },
+      { seq: 2, type: 'node-dispatched', node: 'slice-1/WO-1', kind: 'work-order', attempt: 1 },
+      // The dead-end ceremony's two ledger lines: the WO-addressed failure + the bound verdict.
+      { seq: 3, type: 'node-failed', node: 'slice-1/WO-1', workOrder: 'WO-1', reason: 'binding constraint' },
+      { seq: 4, type: 'dead-end', workOrder: 'WO-1', hash: 'sha256:abc' },
+    ],
+  );
+  const r = reconcile(root);
+  assert.ok(r.deadEnds.some((d) => d.workOrder === 'WO-1'), 'the dead-ended WO is in deadEnds');
+  assert.ok(!r.blockedWorkOrders.some((b) => b.workOrder === 'WO-1'),
+    `a dead-ended WO must NOT also surface as blocked; got: ${JSON.stringify(r.blockedWorkOrders)}`);
+  const brief = briefing(r);
+  assert.match(brief, /Dead ends[^\n]*WO-1/, 'the briefing prints the dead-ends line');
+  assert.doesNotMatch(brief, /Blocked \(open node-failed[^\n]*WO-1/, 'the briefing must NOT print a contradictory blocked line for a dead-ended WO');
 });
 
 for (const t of tmps) { try { rmSync(t, { recursive: true, force: true }); } catch { /* best effort */ } }

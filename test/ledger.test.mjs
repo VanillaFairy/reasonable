@@ -154,9 +154,17 @@ check('validateEvent: malformed drops are rejected (not an array / missing workO
   assert.equal(validateEvent({ type: 'amendment', drops: [null] }).ok, false, 'a null drop is malformed');
 });
 
-check('validateEvent: a non-numeric resolvesSeq is rejected on both amendment and ratification', () => {
+check('validateEvent: resolvesSeq must be a POSITIVE INTEGER (a 1-based ledger seq) — reject non-numeric / float / <= 0', () => {
+  // Accepted: a positive integer.
+  assert.equal(validateEvent({ type: 'ratification', gate: 'retro', resolvesSeq: 1 }).ok, true);
+  assert.equal(validateEvent({ type: 'amendment', component: 'c', resolvesSeq: 42 }).ok, true);
+  // Rejected: non-numeric, null, non-integer, and non-positive nonsense.
   assert.equal(validateEvent({ type: 'ratification', gate: 'retro', resolvesSeq: 'three' }).ok, false);
   assert.equal(validateEvent({ type: 'amendment', component: 'c', resolvesSeq: null }).ok, false);
+  assert.equal(validateEvent({ type: 'ratification', gate: 'retro', resolvesSeq: 3.5 }).ok, false, 'a float is not a seq');
+  assert.equal(validateEvent({ type: 'ratification', gate: 'retro', resolvesSeq: 0 }).ok, false, 'seqs are 1-based');
+  assert.equal(validateEvent({ type: 'ratification', gate: 'retro', resolvesSeq: -1 }).ok, false, 'no negative seq');
+  assert.equal(validateEvent({ type: 'amendment', component: 'c', resolvesSeq: NaN }).ok, false);
 });
 
 check('exports: KINDS is exact; EVENT_SCHEMAS is a registry that excludes legacy action-* types', () => {
