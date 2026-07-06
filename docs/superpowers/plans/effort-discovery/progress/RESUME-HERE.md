@@ -29,9 +29,12 @@ complete (code + doc-sync). Plugin at **v2.5.0**. Next up: Layer 2.
    - **T2.1 DONE** (`c7f5f1a`, suite 45/45) — `route.json` + `lib/route.mjs readRoute` → `{route, diagnostic}`
      + WO `dependsOn` wired into work-order-writer + route-planner; `route.json` persisted at analysis 10a AND
      retro step 5 (both sites kept in sync — implementer caught the retro drift).
-   - **T2.2** (authored, in flight) — pure `projectDirectives(state)` + reconcile assembles state (reads WO
-     specs for `dependsOn`/`verticalSlice`, detects canceled via `buildTree`), attaches `result.nextAction`.
-   - **T2.3** — `next-action` ledger event (Family 3) + mirror render (`progress.json.nextAction` string +
+   - **T2.2 DONE** (`9d149d9`, suite 47/47) — pure `projectDirectives(state)` (§7.3 directive SET) +
+     `lib/next-action.mjs`; reconcile assembles state (reads WO specs for `dependsOn`/`verticalSlice`, detects
+     canceled via `buildTree`, `retroDone` = slice strictly before `currentVerticalSlice` in route order),
+     attaches `result.nextAction`. AMBIGUOUS=any unsettleable-config halt (incl. S7), HALT=floor-integrity
+     STOP (T2.doc should document this taxonomy). Verified the halt-reason hoist is behavior-identical.
+   - **T2.3** (authored, in flight) — `next-action` ledger event (Family 3) + mirror render (`progress.json.nextAction` string +
      `▶ NEXT` block + K-since-`computedFrom` staleness) + **Windows `renameSync` EPERM/EBUSY retry** in
      `atomicWrite` (layer0-checkpoint flag #4).
    - **T2.4** — `selfCheckDirectives` (drop-resurrection / guard-flag / retired-slice / land-nonempty refusals)
