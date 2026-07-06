@@ -161,18 +161,32 @@ check('corrupt progress.json among several → that one flagged, the rest still 
   assert.match(ctx, /eff-b:[^\n]*FLAGGED/, 'the corrupt-mirror effort degrades to flagged (per-effort try/catch)');
 });
 
-// ── born-but-bad config among several → flagged (HALT-worthy), the rest briefed ──
-check('missing-signature config among several → flagged, not silently adopted', () => {
-  const root = newRepo('ss-badcfg-');
+// ── missing-signature WITH a recoverable name → briefed normally (reconcile reconstructs it), NOT flagged ──
+check('missing-signature but recoverable-from-journal → briefed, not flagged (auto-reconstruct)', () => {
+  const root = newRepo('ss-recon-');
   nestedLiveEffort(root, 'eff-a');
-  // a born-but-bad config: parses, has runMode, but no `effort` birth signature
+  // no `effort` birth signature in config, but the name survives in journal.effort → reconstructable
   const b = join(root, '.reasonable-efforts', 'eff-b');
   write(b, '.reasonable/config.json', JSON.stringify({ runMode: 'gated' }) + '\n');
   write(b, '.reasonable/journal.json', JSON.stringify({ effort: 'eff-b', workOrders: {}, lanes: {}, inbox: [] }) + '\n');
+  write(b, '.reasonable/progress.json', JSON.stringify({ label: 'eff-b', counts: { pending: 0, active: 0, done: 0, failed: 0, canceled: 0 } }, null, 2) + '\n');
+  write(b, '.reasonable/ledger.jsonl', JSON.stringify({ seq: 1, type: 'node-dispatched', node: 'WO-1', workOrder: 'WO-1', ts: daysAgoISO(2) }) + '\n');
   const ctx = runHook(root);
-  // eff-b is missing-signature (born, no signature) → resolveActiveEffort lists it; the briefing flags it.
+  assert.match(ctx, /eff-a:[^\n]*done/, 'the healthy effort is briefed');
+  assert.doesNotMatch(ctx, /eff-b:[^\n]*FLAGGED/, 'a reconstructable effort is NOT flagged (identity recoverable from journal.effort)');
+  assert.match(ctx, /eff-b:[^\n]*done/, 'the reconstructable effort is briefed normally');
+});
+
+// ── missing-signature AND no recoverable name → flagged (genuinely unidentifiable), the rest briefed ──
+check('missing-signature AND no journal.effort → flagged, not silently adopted', () => {
+  const root = newRepo('ss-badcfg-');
+  nestedLiveEffort(root, 'eff-a');
+  const b = join(root, '.reasonable-efforts', 'eff-b');
+  write(b, '.reasonable/config.json', JSON.stringify({ runMode: 'gated' }) + '\n');
+  write(b, '.reasonable/journal.json', JSON.stringify({ workOrders: {}, lanes: {}, inbox: [] }) + '\n'); // no effort name → unrecoverable
+  const ctx = runHook(root);
   assert.match(ctx, /eff-a:[^\n]*done/, 'the healthy effort is still briefed');
-  assert.match(ctx, /FLAGGED[^\n]*missing-signature|missing-signature/, 'the born-but-bad config is flagged');
+  assert.match(ctx, /FLAGGED[^\n]*unidentifiable|unidentifiable/, 'a config with no recoverable name is flagged');
 });
 
 // ── plain repo, no effort → banner + "no active effort", nothing adopted ──
