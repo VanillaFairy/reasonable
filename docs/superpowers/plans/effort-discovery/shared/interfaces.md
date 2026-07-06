@@ -86,9 +86,13 @@ export function resolveActiveEffort(cwd)  // -> { kind, root?, roots?, strays? }
 **Part B — lifecycle-state in reconcile (§6.5, F10): the BORN-effort states.**
 - reconcile computes a `lifecycle` field for the effort it reconciles, over the deterministic predicates
   (cheapest signal first) for the BORN states it can see: `'active'` (frontier has an open slice),
-  `'at-land-gate'` (frontier empty AND `descendsFrom(effortBranch, base)` is **false** → NEXT=LAND),
-  `'half-concluded'` (`descendsFrom(effortBranch, base)` **true**, still a live `.reasonable/`, no `.done-*`
-  → NEXT=CONCLUDE). Use git ancestry (`git merge-base --is-ancestor` via `gitTry`) for `descendsFrom`.
+  `'at-land-gate'` (frontier empty AND NOT landed → NEXT=LAND),
+  `'half-concluded'` (landed — effort work merged into base — still a live `.reasonable/`, no `.done-*`
+  → NEXT=CONCLUDE). **"landed" ⟺ effortBranch is an ancestor of base** ⟺
+  `git merge-base --is-ancestor <effortBranch> <base>` (this is `branch.mjs`'s `descendsFrom(root, effortBranch, base)`).
+  (CORRECTED: an earlier draft transposed the arg order to `<base> <effortBranch>` — that is the inverse and
+  would mislabel an in-progress effort as half-concluded; the English above is authoritative.) Bare-HEAD efforts
+  (no branch refs) default to the SAFE `at-land-gate` (never a premature conclude).
   The dir-name states (`concluded`/`abandoned`/`stray`) are the multi-effort SCAN's job (T1.5) — reconcile
   only ever runs on a live `.reasonable/`, so it classifies the born states. Add `lifecycle` to the result
   object; do NOT compute `nextAction` (that is Layer 2 / T2.2 — it consumes `lifecycle`).
