@@ -54,10 +54,11 @@
 //        NOT a behaviorDelta-completeness verifier - that is a FALSE TRIO (D12): an
 //        undeclared move surfaces mechanically as an unaccounted floor break, a padded
 //        delta is caught by the existing two-oracle collision classifier.
-//        a serial WRITE-AHEAD journalWriteAhead BEFORE the pipeline flips the slice +
-//        this wave's work orders to `dispatched` so the progress mirror reads `active`
-//        within seconds, not after the wave lands (D19); fail-soft (the post-wave write
-//        is authoritative)
+//        a serial WRITE-AHEAD journalWriteAhead BEFORE the pipeline sets the slice +
+//        REGISTERS this wave's lanes (worktree/branch) so reconcile can recover a crash
+//        mid-dispatch and the progress mirror reads `active` within seconds (off the
+//        ledger's node-dispatched), not after the wave lands (D19); fail-soft (the
+//        post-wave write is authoritative)
 //     trap router: switch over OUTCOME.kind -> its pre-written membrane crossing (S8)
 //     serial AUTHORITATIVE journalWrite (the wave's derived-index write); null -> HALT
 //        (S6, D3b). Both scribe dispatches run from this non-parallel position via the
@@ -130,8 +131,9 @@ const BRIEFING = {
     // The trust-staleness set: trusted-green tests whose governing clause was
     // amended/extended since last verification (S16, D13) - marked for re-verify.
     staleTrusted: { type: 'array', items: { type: 'string' } },
-    // Work-order ids the journal already shows TERMINAL (merged) - reconcile.mjs
-    // computes this mechanically (status:"merged", or status:"green"+merged:true).
+    // Work-order ids that are TERMINAL (already merged) - reconcile.mjs computes this
+    // mechanically from the ledger fold's `done` OR the journal `merged:true` lane flag
+    // (T0.4 retired the per-WO journal `status`; there is no status:"merged"/"green" to read).
     // A merged WO's code already landed on the effort branch; re-running its
     // pipeline is never correct, regardless of what still sits on disk in
     // .reasonable/work-orders/*.json (the graph-editor-ux-overhaul incident: a
@@ -367,7 +369,7 @@ const PROVISION_ACK = {
     branch: { type: ['string', 'null'], description: 'the lane branch.' },
     descriptorWritten: { type: 'boolean', description: 'the .reasonable-lane.json descriptor exists at the worktree root (the fence is armed).' },
     depsReady: { type: 'boolean', description: 'the worktree can run its suite - installed deps are present (linked from the effort root or installed via config.setupCommand). false = the suite-running roles must install first.' },
-    journalRecorded: { type: 'boolean', description: 'true iff reading journal.json confirmed this work order already shows status:"dispatched" (landed by the orchestrators own write-ahead scribe call for this wave, before this agent ran). A confirmation, never a write - false is a handoff gap for the post-wave authoritative scribe write to close, and never blocks dispatch (D7 keys on the physical lane: worktree + descriptorWritten).' },
+    journalRecorded: { type: 'boolean', description: 'true iff reading journal.json confirmed this work order\'s lane is already REGISTERED - its worktree + branch recorded in journal.workOrders[id] (landed by the orchestrators own write-ahead scribe call for this wave, before this agent ran). A confirmation, never a write - false is a handoff gap for the post-wave authoritative scribe write to close, and never blocks dispatch (D7 keys on the physical lane: worktree + descriptorWritten).' },
     noOp: { type: 'boolean', description: 'true iff the lane already existed and provisioning was an idempotent no-op.' },
     kind: { type: ['string', 'null'], description: 'set to "checkpoint" by guard() on a budget ceiling.' },
     note: { type: ['string', 'null'] },
@@ -645,7 +647,7 @@ function reconcilePrompt(a) {
     'Run the floor-integrity reconcile pass (brownfield) as a tier-3 BACKSTOP tripwire, NOT a first-line HALT (D6): it always SURFACES every floor diff (report it in evidence + note) and never SILENCES it; an `accept` verifier-verdict ANNOTATES the diff explained-by-verdict (ADVISORY ONLY - that annotation never clears the surfacing).',
     'Report floorUnexplained = reconcile.mjs `floorIntegrity.unexplained` (surfaced floor diffs with NO accept verdict). D13 - the UNEXPLAINED-BREACH STOP: in AUTONOMOUS mode floorUnexplained>0 is the FIFTH always-escalate class - something bypassed the pre-integration adversary, so set halt:true (queue BREAKING + STOP, do not grind on). An EXPLAINED floor diff (surfaced but floorUnexplained:0) is a non-blocking NOTICE: log it and continue. In GATED mode both just surface in the briefing for the present human (no halt).',
     'Report staleTrusted EXACTLY as reconcile.mjs computed it (result.staleTrusted) — the trusted-green test ids whose governing clause was amended/extended since last verification (D13). lib/trust-staleness.mjs derives this mechanically from the ledger; do NOT eyeball the ledger or re-derive it in prose — copy the script\'s computed list verbatim, like terminalWorkOrders.',
-    'Report terminalWorkOrders EXACTLY as reconcile.mjs computed it (result.terminalWorkOrders) - the ids of every work order already merged (status:"merged", or status:"green" with merged:true). Do NOT eyeball journal.workOrders yourself; copy the script\'s computed set verbatim. These are DONE, permanently - the route-planner and the script both refuse to re-dispatch them no matter what still sits in .reasonable/work-orders/*.json.',
+    'Report terminalWorkOrders EXACTLY as reconcile.mjs computed it (result.terminalWorkOrders) - the ids of every work order already merged (the ledger fold reads `done`, or the journal lane carries merged:true - reconcile no longer reads a per-WO journal status, retired T0.4). Do NOT eyeball journal.workOrders yourself; copy the script\'s computed set verbatim. These are DONE, permanently - the route-planner and the script both refuse to re-dispatch them no matter what still sits in .reasonable/work-orders/*.json.',
     'Report deadEnds EXACTLY as reconcile.mjs computed it (result.deadEnds) - the refutation-surviving infeasibility verdicts, minus already-merged ids, each { workOrder, ledgerSeq, hash }. lib/dead-ends.mjs folds this from the ledger; do NOT eyeball ledger events or re-derive the set in prose - copy the computed set verbatim, like terminalWorkOrders and staleTrusted.',
     'Return the BRIEFING. Set halt:true with haltReason+evidence for ANY of the four first-line AMBIGUOUS classes, or for an UNEXPLAINED autonomous floor breach (haltClass:"floor-integrity-unexplained") - never guess a recovery state.',
     callShapeReminder,
@@ -807,7 +809,7 @@ async function provisionThenImplement(wo, _orig, _idx, ctx) {
       baseNote,
       `Do exactly four things in order: (1) git -C ${effortRoot} worktree add ${effortRoot}/.worktrees/${wo.id} -b lane/${wo.id}${laneBase} (a real registered worktree NESTED UNDER the effort root, cut from the effort branch when one is given, NOT an engine throwaway);`,
       '(2) make the worktree able to RUN ITS SUITE - a git worktree is a fresh checkout with no gitignored deps, so the adjudicator/auditor would otherwise be unable to run: link the effort root\'s already-installed dependency dir(s) (node_modules / .venv / target / vendor ...) into the worktree (fast, stack-agnostic), or if none exist run config.setupCommand there; idempotent. Set depsReady accordingly;',
-      '(3) write the one .reasonable-lane.json descriptor at the worktree root (effortRoot back-pointer + narrowed locus/role/floorImpact/contractBirth); (4) CONFIRM (read journal.json - you have no Agent tool to dispatch the scribe yourself) whether this work order already shows status:\'dispatched\', landed by the orchestrator\'s own write-ahead scribe call for this wave before you were dispatched.',
+      '(3) write the one .reasonable-lane.json descriptor at the worktree root (effortRoot back-pointer + narrowed locus/role/floorImpact/contractBirth); (4) CONFIRM (read journal.json - you have no Agent tool to dispatch the scribe yourself) whether this work order\'s lane is already REGISTERED - its worktree + branch recorded in journal.workOrders[id], landed by the orchestrator\'s own write-ahead scribe call for this wave before you were dispatched.',
       'Do NOT seed .reasonable/ into the worktree - effort state stays canonical (gitignored), reached via the back-pointer. Ensure a checkpoint-only lane carries a trailered commit so reconcile can re-claim it.',
       'Return the PROVISION_ACK: `provisioned` covers ONLY steps 1-3 (worktree, deps, descriptor) - report `journalRecorded` separately for step 4 and never fold a missing journal record into provisioned:false; you cannot write or dispatch that record, only confirm it.',
       callShapeReminder,
@@ -1369,33 +1371,38 @@ function route(outcome, state, mode) {
 
 // journalWriteAhead - the WRITE-AHEAD half of the derived-index write (D3b/D19), via the
 // same lone serialized scribe, dispatched from this non-parallel position BEFORE the wave's
-// pipeline runs. It records INTENT TO DISPATCH: it sets currentVerticalSlice and flips this
-// wave's work orders to `dispatched` so the deterministic progress mirror flips from
-// `pending` to `active` within seconds - not after the whole provision->implement->
-// blind-test->adjudicate->audit pipeline lands (the frozen-wave problem, D19). It writes the
-// COARSE program-counter advance only; the FINE per-stage + per-tool "now" view comes from
+// pipeline runs. It records INTENT TO DISPATCH: it sets currentVerticalSlice and REGISTERS
+// this wave's lanes (worktree/branch) so reconcile can recover a crash mid-dispatch and the
+// deterministic progress mirror flips from `pending` to `active` within seconds - the mirror
+// moves the fold to `running` off the ledger's node-dispatched (emitted by the lane-provisioner),
+// never off a journal status (retired 2.1); the write-ahead's job is the lane FACTS. It writes
+// the COARSE program-counter advance only; the FINE per-stage + per-tool "now" view comes from
 // the ephemeral live channel (a hook, never the scribe), so this stays ONE write per wave,
 // never one per stage. Fail-SOFT by design: a non-persist here is an optimistic-advance miss
 // for the mirror, not a truth loss - the live channel still narrates the wave and the
 // post-wave authoritative journalWrite below still records the real transitions (and HALTs on
-// its own failure). The scribe never downgrades a merged/green order (it only lifts
-// missing/pending -> dispatched), so re-passes are idempotent.
+// its own failure). The scribe only REGISTERS a lane for an order that has none yet and never
+// tears down an in-flight/terminal order's lane registry, so re-passes are idempotent.
 async function journalWriteAhead(freshWorkOrders, a) {
   const wos = freshWorkOrders.map((wo) => ({
     id: wo.id,
     role: wo.role || 'implementer',
     verticalSlice: wo.verticalSlice || a.verticalSliceId,
-    status: 'dispatched',
+    // Real lane facts, not a status: the lane-provisioner cuts exactly these (worktree
+    // .worktrees/<id>, branch lane/<id>), so the write-ahead REGISTERS the lane ahead of the
+    // side effect (status-free charter - the ledger fold owns status, the journal owns lane FACTS).
+    worktree: `.worktrees/${wo.id}`,
+    branch: `lane/${wo.id}`,
   }));
   try {
     return await agent(
       [
-        'Write-ahead the derived index (journal.json) - and nothing else (D3b). This is the BEFORE-the-worker program-counter advance the progress mirror projects (write-ahead dispatched, your charter).',
+        'Write-ahead the derived index (journal.json) - and nothing else (D3b). This is the BEFORE-the-worker program-counter advance: you REGISTER the lane (its worktree + branch) ahead of the side effect, your charter. The ledger fold owns work-order status - you write the lane FACTS, never a status.',
         `Set journal.currentVerticalSlice = ${j(a.verticalSliceId)}.`,
-        `For EACH of these work orders, UPSERT journal.workOrders[id] (READ journal.json first, MERGE - never drop a sibling work order, never invent fields): set status:"dispatched", role, and verticalSlice. ${j(wos)}`,
-        'DO NOT DOWNGRADE: only lift a work order to "dispatched" when its current status is absent or "pending". Leave any "merged"/"checkpointed"/"dead-end" order exactly as it is (a re-pass must be idempotent).',
-        'On EXACTLY that lift (absent/"pending" -> "dispatched"), also bump dispatchEpoch: set it to (its current dispatchEpoch, or 0 if absent) + 1. An order you leave untouched keeps its dispatchEpoch unchanged - never re-bump on an idempotent re-pass. The epoch counts genuine dispatches so the progress mirror separates a resumed run from the crashed attempt it replaced (D19).',
-        'Do NOT touch inbox.json, the ledger, contracts, or any work order not listed here. Do NOT mark anything merged/green - that is the after-the-wave transition, not this write.',
+        `For EACH of these work orders, UPSERT journal.workOrders[id] (READ journal.json first, MERGE - never drop a sibling work order, never invent fields): register the lane by setting its worktree and branch, plus role + verticalSlice. Never write a per-WO status field (retired 2.1 - a work order's status is a fold of the ledger). ${j(wos)}`,
+        'DO NOT RE-REGISTER: only register a lane for an order that has none yet (no worktree/branch recorded). Leave any order already in flight or terminal exactly as it is - never tear down its lane registry (a re-pass must be idempotent).',
+        'On EXACTLY that fresh lane registration, also bump dispatchEpoch: set it to (its current dispatchEpoch, or 0 if absent) + 1. An order whose lane you leave untouched keeps its dispatchEpoch unchanged - never re-bump on an idempotent re-pass. The epoch counts genuine dispatches so the progress mirror separates a resumed run from the crashed attempt it replaced (D19).',
+        'Do NOT touch inbox.json, the ledger, contracts, or any work order not listed here. Do NOT mark anything merged/green and do NOT write any per-WO status - a work order status is a fold of the ledger, never a journal field.',
         'Return the SCRIBE_ACK: persisted:true once journal.json is durably written faithfully against its schema; persisted:false otherwise (the script logs it and proceeds - the post-wave write is authoritative).',
         callShapeReminder,
       ].join('\n'),
@@ -1438,7 +1445,7 @@ async function journalWrite(state, a) {
         // and D21 (never originate a SHA) forced it to persisted:false -> the runner HALTed a
         // genuinely-green slice. The merge to `merged`+SHA is the main session's post-run membrane act;
         // in-run the WO stays `dispatched`, so there is nothing here that needs a SHA.
-        'GATE-PASSED IS NOT MERGED (D21): a work order in greenWorkOrders has PASSED its in-run gate but is NOT yet merged - the lane merges into the effort branch AFTER this run returns, in the main session (a membrane act). LEAVE every green work order at its current status:"dispatched": do NOT set status "merged", do NOT set merged:true, and do NOT write, originate, complete, or require a mergeSha/commit for it. The journal has NO "green"/"gate-passed" status (the five are pending|dispatched|checkpointed|merged|dead-end) - marking green as merged would demand a SHA you were never handed, and originating one is the phantom-commit bug you HALT on, never commit. greenWorkOrders is run telemetry here, NOT a merged-status directive; a green slice must produce a clean persisted:true, never a persisted:false HALT for a SHA you were never supposed to write.',
+        'GATE-PASSED IS NOT MERGED (D21): a work order in greenWorkOrders has PASSED its in-run gate but is NOT yet merged - the lane merges into the effort branch AFTER this run returns, in the main session (a membrane act). LEAVE every green work order\'s lane registry exactly as it is: do NOT set merged:true, and do NOT write, originate, complete, or require a mergeSha/commit for it. A work order has NO per-WO status field for you to set at all (retired 2.1 - status is a fold of the ledger, lib/wo-status.mjs): its GREEN is the audit\'s ledger evidence and the merge is the main session\'s post-run act, so there is nothing here that needs a SHA. Recording a merge would demand a SHA you were never handed, and originating one is the phantom-commit bug you HALT on, never commit. greenWorkOrders is run telemetry here, NOT a merge directive; a green slice must produce a clean persisted:true, never a persisted:false HALT for a SHA you were never supposed to write.',
         `Pending inbox: ${j(state.pendingInbox || [])}`,
         'Return the SCRIBE_ACK: persisted:true once journal.json + inbox.json are durably written faithfully against their schemas; persisted:false if you cannot complete a clean, faithful write (the script reads persisted:false as HALT - it must not proceed believing a transition persisted). A bare-null return is reserved for agent death/skip and also HALTs.',
         callShapeReminder,
@@ -1713,9 +1720,10 @@ while (!verticalSliceGreen && withinBudget(a, budget) && withinAgentCap(state)) 
     log(`dispatching wave of ${wave.workOrders.length} work order(s).`);
     state.agentsDispatched += wave.workOrders.length * 8; // rough per-WO agent tally (provision+[characterize]+implement+intent-verify+reprovision+blind+commit-blind-tests+adjudicate+audit-leaf)
 
-    // WRITE-AHEAD (D19 tier-1): flip the slice + this wave's not-yet-green work orders to
-    // `dispatched` in the journal BEFORE the pipeline runs, so the progress mirror reads
-    // `active` within seconds instead of staying frozen on `pending` for the whole wave.
+    // WRITE-AHEAD (D19 tier-1): set the slice + REGISTER this wave's not-yet-green lanes
+    // (worktree/branch) in the journal BEFORE the pipeline runs, so reconcile can recover a
+    // crash mid-dispatch and the progress mirror reads `active` within seconds (off the
+    // ledger's node-dispatched) instead of staying frozen on `pending` for the whole wave.
     // Skip work orders already green (a re-pass), and fail SOFT - the post-wave write below
     // is authoritative and HALTs on its own failure.
     const freshWorkOrders = wave.workOrders.filter((wo) => !state.greenWorkOrders.includes(wo.id));
