@@ -130,9 +130,10 @@ keeps the worker's commit and its ledger line a single atomic effect: a separate
   trailer, together. Git and the ledger never diverge because they land together. *The ledger and git are
   truth.*
 - **Derived state → one serialized scribe (D3b).** A lone `journal-writer` agent, dispatched only from a
-  non-parallel position, writes the *derived, rebuildable* index — `journal.json` (program-counter
-  transitions, write-ahead `status:'dispatched'` before a worker runs) and `inbox.json`. Because this layer
-  is derived from git+ledger, a torn or **null** scribe write is recoverable: reconcile rebuilds it. A null
+  non-parallel position, writes the *derived, rebuildable* index — `journal.json` (the **lane registry** +
+  program-counter pointers, the lane registered **write-ahead** before a worker runs — but **no per-work-order
+  `status`**: T0.4 retired it, a WO's status is a fold of the ledger, `lib/wo-status.mjs`) and `inbox.json`.
+  Because this layer is derived from git+ledger, a torn or **null** scribe write is recoverable: reconcile rebuilds it. A null
   scribe return is therefore a **HALT** (the script must not proceed believing a transition persisted), not
   a swallow — but the halt loses no truth.
 
@@ -303,7 +304,7 @@ itself).
 1. **git + ledger = truth.** A git commit is the unit of work; the worker's one atomic commit binds work
    product + ledger line + trailer. No torn window.
 2. **`.reasonable/` index (journal/inbox) = derived, rebuildable, non-authoritative.** Written only by the
-   lone serialized scribe, write-ahead (`status:'dispatched'` before a worker runs). A null/torn write
+   lone serialized scribe, write-ahead (the **lane registered** before a worker runs; no per-WO `status` — that is the ledger fold, T0.4). A null/torn write
    HALTS (D3b) but loses no truth — reconcile rebuilds it from layer 1.
 3. **script memory + `resumeFromRunId` = volatile cache, zero authority** (§11). A cold restart discards it;
    nothing trusts it for correctness.
