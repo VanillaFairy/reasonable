@@ -27,11 +27,14 @@ then; the main session made the small T1.5 message fix directly and merged. Bran
 
 ## Carried FORWARD-FLAGS (must not be lost)
 
-- **MIGRATION IMPACT (surface to the user):** T1.5 Part B makes reconcile HALT on a `missing-signature`
-  config — i.e. **any effort created before T1.1 (no `config.effort`) will HALT on its next session** until
-  the operator adds `"effort": "<name>"` to its `.reasonable/config.json`. The HALT message now names that
-  fix (self-servicing). This hits pre-existing dogfood efforts (sofia-plays etc.). Spec-correct (§6.1), safe
-  direction, but a real one-time migration the user should know about.
+- **MIGRATION — now auto-handled (commit `8591e7b`).** A pre-T1.1 effort (no `config.effort`) is still
+  unambiguously identifiable — its name lives in `journal.effort` (written at analysis). reconcile now
+  **auto-reconstructs** the birth signature from `journal.effort` (heals `config.json`, effort field only)
+  and proceeds, so pre-existing dogfood efforts (sofia-plays etc.) heal silently on their next session —
+  **no HALT, no operator action.** HALT/flag now fire ONLY for a genuinely unidentifiable config
+  (missing-signature AND no recoverable name anywhere) or a corrupt (unparseable) one. New helper:
+  `effort.mjs reconstructBirthSignature()`. **T1.doc must document** this reconstruction behavior (§6.1) —
+  it changes the S7 story from "HALT on missing-signature" to "reconstruct-or-HALT".
 - **T2.3 Windows rename hardening** (layer0-checkpoint flag #4): `writeMirror`'s `renameSync` can be dropped
   by a concurrent Windows reader (EPERM/EBUSY, swallowed as advisory `mirrorError`) → mirror lags ledger by
   one at quiescence. Fold a bounded retry-on-EPERM/EBUSY into T2.3 (it already touches `writeMirror`).
