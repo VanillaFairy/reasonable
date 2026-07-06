@@ -123,10 +123,12 @@ check('validateEvent: node-completed/node-failed require only node; reason is op
   assert.equal(validateEvent({ type: 'node-failed', node: 'WO-1' }).ok, true);
 });
 
-check('validateEvent: approval-resolved requires id; concluded has no required fields', () => {
+check('validateEvent: approval-resolved requires id; concluded/abandoned have no required fields', () => {
   assert.equal(validateEvent({ type: 'approval-resolved' }).ok, false);
   assert.equal(validateEvent({ type: 'approval-resolved', id: 'INBOX-1' }).ok, true);
   assert.equal(validateEvent({ type: 'concluded' }).ok, true);
+  // 'abandoned' is the walked-away twin of 'concluded' — a node-less terminal, no required fields.
+  assert.equal(validateEvent({ type: 'abandoned' }).ok, true);
 });
 
 // ── T0.5 (§5.6, F12): amendment/ratification carry OPTIONAL structured drops + resolvesSeq ──────
@@ -173,7 +175,7 @@ check('exports: KINDS is exact; EVENT_SCHEMAS is a registry that excludes legacy
   assert.ok(EVENT_SCHEMAS);
   for (const t of [
     'node-planned', 'node-dispatched', 'node-checkpointed', 'node-downgraded', 'node-completed',
-    'node-failed', 'node-canceled', 'approval-resolved', 'concluded',
+    'node-failed', 'node-canceled', 'approval-resolved', 'concluded', 'abandoned',
     'report-started', 'report-finished', 'report-canceled',
     'enrichment', 'verdict', 'commit',
   ]) {

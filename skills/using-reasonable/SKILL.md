@@ -101,6 +101,14 @@ digraph phases {
    `lib/conclude.mjs` archives `.reasonable/` aside so the blast-radius fence releases and the next effort
    starts clean. (An effort that finishes but never concludes leaves the repo fenced against all later work.)
 
+**Walking away from an unfinished effort — `reasonable:abandon`.** An effort you *finish* is closed by
+`conclude`; an effort you *walk away from* is closed by its twin, `reasonable:abandon` (run
+`node ${reasonable}/lib/abandon.mjs`). Same cheap teardown as conclude — a final `abandoned` ledger event
+plus a rename of `.reasonable/` aside to `.reasonable.abandoned-<effort>/` — so a walked-away effort
+**releases the blast-radius fence and drops out of the discovery scan** instead of lingering as a live
+effort forever. The commit iron rule still applies: abandon HALTs rather than archive over uncommitted
+in-scope work. Archival keeps the ledger/decisions/vision auditable and is reversible by renaming back.
+
 ## The orchestrator is the main session, not an agent
 
 Platform constraint: **subagents can't dispatch subagents.** So orchestration runs **in the main

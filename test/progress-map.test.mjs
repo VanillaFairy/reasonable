@@ -161,6 +161,15 @@ check('family-1: concluded → the effort root goes done', () => {
   assert.equal(root.status, 'done');
 });
 
+check('family-1: abandoned → the effort root goes done (no [fold error])', () => {
+  const tree = foldEvents([{ seq: 1, type: 'abandoned' }], 'demo');
+  const root = findByPath(tree, '');
+  assert.equal(root.status, 'done');
+  // A missing EVENT_MAP entry would degrade to a legacy note, never a root status change;
+  // a handler bug would inject a "[fold error]" note on the root. Neither may happen here.
+  assert.ok(!(root.notes || []).some((n) => /\[fold error\]/.test(n.text || '')), 'no fold error');
+});
+
 check('family-1: approval-resolved → a note on the root, never structure', () => {
   const tree = foldEvents([{ seq: 1, type: 'approval-resolved', id: 'INBOX-3' }], 'demo');
   const root = findByPath(tree, '');
@@ -449,7 +458,7 @@ check('writeMirror: an effort with NO ledger.jsonl still writes both mirrors (em
 // Deliberately does NOT inspect the internal shape of the op objects an EVENT_MAP
 // entry returns — only that an entry exists, that it produces an array, and (where
 // the spec states an exact count) how MANY ops it produces.
-const FAMILY_1 = ['node-planned', 'node-dispatched', 'node-checkpointed', 'node-downgraded', 'node-completed', 'node-failed', 'node-canceled', 'approval-resolved', 'concluded'];
+const FAMILY_1 = ['node-planned', 'node-dispatched', 'node-checkpointed', 'node-downgraded', 'node-completed', 'node-failed', 'node-canceled', 'approval-resolved', 'concluded', 'abandoned'];
 const FAMILY_2 = ['report-started', 'report-finished', 'report-canceled'];
 const FAMILY_3 = ['enrichment', 'amendment', 'characterization', 'characterization-promotion', 'change-characterized', 'change-characterized-planned', 'verdict', 'verifier-verdict', 'scope-expansion', 'budget-extension', 'dead-end', 'ratification', 'intent-check-failure', 'commit'];
 
