@@ -19,11 +19,25 @@ complete (code + doc-sync). Plugin at **v2.5.0**. Next up: Layer 2.
 
 ## NEXT (in order)
 
-1. **Layer 2** (deterministic `nextAction`): author + run T2.1 route.json + `dependsOn` schema → T2.2 decision
-   projection (consumes T1.3 `lifecycle`) → T2.3 `next-action` ledger event + mirror render (**fold in the
-   Windows `renameSync`-retry hardening — see layer0-checkpoint flag #4**) → T2.4 output self-check → T2.doc.
-   Interfaces for Layer 2 are NOT yet pinned — pin them just-in-time against the merged Layer-0/1 code (do a
-   fresh recon of ledger.mjs EVENT_SCHEMAS, progress-map writeMirror/render, reconcile result, route.md).
+1. **Layer 2** (deterministic `nextAction`) — IN PROGRESS. Interfaces PINNED 2026-07-06 against the merged
+   Layer-0/1 code (`shared/interfaces.md` §Layer 2), three spec corrections baked in (C: the `{green,merged}`
+   status vocabulary doesn't exist → `status==='done'` off reconcile's `workOrderStatuses`; D: `node-canceled`
+   is terminal-abandoned → detect via `buildTree`, a canceled dep never satisfies `dependsOn`; E: the guard
+   never keys on `node-failed`, reaffirmed from T0.5). Two new PURE modules: `lib/route.mjs` (done) +
+   `lib/next-action.mjs` (`projectDirectives` T2.2 / `selfCheckDirectives` T2.4). Sequential chain on
+   `reconcile.mjs`:
+   - **T2.1 DONE** (`c7f5f1a`, suite 45/45) — `route.json` + `lib/route.mjs readRoute` → `{route, diagnostic}`
+     + WO `dependsOn` wired into work-order-writer + route-planner; `route.json` persisted at analysis 10a AND
+     retro step 5 (both sites kept in sync — implementer caught the retro drift).
+   - **T2.2** (authored, in flight) — pure `projectDirectives(state)` + reconcile assembles state (reads WO
+     specs for `dependsOn`/`verticalSlice`, detects canceled via `buildTree`), attaches `result.nextAction`.
+   - **T2.3** — `next-action` ledger event (Family 3) + mirror render (`progress.json.nextAction` string +
+     `▶ NEXT` block + K-since-`computedFrom` staleness) + **Windows `renameSync` EPERM/EBUSY retry** in
+     `atomicWrite` (layer0-checkpoint flag #4).
+   - **T2.4** — `selfCheckDirectives` (drop-resurrection / guard-flag / retired-slice / land-nonempty refusals)
+     + autonomous escalation; gated BEFORE the T2.3 append.
+   - **T2.doc** — doc-sync (route.json + `next-action` grammar `*`, D19 render, §7 cross-refs, fix stale
+     `route-planner.md:145-146` merged/green prose) + version bump 2.5.0 → 2.6.0.
 2. **Final:** whole-implementation review + `finishing-a-development-branch`.
 
 ## Carried FORWARD-FLAGS (must not be lost)
