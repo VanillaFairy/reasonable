@@ -106,7 +106,36 @@ Scope: `lib/effort.mjs`, `lib/fence.mjs`, `lib/reconcile.mjs`, `skills/develop/S
 tests. Parts A/B touch reconcile → land as separate commits but one task. Does NOT wire session-start (T1.5) or
 compute nextAction (T2.2).
 
-### T1.5 — multi-effort briefing — pinned when Wave 1d opens (session-start; consumes T1.2 resolveActiveEffort + T1.3 lifecycle; surfaces the corrupt/missing-signature nested config the T1.2 down-scan currently adopts silently)
+### T1.5 — multi-effort briefing (§6.6) + reconcile S7 born-state HALT (§6.1) — `session-start.mjs`, `reconcile.mjs`
+
+**Part A — session-start multi-effort briefing (§6.6).** Replace the raw `findEffortRoot(cwd)` discovery
+(`session-start.mjs:16`) with `resolveActiveEffort(cwd)` (T1.2) at the repo-root interactive path:
+- `kind:'resolved'` → the CURRENT behavior: `writeMirror` + full `reconcile(root)` + `briefing(r)` for that
+  one effort (now the briefing includes the `lifecycle`).
+- `kind:'multiple'` → the CHEAP multi-effort briefing: do NOT reconcile every effort. For each root, read its
+  `.reasonable/progress.json` (counts) + the last `ledger.jsonl` event's `ts` for **staleness** (days since —
+  session-start is a normal lib script, `Date` is allowed here, unlike a workflow) + the persisted
+  `nextAction` **if present** (forward-compat — Layer 2 adds it; absent in Layer 1, fall back to counts +
+  `lifecycle`-less summary). Wrap EACH effort in its OWN `try/catch` (never one around the loop — one bad
+  effort degrades to "N−1 briefed, 1 flagged", honoring fail-open). Reconcile only the acted-on effort (or on
+  demand).
+- `kind:'none'` → "no active effort"; surface `strays` (config-less `.reasonable` dirs) + `diagnostics`
+  (depth-≠1) as **debris + a cleanup note**, never adopted.
+- Filter **concluded/abandoned** by dir name (`.reasonable.done-*` / `.reasonable.abandoned-*`) — count them
+  ("N parked/stale hidden"), never brief/scan them.
+- **Surface a born-but-bad config:** for any resolved/listed effort whose `effortBirthState` is `corrupt` or
+  `missing-signature`, FLAG it in the briefing (it is HALT-worthy — see Part B), rather than silently
+  proceeding (the T1.2 down-scan adopts these into `born` without surfacing).
+
+**Part B — reconcile S7 born-state HALT (§6.1).** reconcile's HALT must key on `effortBirthState`, not only
+`loadConfig`'s lossy `runMode:null`: a born effort whose `effortBirthState(root)` is `corrupt` or
+`missing-signature` → an AMBIGUOUS→HALT `{haltReason, evidence}` (a foreign/hand-edited/torn config, not a
+recoverable state). `corrupt` today already halts incidentally (loadConfig → defaults → runMode-absent HALT),
+but `missing-signature` (has `runMode`, no `effort`) currently PROCEEDS — that is the hole. Add the explicit
+`effortBirthState`-keyed HALT next to the existing runMode-absent bucket; keep the runMode-absent HALT too.
+
+Scope: `session-start.mjs` (Part A), `reconcile.mjs` (Part B), tests. Two separate commits. Does NOT compute
+`nextAction` (reads it forward-compat if present); does NOT touch effort.mjs/develop/fence.
 
 (Layer-1 is largely SEQUENTIAL — `effort.mjs` (T1.1/T1.2/T1.3) and `reconcile.mjs` (T1.2/T1.3) are the hot
 files. Tentative order, finalized per wave: **T1.1** foundation → **T1.2** path-norm + `resolveActiveEffort`
