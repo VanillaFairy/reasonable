@@ -104,10 +104,11 @@ The vision you are extracting has three parts:
    named-importing a default export). Public test surface, not behaviour — pairs with the contract's
    `## Observable Seams` (the per-clause render-observation handles).
    - **Plant the gitignore entries (idempotent).** Ensure the target repo's `.gitignore` contains
-     `.reasonable/`, `.reasonable.done-*/`, `.reasonable-lane.json`, and `.worktrees/` — **unanchored**
-     (no leading `/`), so they match the effort root whether it sits at the repo root or at a
-     configurable subdir location (several efforts may share one repo), and so they also cover the
-     per-lane `.reasonable-lane.json` descriptors and the nested `.worktrees/` lane checkouts. Read the
+     `.reasonable/`, `.reasonable.done-*/`, `.reasonable.abandoned-*/`, `.reasonable-lane.json`, and
+     `.worktrees/` — **unanchored** (no leading `/`), so they match the effort root whether it sits at
+     the repo root or at a configurable subdir location (several efforts may share one repo), and so they
+     also cover the concluded (`.reasonable.done-*/`) and abandoned (`.reasonable.abandoned-*/`) archives,
+     the per-lane `.reasonable-lane.json` descriptors, and the nested `.worktrees/` lane checkouts. Read the
      existing `.gitignore` (create it if missing); append each line only if an equivalent entry is
      **absent** (don't duplicate), preserving everything already there. **Why orchestration state is
      gitignored, not tracked:** the methodology
