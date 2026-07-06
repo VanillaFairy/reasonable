@@ -67,8 +67,42 @@ export function resolveActiveEffort(cwd)  // -> { kind, root?, roots?, strays? }
 - Scope is disjoint from T1.2 (abandon.mjs/ledger/skill vs effort.mjs/reconcile) → **Wave 1b runs T1.2 ∥ T1.4a**.
 - Does NOT compute lifecycle STATE (that's T1.3's reconcile work). This is just the command + its event.
 
-### T1.3 — birth-location policy + lifecycle-state — pinned when Wave 1c opens (reconcile + fence + develop)
-### T1.5 — multi-effort briefing — pinned when Wave 1d opens (session-start)
+### T1.3 — birth-location policy + lifecycle-state + gitignore-abandoned — three parts, separate commits
+
+**Part A — birth-location policy (§6.4, F5): kill stray-root rebirth at its source.**
+- `export function assertNoAmbiguousBirth(repoRoot)` in `effort.mjs` — returns a signal (e.g.
+  `{ ambiguous:boolean, existing:[roots] }`) when `.reasonable-efforts/*/` already holds ≥1 BORN effort
+  (reuse `effortBirthState`). Pure-ish (fs read, no mutation).
+- `develop` Step 0: before writing `config.json` at a bare repo-root cwd, if `assertNoAmbiguousBirth(repoRoot).ambiguous`
+  → **refuse** the bare repo-root birth and require an explicit nested `--root` (a prose instruction — develop is a skill).
+- `fence.mjs` first-birth path (~lines 422-423, the silent `if(!effortRoot) process.exit(0)` allow): when
+  `findEffortRoot(tgt)` is null **and** `.reasonable-efforts/` holds born efforts → **deny** with
+  "possible stray birth — use `--root`" instead of the silent allow. (Only that narrow case; a truly plain
+  repo — no `.reasonable-efforts/` — still fails open.)
+- `reconcile.mjs`: add an AMBIGUOUS bucket (shape `{haltReason, evidence}`, joins `ambiguities[]` → HALT)
+  for **>1 `.reasonable`-bearing root reachable** — compute via a scan (reuse `resolveActiveEffort`'s
+  `kind:'multiple'`, or a direct check). A slipped-through duplicate surfaces on the next session.
+
+**Part B — lifecycle-state in reconcile (§6.5, F10): the BORN-effort states.**
+- reconcile computes a `lifecycle` field for the effort it reconciles, over the deterministic predicates
+  (cheapest signal first) for the BORN states it can see: `'active'` (frontier has an open slice),
+  `'at-land-gate'` (frontier empty AND `descendsFrom(effortBranch, base)` is **false** → NEXT=LAND),
+  `'half-concluded'` (`descendsFrom(effortBranch, base)` **true**, still a live `.reasonable/`, no `.done-*`
+  → NEXT=CONCLUDE). Use git ancestry (`git merge-base --is-ancestor` via `gitTry`) for `descendsFrom`.
+  The dir-name states (`concluded`/`abandoned`/`stray`) are the multi-effort SCAN's job (T1.5) — reconcile
+  only ever runs on a live `.reasonable/`, so it classifies the born states. Add `lifecycle` to the result
+  object; do NOT compute `nextAction` (that is Layer 2 / T2.2 — it consumes `lifecycle`).
+
+**Part C — gitignore the abandoned archive (from T1.4a review).**
+- `skills/analysis/SKILL.md` plants `.reasonable.done-*/` into the target `.gitignore` (~line 106-107) but
+  NOT `.reasonable.abandoned-*/`. Add `.reasonable.abandoned-*/` beside it, so an abandoned effort's archive
+  is ignored exactly like a concluded one (else it leaks as untracked clutter in real repos).
+
+Scope: `lib/effort.mjs`, `lib/fence.mjs`, `lib/reconcile.mjs`, `skills/develop/SKILL.md`, `skills/analysis/SKILL.md`,
+tests. Parts A/B touch reconcile → land as separate commits but one task. Does NOT wire session-start (T1.5) or
+compute nextAction (T2.2).
+
+### T1.5 — multi-effort briefing — pinned when Wave 1d opens (session-start; consumes T1.2 resolveActiveEffort + T1.3 lifecycle; surfaces the corrupt/missing-signature nested config the T1.2 down-scan currently adopts silently)
 
 (Layer-1 is largely SEQUENTIAL — `effort.mjs` (T1.1/T1.2/T1.3) and `reconcile.mjs` (T1.2/T1.3) are the hot
 files. Tentative order, finalized per wave: **T1.1** foundation → **T1.2** path-norm + `resolveActiveEffort`
