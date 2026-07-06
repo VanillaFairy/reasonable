@@ -169,6 +169,54 @@ check('validateEvent: resolvesSeq must be a POSITIVE INTEGER (a 1-based ledger s
   assert.equal(validateEvent({ type: 'amendment', component: 'c', resolvesSeq: NaN }).ok, false);
 });
 
+// ── T2.3 (§7.1, Layer 2): the `next-action` event — the persisted decision projection ───────────
+check('validateEvent: a well-formed next-action validates (directives array of { kind } + positive computedFrom)', () => {
+  assert.equal(validateEvent({
+    type: 'next-action',
+    directives: [{ kind: 'DISPATCH', slice: 's1', workOrders: ['WO-1'] }, { kind: 'RUNNING', workOrders: ['WO-2'] }],
+    computedFrom: 7,
+  }).ok, true);
+  // Both fields are OPTIONAL (Family 3, loose): a bare next-action, and one with empty directives, validate.
+  assert.equal(validateEvent({ type: 'next-action' }).ok, true, 'a bare next-action validates (fields optional)');
+  assert.equal(validateEvent({ type: 'next-action', directives: [] }).ok, true, 'an empty directive set (idle) validates');
+});
+
+check('validateEvent: malformed next-action directives are rejected (not an array / element missing kind / empty kind)', () => {
+  assert.equal(validateEvent({ type: 'next-action', directives: 'DISPATCH' }).ok, false, 'directives must be an array');
+  assert.equal(validateEvent({ type: 'next-action', directives: [{ slice: 's1' }] }).ok, false, 'each directive needs a kind');
+  assert.equal(validateEvent({ type: 'next-action', directives: [{ kind: '' }] }).ok, false, 'kind must be non-empty');
+  assert.equal(validateEvent({ type: 'next-action', directives: [{ kind: 5 }] }).ok, false, 'kind must be a string');
+  assert.equal(validateEvent({ type: 'next-action', directives: [null] }).ok, false, 'a null directive is malformed');
+  assert.equal(validateEvent({ type: 'next-action', directives: ['DISPATCH'] }).ok, false, 'a string directive is malformed');
+});
+
+check('validateEvent: next-action computedFrom must be a POSITIVE INTEGER when present (a 1-based seq)', () => {
+  assert.equal(validateEvent({ type: 'next-action', directives: [{ kind: 'LAND' }], computedFrom: 1 }).ok, true);
+  assert.equal(validateEvent({ type: 'next-action', computedFrom: 0 }).ok, false, 'seqs are 1-based — 0 is rejected');
+  assert.equal(validateEvent({ type: 'next-action', computedFrom: -3 }).ok, false, 'no negative seq');
+  assert.equal(validateEvent({ type: 'next-action', computedFrom: 2.5 }).ok, false, 'a float is not a seq');
+  assert.equal(validateEvent({ type: 'next-action', computedFrom: '4' }).ok, false, 'a string is not a seq');
+});
+
+check('append: a well-formed next-action lands as Family 3 (no node resolution, no attempt stamp); a malformed one is rejected', () => {
+  const root = newEffort();
+  const before = readLedgerLines(root).length;
+  const ok = append(root, { type: 'next-action', directives: [{ kind: 'RUNNING', workOrders: ['WO-1'] }], computedFrom: 3 });
+  assert.equal(ok.ok, true, ok.error);
+  const lines = readLedgerLines(root);
+  assert.equal(lines.length, before + 1, 'exactly one line appended');
+  const stored = lines[lines.length - 1];
+  assert.equal(stored.type, 'next-action');
+  assert.equal(stored.attempt, undefined, 'Family 3 — no attempt stamp');
+  assert.ok(stored.ts, 'append stamps its own ts');
+  assert.deepEqual(stored.directives, [{ kind: 'RUNNING', workOrders: ['WO-1'] }], 'directives round-trip verbatim');
+
+  const before2 = readLedgerLines(root).length;
+  const bad = append(root, { type: 'next-action', directives: [{ slice: 's1' }] }); // element missing kind
+  assert.equal(bad.ok, false, 'a malformed next-action is rejected by append');
+  assert.equal(readLedgerLines(root).length, before2, 'nothing appended for the rejected event');
+});
+
 check('exports: KINDS is exact; EVENT_SCHEMAS is a registry that excludes legacy action-* types', () => {
   assert.deepEqual(KINDS, ['work-order', 'spike', 'scaffold', 'grill-pass', 'slice', 'phase']);
   assert.equal(typeof EVENT_SCHEMAS, 'object');

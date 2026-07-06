@@ -12,15 +12,19 @@
 
 import assert from 'node:assert';
 import { execFileSync } from 'node:child_process';
-import { mkdtempSync, mkdirSync, writeFileSync, rmSync } from 'node:fs';
+import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, rmSync, existsSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, dirname } from 'node:path';
 
-import { reconcile } from '../lib/reconcile.mjs';
+import { reconcile, briefing } from '../lib/reconcile.mjs';
 
 const git = (cwd, ...args) => execFileSync('git', args, { cwd, stdio: ['ignore', 'pipe', 'pipe'] }).toString();
 const write = (root, rel, content) => {
   const p = join(root, rel); mkdirSync(dirname(p), { recursive: true }); writeFileSync(p, content);
+};
+const readLedger = (root) => {
+  const p = join(root, '.reasonable', 'ledger.jsonl');
+  return existsSync(p) ? readFileSync(p, 'utf8').split(/\r?\n/).map((l) => l.trim()).filter(Boolean).map((l) => JSON.parse(l)) : [];
 };
 
 const tmps = [];
@@ -146,6 +150,50 @@ check('reconcile().nextAction: pre-route, pre-dependsOn effort still projects WO
   assert.doesNotThrow(() => { r = reconcile(root); }, 'a pre-route / pre-dependsOn effort must still reconcile');
   assert.ok(Array.isArray(r.nextAction), 'nextAction still present');
   assert.ok(dispatchIds(r).includes('WO-1'), 'the lone pending WO dispatches (dependsOn defaulted to [])');
+});
+
+// ── 4. reconcile PERSISTS the projection as a next-action ledger event (per call) + renders it ──
+check('reconcile() appends a next-action event carrying result.nextAction + computedFrom; the mirror renders it; one PER CALL', () => {
+  const root = newEffort({
+    workOrders: { 'WO-1': { role: 'implementer', verticalSlice: 'slice-1' } },
+    specs: { 'WO-1': { verticalSlice: 'slice-1', dependsOn: [] } },
+    route: { slices: ['slice-1'] },
+    ledger: [{ seq: 1, type: 'node-planned', node: 'WO-1', kind: 'work-order', title: 'lone' }],
+  });
+  const beforeLatestSeq = readLedger(root).reduce((m, e) => Math.max(m, Number(e.seq) || 0), 0); // 1
+
+  const r = reconcile(root);
+
+  const nas = readLedger(root).filter((l) => l.type === 'next-action');
+  assert.equal(nas.length, 1, 'reconcile appended exactly one next-action event');
+  const na = nas[0];
+  assert.deepEqual(na.directives, r.nextAction, 'the event carries result.nextAction verbatim');
+  assert.equal(na.computedFrom, beforeLatestSeq, 'computedFrom = the ledger latest seq just before the projection append');
+  assert.ok(na.seq > beforeLatestSeq, 'the projection is stamped after the pre-existing events');
+  assert.ok(na.ts, 'append() stamped its own ts');
+
+  // The mirror renders the latest projection: progress.json.nextAction (a string) + a ▶ NEXT block.
+  const p = JSON.parse(readFileSync(join(root, '.reasonable', 'progress.json'), 'utf8'));
+  assert.equal(typeof p.nextAction, 'string', 'progress.json.nextAction is a string');
+  assert.match(p.nextAction, /DISPATCH slice slice-1 → WO-1/, 'the DISPATCH projection renders recognizably into the mirror string');
+  assert.match(readFileSync(join(root, '.reasonable', 'progress.md'), 'utf8'), /▶ \*\*NEXT\*\*/, 'progress.md carries a ▶ NEXT block');
+
+  // Per-call (§7.1): a SECOND reconcile appends ANOTHER next-action — projections are recorded events,
+  // never deduped like the crash-recovery node-downgraded seal.
+  reconcile(root);
+  assert.equal(readLedger(root).filter((l) => l.type === 'next-action').length, 2, 'reconcile appends one next-action PER CALL');
+});
+
+// ── 5. the briefing shows a NEXT line rendering the directive set ──
+check('briefing() renders a NEXT line from result.nextAction', () => {
+  const root = newEffort({
+    workOrders: { 'WO-1': { role: 'implementer', verticalSlice: 'slice-1' } },
+    specs: { 'WO-1': { verticalSlice: 'slice-1', dependsOn: [] } },
+    route: { slices: ['slice-1'] },
+    ledger: [{ seq: 1, type: 'node-planned', node: 'WO-1', kind: 'work-order', title: 'lone' }],
+  });
+  const text = briefing(reconcile(root));
+  assert.match(text, /NEXT: .*DISPATCH slice slice-1 → WO-1/, 'the briefing carries a NEXT line beside Lifecycle');
 });
 
 for (const t of tmps) { try { rmSync(t, { recursive: true, force: true }); } catch { /* best effort */ } }

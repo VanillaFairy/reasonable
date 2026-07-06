@@ -114,7 +114,11 @@ check('a merged WO with a live-looking lane registry (no node-completed) is NOT 
 
   assert.ok(!readLedger(root).some((l) => l.type === 'node-downgraded' && l.workOrder === 'WO-1'),
     'a merged WO must NEVER get a spurious node-downgraded');
-  assert.equal(readLedger(root).length, before.length, 'no new ledger line landed for the merged WO');
+  // T2.3 (§7.1): reconcile appends its per-call next-action projection, so the only new line is that
+  // projection — the merged WO still gets no node-downgraded of its own.
+  const after = readLedger(root);
+  assert.equal(after.length, before.length + 1, 'exactly one new line: the per-call next-action projection (§7.1), never a downgrade of the merged WO');
+  assert.equal(after[after.length - 1].type, 'next-action', 'the sole new line is the projection');
   assert.ok(!r.resolved.some((x) => x.kind === 'downgrade' && x.workOrder === 'WO-1'),
     'a merged WO is never a downgrade subject');
   assert.deepEqual(r.terminalWorkOrders, ['WO-1'], 'the merged WO is terminal');

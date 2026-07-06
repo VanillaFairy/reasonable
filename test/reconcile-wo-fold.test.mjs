@@ -73,8 +73,13 @@ check('journal disagrees with the fold → cross-check note + the fold wins (no 
     r.notes.some((n) => /WO-1/.test(n) && /journal status 'dispatched' disagrees with ledger fold 'done'/.test(n)),
     `expected a disagreement note; got: ${JSON.stringify(r.notes)}`,
   );
-  // Fold wins: the settled (done) WO is not re-opened or downgraded — no new ledger line at all.
-  assert.equal(ledgerLines(root).length, before, 'the fold-done WO must not be downgraded (no new ledger line)');
+  // Fold wins: the settled (done) WO is not re-opened or downgraded — no node-downgraded line.
+  // T2.3 (§7.1): reconcile still appends its per-call next-action projection, so the only new line is
+  // that projection — never a downgrade of the fold-done WO.
+  const after = ledgerLines(root);
+  assert.ok(!after.some((l) => l.type === 'node-downgraded'), 'the fold-done WO must not be downgraded (no node-downgraded line)');
+  assert.equal(after.length, before + 1, 'exactly one new line: the per-call next-action projection (§7.1)');
+  assert.equal(after[after.length - 1].type, 'next-action', 'the sole new line is the projection');
   assert.ok(!r.resolved.some((x) => x.workOrder === 'WO-1' && x.kind === 'downgrade'),
     'a fold-done WO must never appear as a lost-work downgrade');
 });

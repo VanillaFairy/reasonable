@@ -88,8 +88,14 @@ check('status-free journal: a fold-running WO with no lane on disk downgrades, e
   assert.ok(r.resolved.some((x) => x.kind === 'downgrade' && x.workOrder === 'WO-1'), 'downgrade recorded in resolved[]');
 
   const lines = readLedgerLines(root);
-  assert.equal(lines.length, before + 1, 'exactly one new ledger line landed');
-  const stamped = lines[lines.length - 1];
+  // T2.3 (§7.1): reconcile now appends TWO lines on a crash-recovery call — the node-downgraded seal
+  // AND a per-call next-action projection (a recorded event, like the verdicts the ledger already
+  // carries). The projection is appended LAST, so the node-downgraded is fetched by filter, not tail.
+  assert.equal(lines.length, before + 2, 'two new ledger lines: the node-downgraded seal + the per-call next-action projection');
+  assert.ok(lines.some((l) => l.type === 'next-action'), 'a next-action projection also landed (per-call, §7.1)');
+  const downgrades = lines.filter((l) => l.type === 'node-downgraded' && l.workOrder === 'WO-1');
+  assert.equal(downgrades.length, 1, 'exactly one node-downgraded line');
+  const stamped = downgrades[0];
   assert.equal(stamped.type, 'node-downgraded');
   assert.equal(stamped.workOrder, 'WO-1');
   assert.equal(stamped.node, 'WO-1', 'append() resolved workOrder to its tree node');
@@ -118,7 +124,12 @@ check('legacy status:"dispatched" does NOT govern: no fold + no lane → not liv
 
   assert.ok(!r.resolved.some((x) => x.kind === 'downgrade' && x.workOrder === 'WO-1'),
     'the retired status must NOT drive a downgrade — the fold (absent) governs');
-  assert.equal(readLedgerLines(root).length, before, 'no ledger line appended (the WO is not live per the fold+registry)');
+  // T2.3 (§7.1): no node-downgraded (the WO is not live), but reconcile still appends its per-call
+  // next-action projection — so exactly ONE new line lands, and it is the projection, never a downgrade.
+  const after = readLedgerLines(root);
+  assert.ok(!after.some((l) => l.type === 'node-downgraded'), 'no node-downgraded — the WO is not live per the fold+registry');
+  assert.equal(after.length, before + 1, 'exactly one new line: the per-call next-action projection (§7.1)');
+  assert.equal(after[after.length - 1].type, 'next-action', 'the sole new line is the projection');
   assert.equal(r.workOrderStatuses['WO-1'], 'pending', 'a registered WO with no ledger events reads pending in the derived map');
 });
 
@@ -141,8 +152,13 @@ check('calling reconcile() twice against the same stuck WO appends node-downgrad
   assert.equal(r2.workOrderStatuses['WO-1'], 'pending', 'second call still reports the downgrade (derived status)');
   const afterSecond = readLedgerLines(root);
   const downgradesAfterSecond = afterSecond.filter((l) => l.type === 'node-downgraded' && l.workOrder === 'WO-1');
-  assert.equal(downgradesAfterSecond.length, 1, 'second call is a no-op on the ledger: still exactly one node-downgraded line, not two');
-  assert.equal(afterSecond.length, afterFirst.length, 'no new ledger line of any kind landed on the second call');
+  assert.equal(downgradesAfterSecond.length, 1, 'second call is a no-op on node-downgraded: still exactly one, not two (the alreadyRecorded tree guard)');
+  // T2.3 (§7.1): the node-downgraded is still deduped, but reconcile appends one next-action projection
+  // PER CALL — a deliberate behavior change (projections are recorded events, not deduped like the seal).
+  const naFirst = afterFirst.filter((l) => l.type === 'next-action').length;
+  const naSecond = afterSecond.filter((l) => l.type === 'next-action').length;
+  assert.equal(naSecond, naFirst + 1, 'the second call appends exactly one more next-action projection (per-call, §7.1)');
+  assert.equal(afterSecond.length, afterFirst.length + 1, 'the ONLY new line on the second call is that next-action — no duplicate node-downgraded');
 });
 
 // 4 — an UNRESOLVABLE downgrade tolerates the append() miss: a WO kept live by its branch registry but
@@ -159,7 +175,12 @@ check('lost-work downgrade with an UNRESOLVABLE tree node tolerates the append()
   assert.equal(r.workOrderStatuses['WO-1'], 'pending', 'derived downgrade still recorded despite the ledger miss');
   assert.ok(r.resolved.some((x) => x.kind === 'downgrade' && x.workOrder === 'WO-1'), 'downgrade still recorded in resolved[]');
   assert.ok(r.notes.some((n) => /WO-1/.test(n) && /not recorded/.test(n)), 'a non-fatal note records the ledger miss');
-  assert.equal(readLedgerLines(root).length, before, 'no ledger line appended when the node cannot be resolved');
+  // T2.3 (§7.1): the node-downgraded could not be resolved (no tree node) → no such line. But reconcile
+  // still appends its per-call next-action projection — so exactly ONE new line lands, and it is the projection.
+  const after = readLedgerLines(root);
+  assert.ok(!after.some((l) => l.type === 'node-downgraded'), 'no node-downgraded line appended when the node cannot be resolved');
+  assert.equal(after.length, before + 1, 'exactly one new line: the per-call next-action projection (§7.1)');
+  assert.equal(after[after.length - 1].type, 'next-action', 'the sole new line is the projection');
 });
 
 for (const t of tmps) { try { rmSync(t, { recursive: true, force: true }); } catch { /* best effort */ } }
