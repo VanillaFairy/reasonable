@@ -60,6 +60,8 @@ The vision you are extracting has three parts:
    blocks the vision (the first of three spike spawn points).
 3. **Draft the initial route.** Produce `.reasonable/route.md`: the ordered vertical slice frontier, best-first
    by integration risk / expected information gain. The first item is always the **walking skeleton**.
+   (The machine twin `.reasonable/route.json` is persisted once this draft is **ratified** — step 10a
+   below — never at the draft stage, since it carries the ratification back-pointers.)
 4. **Documentation-integration policy.** Survey the project's existing documentation practice (KB,
    INDEX.md, wiki — its own business) and emit `.reasonable/documentation-policy.md`: how contracts
    relate to existing docs, who cites whom, the drift rule. **Recommended default** (not a mandate):
@@ -155,9 +157,21 @@ The vision you are extracting has three parts:
    intention** (the oracle), and the standing artifacts. The human ratifies each — these are one-time
    ratifications (vision, topology, initial route, intention, scaffold-to-come). **Silence never
    ratifies.** Nothing proceeds to scaffolding without it.
-10a. **Open the route's nodes in the ledger (after ratification).** The `analysis` phase node opened in
-   `develop` step 0 is done, and the ratified route is now the tree's frontier — close the one, plant the
-   other, so the mirror shows the plan before the first slice ever dispatches:
+10a. **Persist `route.json`, then open the route's nodes in the ledger (after ratification).** The
+   `analysis` phase node opened in `develop` step 0 is done, and the ratified route is now the tree's
+   frontier — write the machine twin, close the one, plant the other, so the mirror shows the plan
+   before the first slice ever dispatches:
+   - **Write `.reasonable/route.json`** — the machine-parsed twin of the human-narrated `route.md` you
+     just got ratified. Before appending anything below, read the ledger's current latest `seq` (the
+     last line of `.reasonable/ledger.jsonl`; `0` if the ledger is still empty) — that snapshot, taken
+     at the moment of ratification, is the back-pointer this file carries:
+     ```json
+     { "slices": ["<sliceId>", "…"], "ratifiedAt": "<local ISO timestamp of this ratification>", "ledgerSeq": <the seq you just read> }
+     ```
+     `slices` is the full ordered vertical-slice frontier from the ratified route, best-first, `[0]` the
+     walking skeleton — no other fields (no per-slice tier, no DAG; those stay in `route.md`/`config.json`).
+     `route.md` remains the human narration and is **never parsed**; keep the two in sync by construction —
+     whenever `route.md` changes here or at a later re-sort (`retro` step 5), `route.json` changes with it.
    - Close the phase: `node ${reasonable}/lib/ledger.mjs append --root <effortRoot> --type node-completed --node analysis`
    - For **every vertical slice on the ratified route**, plant the slice and each of its already-known
      work orders (repeat the second line once per known work order under that slice):

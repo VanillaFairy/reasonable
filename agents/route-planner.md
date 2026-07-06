@@ -107,6 +107,14 @@ resolve these the way the principal would, by citing `.reasonable/intention.md`:
   glob paths it will touch), the contracts it **directly cites** — the **seeds**, *not* the transitive
   closure — and its **`resourceClaims`** (ports, databases, named singletons — the project resource
   lexicon). That is the whole of your footprint duty: a **declaration**, not a computation.
+- **Also propose each work order's `dependsOn`** — the **readiness/ordering edge**: the ids of the work
+  orders whose output this one needs to already exist before it can start. This is a **different
+  question** from the footprint independence you declare above — footprint independence asks "can these
+  two run in the same wave without stepping on each other," `dependsOn` asks "does this one's input even
+  exist yet" — so do not fold a `dependsOn` predecessor into the footprint, or vice versa: a same-wave
+  pair can be footprint-independent yet still have zero `dependsOn` between them (nothing to wait on), and
+  a serialized pair (shared locus) can *also* carry a real `dependsOn` when one output feeds the other.
+  Default `[]` when a work order depends on nothing already in flight.
 - The **footprint = declared locus ∪ citation-closure of touched contracts ∪ resourceClaims** is folded
   from your seeds **downstream**, by a dedicated footprint step that runs `lib/footprint.mjs` over the
   persisted specs (it reads the contract graph on disk — which you do not, having no Bash). The script's
@@ -194,9 +202,10 @@ verdicts, minus merged ids, via `lib/dead-ends.mjs`). Three rules:
 ## Your output — the DECOMPOSITION (judgment only)
 - **The ordered work-order cut**, plus a logged **rationale** for the re-sort that **cites
   intention.md for any priority/scope fork it turned on** (D5b), with the clause(s) in `forkCitations`.
-- **Per work order: `locus`, `contractSeeds` (directly-cited contracts, NOT the closure), and
-  `resources`** — a *declaration*. The dedicated footprint step folds the closure + independence from
-  your seeds; you compute no set-algebra.
+- **Per work order: `locus`, `contractSeeds` (directly-cited contracts, NOT the closure), `resources`,
+  and `dependsOn`** (the readiness edge — predecessor ids whose output must exist first, `[]` if none) —
+  a *declaration*. The dedicated footprint step folds the closure + independence from your seeds; you
+  compute no set-algebra, and `dependsOn` is not part of that set-algebra (see above).
 - **`characterizationNeeded`** per work order whose first touch crosses ungoverned brownfield code (BF7).
 
 You do **not** return footprints (closure), the trust-staleness set, or wave groupings — those are

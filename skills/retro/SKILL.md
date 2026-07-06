@@ -104,7 +104,11 @@ D12 scope-out). Everything else self-ratifies and is logged as above.
    in the next vertical slice's work orders — no blanket re-check, just the affected ones. The human
    ratifies the frontier. The **vision** never changes here — only the **route**. The route file is
    human-editable any time; you pick it up at the next dispatch wave.
-   - **Once ratified, reconcile the ledger's node set against the new route.** For every node the
+   - **Once ratified, rewrite `.reasonable/route.json`** (the machine twin of `route.md` — see `analysis`
+     skill step 10a) with the re-sorted `slices`, a fresh `ratifiedAt` (this re-sort's local ISO
+     timestamp), and `ledgerSeq` re-read from the ledger's current latest `seq` — same shape, same rule:
+     never hand-patch it out of sync with the `route.md` you just re-sorted.
+   - **Then reconcile the ledger's node set against the new route.** For every node the
      re-sort **drops** that was previously planned, cancel it so the tree stops showing it as pending:
      `node ${reasonable}/lib/ledger.mjs append --root <effortRoot> --type node-canceled --node <path> --reason 'route re-sort <date>'`.
      For every **new** slice, spike, or work order the re-sort **adds**, plant it exactly as analysis

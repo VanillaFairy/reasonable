@@ -47,6 +47,7 @@ root** (absolute path — your cwd is the effort root), with **exactly** the dis
   "gate": "vertical-slices/<slice-id>.md#gate",
   "locus": ["<from footprint.locus>"],
   "resourceClaims": ["<from footprint.resources>"],
+  "dependsOn": ["<from route-planner's proposed readiness edges, else []>"],
   "behaviorDelta": ["<from the work order, else omit/empty>"],
   "floorImpact": [],
   "contractBirth": false
@@ -58,6 +59,11 @@ root** (absolute path — your cwd is the effort root), with **exactly** the dis
 - `inputs.contracts` ← `footprint.contracts` (the components this work order touches, citation
   closure included, exactly as the route-planner computed them).
 - `resourceClaims` ← `footprint.resources` (the resource-lexicon claims).
+- `dependsOn` ← the work order's proposed `dependsOn` (the route-planner's readiness/ordering edges —
+  which predecessor's output must exist first), verbatim; `[]` when the route-planner proposed none.
+  This is a **different** edge than the footprint independence you reconcile above: footprint says
+  whether two work orders *can run in the same wave*; `dependsOn` says whether *this one's input even
+  exists yet*. Transcribe it faithfully, same as every other field — you compute no readiness yourself.
 - `behaviorDelta` ← the work order's `behaviorDelta` (the brownfield field; `[]` when absent).
 - `inputs.spec` and `gate` ← derived from `verticalSlice`: `vertical-slices/<slice-id>.md` and that
   path with a `#gate` fragment.
