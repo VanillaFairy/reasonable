@@ -37,6 +37,16 @@ Write the resolved values — and the effort's **birth signature** — into `.re
   `effort/<name>` branch. Write it **now, non-empty** — never leave it blank (a missing signature reads
   as a foreign/hand-edited effort and HALTs recovery). Fence-protected, like the axes above.
 
+**Birth location — refuse a bare repo-root birth beside real nested efforts (§6.4, F5).** Before writing
+`config.json` at a **bare repo-root** cwd (no explicit `--root`), check whether
+`<repoRoot>/.reasonable-efforts/` already holds a **born** effort (`assertNoAmbiguousBirth(repoRoot).ambiguous`).
+If it does, **REFUSE the bare repo-root birth**: a repo-root `.reasonable/` written next to real nested
+efforts would **shadow** them in the up-walk (a run that lost its `--root` silently re-births the repo).
+Instead, birth explicitly nested — pass `--root .reasonable-efforts/<name>/` (a short slug for this effort)
+so the new effort sits beside its siblings, never over them. The fence enforces this at the write itself,
+so a slipped bare birth is denied there too; do it right here so it never gets that far. A **truly first**
+effort in a plain repo (no `.reasonable-efforts/`) births at the repo root exactly as before.
+
 **Open the execution tree's first node.** The instant config is durable, plant `analysis` as the tree's
 root phase node and mark it running, so the progress tree has real content from step 0 — not just once
 analysis gets around to writing its own artifacts:
