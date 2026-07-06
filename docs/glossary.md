@@ -397,9 +397,32 @@ one of the three is probably wrong.
   decides *whether* the human is waited on; the profile, *how often*; the tier, *how
   deep* each slice's verification runs.
 - **Effort** — one engagement of the methodology on a project, analysis →
-  completion.
+  completion. Lives in `.reasonable/` — at the target project root (one effort),
+  or nested at `.reasonable-efforts/<name>/.reasonable/` when several efforts
+  share one repo. Its **birth signature** (`config.effort`, a non-empty name
+  stamped once at birth) is what `effortBirthState` reads to tell a real,
+  born effort apart from a stray or pre-birth directory.
 - **Effort artifacts** — the durable document set of an effort (see
   `docs/artifacts.md`).
+- **Effort discovery** — `resolveActiveEffort(cwd)`, the additive SessionStart
+  wrapper (up-walk, then a down-scan of every born nested effort) that resolves
+  `{kind: resolved | none | multiple, ...}`. `multiple` is the normal shape for
+  parallel efforts, not an error. Does not replace the pre-existing up-walk the
+  fence and CLIs use.
+- **Lifecycle** — the born-effort state reconcile classifies: `active` (open
+  work remains), `at-land-gate` (frontier empty, not yet landed to base),
+  `half-concluded` (landed to base, still live). Dir-name states (concluded,
+  abandoned, stray) are effort discovery's job, not reconcile's.
+- **`reasonable:conclude` / `reasonable:abandon`** — the two ways an effort's
+  bookkeeping is torn down, symmetric twins (`lib/conclude.mjs` /
+  `lib/abandon.mjs`): a final ledger event (`concluded` / `abandoned`), then
+  `.reasonable/` renamed aside (never deleted) to `.reasonable.done-<effort>/` /
+  `.reasonable.abandoned-<effort>/`. `conclude` closes an effort that
+  **finished**; `abandon` closes one the operator is **walking away from**.
+  Either releases the blast-radius fence and drops the effort out of discovery;
+  archival keeps the ledger/decisions/vision auditable and is reversible
+  (rename back). The commit iron rule still binds: both HALT rather than
+  archive over uncommitted in-scope work.
 - **Lane** — one work order in flight in its own git worktree. Agent territory;
   the human never works in a lane. Identified on disk by a `.reasonable-lane.json`
   descriptor at the worktree root — this is what the fence reads to bind the law

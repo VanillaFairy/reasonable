@@ -76,8 +76,12 @@ Otherwise, route around it — a first-class verdict, not a failure:
 | Research question | spike mode (see the `vertical-slice-execution` skill's spike path) |
 | Not applicable | choose whatever methodology fits — first-class verdict |
 
-**v1 targets greenfield efforts in a single repo, single orchestrator session, intra-vertical-slice
-parallelism.** Brownfield retrofit is deferred.
+**v1 targets greenfield and brownfield efforts, each run by a single orchestrator session with
+intra-vertical-slice parallelism.** An effort lives in `.reasonable/` at the target project root, or
+nested at `.reasonable-efforts/<name>/.reasonable/` when **several efforts share one repo** — a
+supported, normal shape (`resolveActiveEffort` discovers all of them; each effort is fenced and
+reconciled independently, non-overlap being the operator's responsibility). "Single orchestrator
+session" scopes to *one running effort*, not to the repo as a whole.
 
 ## The phases (each is its own rigid skill — follow it exactly)
 

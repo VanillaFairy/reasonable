@@ -13,9 +13,11 @@ There is **no build, no compile, no transpile step.** The "source" is three kind
 - **A dependency-free Node ESM engine** (`lib/*.mjs`) — the actual enforcement logic.
 - **A polyglot hook bridge** (`hooks/`) and **workflow scripts** (`workflows/*.workflow.js`).
 
-The plugin acts on a **target repo, not on itself.** An "effort" lives in `.reasonable/` at the
-*target* project root. This repo has no `.reasonable/`, so every hook here no-ops (fails open). Don't
-be surprised that enforcement is silent when working *on* the plugin — that's correct.
+The plugin acts on a **target repo, not on itself.** An "effort" lives in a `.reasonable/` — at the
+target project root for a single effort, or nested at `.reasonable-efforts/<name>/.reasonable/`
+(depth 1) when several efforts share one repo, discovered via `resolveActiveEffort`. This repo has
+no `.reasonable/` of either shape, so every hook here no-ops (fails open). Don't be surprised that
+enforcement is silent when working *on* the plugin — that's correct.
 
 ## Commands
 

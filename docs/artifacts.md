@@ -25,14 +25,43 @@ the real cause (graph-editor-ux-overhaul, 2026-07). Libraries are safe automatic
 
 ## Effort root
 
-All artifacts live under `.reasonable/` at the **target project root** (the
-repository the methodology is being applied to — *not* the plugin directory).
-The presence of `.reasonable/` is what tells every hook "an effort is active";
-absent it, all hooks no-op (fail open).
+All artifacts live under a `.reasonable/` (the repository the methodology is being
+applied to — *not* the plugin directory) that tells every hook "an effort is
+active"; absent it, all hooks no-op (fail open). Two locations are both
+canonical: the **target project root** (one effort in the repo — the original,
+still-supported shape), or **nested** at `.reasonable-efforts/<name>/.reasonable/`
+(depth 1) so **several efforts can share one repo**, each fenced and reconciled
+independently. Neither is "the" location — an effort lives wherever it was born;
+see *Discovery* below for how a session finds it.
+
+**Discovery — `resolveActiveEffort(cwd)` (additive to the up-walk).** The ~19
+existing `findEffortRoot`/`rootFromArgv` up-walk call sites (fence, commit-gate,
+stop-commit, the `--root` CLIs) are unchanged — they keep resolving correctly from
+an effort-root or lane-worktree cwd. `resolveActiveEffort` is a narrow addition
+used **only** by the repo-root interactive SessionStart path, which a plain
+up-walk cannot serve (a nested effort sits *down* a sibling subtree, invisible to
+an up-walk from the repo root). Two layers, cheapest-correct first:
+1. **Up-walk** (`findEffortRoot(cwd)`) — correct at an effort-root or worktree
+   cwd; tried first because it has no worktree blind spot.
+2. **Down-scan** from the interactive repo root (`git rev-parse
+   --show-toplevel`, falling back to cwd) — every **born** `.reasonable` at
+   `.reasonable-efforts/<name>/.reasonable/` (depth 1) ∪ a born
+   `<repoRoot>/.reasonable`. A backup-suffixed sibling (`-bak`/`.bak`/`.old`/
+   `.orig`/`.archive`/`_copy`) is excluded; a `.reasonable` at a non-canonical
+   depth is a **loud diagnostic**, never a silent drop.
+
+Returns `{kind:'resolved'|'none'|'multiple', root?, roots?, strays?, diagnostics?}`
+— every path `norm()`'d (forward-slash, absolute). `multiple` is the **normal**
+shape for parallel efforts, not an error. `strays` (config-less `.reasonable/`
+dirs — never adopted) and `diagnostics` (misplaced-depth dirs) ride along on
+**any** kind when non-empty, so a real effort can resolve *while* debris is
+still surfaced.
 
 **Git policy — gitignored by design.** `.reasonable/` is **gitignored, not
-tracked**. The analysis phase plants `/.reasonable/` and `/.reasonable.done-*/`
-into the target repo's `.gitignore`. The methodology **never relies on
+tracked**. The analysis phase plants (idempotently, unanchored so they match at
+any effort-root depth) `.reasonable/`, `.reasonable.done-*/`,
+`.reasonable.abandoned-*/`, `.reasonable-lane.json`, and `.worktrees/` into the
+target repo's `.gitignore`. The methodology **never relies on
 `.reasonable/` being in git**: orchestration state — ledger, journal, contracts,
 baseline, verdicts, lane descriptors — is durable because it is **append-only on
 disk**, and reconcile reads it straight from disk (`readJsonl` → `readFileSync`),
@@ -206,6 +235,7 @@ that needs a test command, build command, or test-path classification.
   "parkMarkerRegex": "#\\[ignore\\s*=\\s*\"pending:",
   "runMode": "gated",
   "tier": "full",
+  "effort": "fireside-widget",
   "brownfield": false,
   "baseBranch": "master",
   "effortBranch": "effort/fireside-widget",
@@ -282,6 +312,29 @@ direction), so efforts predating the field keep full verification. `config.json`
 fence-protected, so an agent cannot self-lower the effort default; the **raise-only
 ratchet** (an agent may push a slice to `full`, never down to `lite`) is enforced as a
 main-session discipline in `vertical-slice-execution`.
+
+`effort` — the effort's **birth signature**: a non-empty, human-readable slug for
+what the effort is about, written **once, at birth**, by `develop` Step 0 (never
+blank — a blank/absent value reads as a foreign or hand-edited effort). It is the
+one field `effortBirthState(effortRoot)` reads to tell a real, born effort apart
+from a stray or pre-birth directory, in four states:
+
+```
+absent             — no config.json at all               → not an effort (a stray/pre-birth dir; skip)
+corrupt            — config.json exists but won't parse   → born, HALT-worthy (unreadable, cannot self-heal)
+missing-signature  — parses, but no non-empty cfg.effort  → born (foreign/hand-edited); RECONSTRUCTABLE if
+                                                              journal.effort names the effort (§ journal.json
+                                                              below) — reconcile heals it silently; HALT
+                                                              only if no recoverable name exists anywhere
+ok                 — parses, has a non-empty cfg.effort   → born, proceed
+```
+
+`effortBirthState` is the **one shared predicate** discovery and reconcile both
+call, so they can never disagree on "is this a born effort?" It is pure/sync/no-git
+and deliberately bypasses `loadConfig`'s lenient defaults (which would swallow a
+parse failure into `runMode:null` and read a torn config as merely "unconfigured").
+`conclude`/`abandon` read `effort` to name their archive dir (below); `develop`
+Step 7a slugs it into the `effort/<name>` branch.
 
 `brownfield` ∈ `true | false`. Set by the analysis-phase triage (the fourth
 trigger: ungoverned existing code is touched). When `true`, the brownfield
@@ -527,6 +580,19 @@ dispatched; it rides on every Family-1 event that has a node.
 | `node-canceled` | `node`, `reason` | — | `canceled` (the node only; no cascade — its children keep their own status under a ⊘ parent) |
 | `approval-resolved` | `id` | — | annotates the effort root; the inbox banner's own fold is future work |
 | `concluded` (existing) | — | — | the whole effort root goes `done` |
+| `abandoned` | — | — | the walked-away twin of `concluded` — same node-less terminal shape, whole effort root goes `done` |
+
+`abandoned` (`reasonable:abandon`, `lib/abandon.mjs`) mirrors `concluded` exactly: same
+required fields (`[]`), same Family-1 membership, same `EVENT_MAP` fold (root status → `done`).
+Only the *intent* differs — `concluded` closes an effort that **finished**; `abandoned` closes
+one the operator is **walking away from**. Both are followed by the same archival move (a
+`renameSync` of `.reasonable/` aside): `concluded` → `.reasonable.done-<effort>/`, `abandoned` →
+`.reasonable.abandoned-<effort>/` — an exact copy of the live `.reasonable/` tree (ledger,
+journal, contracts, every artifact above), renamed, never deleted, so it stays git-diffable and
+reversible (rename it back to resume). Either archive releases the blast-radius fence (the
+effort root it fenced no longer resolves) and drops the effort out of `resolveActiveEffort`'s
+down-scan the same cheap way — the multi-effort SessionStart scan counts archives by name
+(`.reasonable.(done|abandoned)-*`) but never lists or scans into them.
 
 Any Family-1 event may name its node by **`workOrder`** (a bare node id) instead of `node` —
 the controller resolves it against the live tree and stamps the absolute path itself. An
@@ -600,12 +666,15 @@ its resolved node (or the effort root, if it has none) — domain color, never s
 {"seq":25,"ts":"...","type":"verifier-verdict","component":"store","diffRef":"src/store/delete.rs","verdict":"accept","oracle":"baseline-intent","by":"intent-verifier","proposed":true,"commit":"sha256:…"}
 {"seq":26,"ts":"...","type":"correction","supersedes":25,"workOrder":"WO-21","commit":"sha256:…","reason":"seq 25 recorded a SHA that does not resolve in git"}
 {"seq":27,"ts":"...","type":"amendment","component":"route","direction":"weaken","approvedBy":"human","reason":"WO-9 retired by a replan; successor WO-30","drops":[{"workOrder":"WO-9","supersededBy":"WO-30"}]}
-{"seq":28,"ts":"...","type":"concluded"}
+{"seq":28,"ts":"...","type":"concluded","effort":"fireside-widget"}
 ```
+
+(A walked-away effort's last line reads the same shape with `"type":"abandoned"` instead of
+`"concluded"` — the two are mutually exclusive terminal events, never both on one ledger.)
 
 Event `type` values, by family — **Family 1:** `node-planned`, `node-dispatched`,
 `node-checkpointed`, `node-downgraded`, `node-completed`, `node-failed`, `node-canceled`,
-`approval-resolved`, `concluded`. **Family 2:** `report-started`, `report-finished`,
+`approval-resolved`, `concluded`, `abandoned`. **Family 2:** `report-started`, `report-finished`,
 `report-canceled`. **Family 3:** `enrichment`, `amendment`, `characterization`,
 `characterization-promotion`, `change-characterized`, `change-characterized-planned`,
 `verdict`, `verifier-verdict`, `scope-expansion`, `budget-extension`, `dead-end`,
@@ -762,6 +831,13 @@ reconcile-rebuildable (like `lastReconciled`, it resets from the next wave on a 
 rebuild); it is also the one thing the progress mirror's header line reads from outside
 the ledger (see below).
 
+`effort` is also the **recovery source** for `config.json`'s birth signature: a
+pre-signature (or hand-edited) config in the `missing-signature` state is
+automatically healed by copying this value into `config.effort` (a one-time,
+effort-field-only migration — see `config.json` above and reconcile's
+lifecycle/S7 discussion in `DESIGN.md` §5.12), so an effort that predates the
+signature field never HALTs for a name it already carries here.
+
 A work order is **terminal** (never re-dispatched, no matter what its
 `.reasonable/work-orders/<id>.json` spec still says on disk) once the **ledger fold** reads
 `done` — the merge membrane appends `node-completed` the instant a lane lands on the effort
@@ -853,6 +929,53 @@ effort's mirror.
 The canonical index (`journal.json` / `inbox.json`) stays the lone serialized scribe's write
 (D3b); the mirror is a *separate* presentation artifact with its own *single* deterministic
 writer (the ledger controller), so no concurrent-writer hazard is introduced.
+
+---
+
+## `reconcile()` result and the SessionStart briefing (in-memory — not written to disk)
+
+`lib/reconcile.mjs`'s `reconcile(effortRoot)` is the crash-only recovery prologue: it
+re-derives the RESOLVED / SAFE-DEFAULT / AMBIGUOUS partition every session and returns a plain
+object, never a file. `session-start.mjs` renders it into `additionalContext` via
+`briefing(result)`; the result carries no `*` (nothing parses it back) but its shape is
+still worth pinning here because two of its fields are new load-bearing vocabulary:
+
+- **`lifecycle`** ∈ `'active' | 'at-land-gate' | 'half-concluded'` — the **born-effort** state
+  this *live* `.reasonable/` is in (dir-name states — concluded, abandoned, stray — are the
+  multi-effort SessionStart *scan*'s job below, never reconcile's; reconcile only ever runs on
+  a live effort). Deterministic, cheapest signal first:
+  - `active` — the frontier still has open work (any known work order not `done`), or nothing
+    has been planned yet.
+  - `at-land-gate` — the frontier is empty and the effort branch is **not yet landed** to
+    base → next action is LAND.
+  - `half-concluded` — the frontier is empty and the effort branch **is landed** to base, but
+    `.reasonable/` is still live (no `.done-*` archive yet) → next action is CONCLUDE.
+
+  "Landed" ⟺ `effortBranch` is an **ancestor** of `baseBranch` (`lib/branch.mjs`
+  `descendsFrom(root, effortBranch, baseBranch)` — i.e. `git merge-base --is-ancestor
+  <effortBranch> <baseBranch>`), exactly what a real `effortBranch → baseBranch` merge
+  produces. An effort with no `effortBranch`/`baseBranch` recorded (predates branch hygiene)
+  can't be judged either way and defaults to the safe direction, `at-land-gate` (suggest LAND,
+  never a premature CONCLUDE).
+- **`halt`** / **`haltReason`** / **`evidence`** — unchanged in shape, now also set by the two
+  new AMBIGUOUS buckets documented in `DESIGN.md` §5.12/§5.14F (a repo-root stray shadowing a
+  born nested effort; a born effort whose config is corrupt or unidentifiably signature-less).
+
+`briefing()` renders `lifecycle` as its own line, right under the header: `` Lifecycle:
+**<state>** — <one-line gloss of the definition above>. `` — e.g. `` Lifecycle: **at-land-gate**
+— frontier empty; the effort branch is not yet landed to base. ``
+
+**The multi-effort SessionStart scan (cheap; not a reconcile).** When
+`resolveActiveEffort(cwd)` (see *Effort root* above) resolves `{kind:'multiple'}`, SessionStart
+does **not** reconcile every effort — it reads each one's `progress.json` (a couple of file
+reads, no git, no ledger fold) and renders one line per effort: name, the `done/active/failed`
+counts, a staleness gloss (days since the last ledger event), and either the last-persisted
+`nextAction` or `"reconcile on demand"`. Each effort's line is wrapped in its **own** try/catch
+— one corrupt effort degrades to "N−1 briefed, 1 flagged," never a wholesale failure — and a
+born-but-bad config (`corrupt`, or `missing-signature` with no name recoverable from
+`journal.effort`) is flagged inline as `⚠️ FLAGGED` rather than silently briefed as healthy.
+Concluded/abandoned archives (`.reasonable.(done|abandoned)-*`) are counted, never listed or
+scanned into. The effort actually being worked is reconciled **on demand**, not by this scan.
 
 ---
 

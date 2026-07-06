@@ -318,8 +318,40 @@ into
   SHA reconciles and whose atomic commit included its ledger line; merge clean green.
 - **SAFE-DEFAULT** — a conservative downgrade that loses no truth.
 - **AMBIGUOUS** — an orphan commit whose trailer doesn't match the journal SHA, a ledger entry with no
-  commit, two lanes claiming one work order, an absent `config.runMode` → set `{halt:true, haltReason,
-  evidence}` and present it to the human as a **blocking** decision. **Never a recovery-time guess.**
+  commit, two lanes claiming one work order, an absent `config.runMode`, a repo-root `.reasonable/` that
+  co-exists with a born nested effort (shadows it in the up-walk — §6.4/F5 of the effort-discovery spec),
+  or a born effort's config that is `corrupt`/unidentifiably `missing-signature` (S7, below) → set
+  `{halt:true, haltReason, evidence}` and present it to the human as a **blocking** decision. **Never a
+  recovery-time guess.**
+
+**S7 — reconstruct-or-HALT on a missing birth signature.** `effortBirthState(root)` classifies
+`config.json` into four states (`absent` / `corrupt` / `missing-signature` / `ok`); reconcile's runMode-absent
+check above only catches a corrupt config *incidentally* (a torn file also reads `runMode:null` via
+`loadConfig`'s lenient defaults). A `missing-signature` config — parses fine, carries a real `runMode`, but
+has no `config.effort` name — sails past that check yet isn't, on its face, identifiable. But a single
+unfinished effort almost always still has an unambiguous name sitting in `journal.effort` (a pre-signature
+effort simply predates the field), so reconcile **reconstructs** `config.effort` from it automatically — a
+one-time, effort-field-only heal — and proceeds with **no HALT and no operator action**. Only a genuinely
+unidentifiable config (`missing-signature` with no recoverable name anywhere) or a `corrupt` one (unreadable,
+so it cannot be healed) reaches the AMBIGUOUS bucket above.
+
+**Lifecycle — the fourth thing reconcile derives, beside RESOLVED/SAFE-DEFAULT/AMBIGUOUS.** A live
+`.reasonable/` is always in exactly one of `active` (open work remains, or nothing planned yet),
+`at-land-gate` (frontier empty, the effort branch not yet landed to base), or `half-concluded` (frontier
+empty, effort branch landed to base, still live). "Landed" is git ancestry (`descendsFrom(effortBranch,
+baseBranch)`, `lib/branch.mjs`) — the same primitive the lane-base build-on-stale check already uses
+(`docs/artifacts.md § config.json`). The
+*dir-name* states — concluded, abandoned, stray — never reach reconcile at all; they are what the discovery
+layer below classifies before reconcile would even run.
+
+**Discovery is a layer ahead of reconcile, and it does not reconcile.** `resolveActiveEffort(cwd)` (an
+additive SessionStart-only wrapper around the pre-existing up-walk) resolves which effort(s) exist —
+`{kind:'resolved'|'none'|'multiple', root?, roots?, strays?, diagnostics?}` — before reconcile ever runs on
+any of them. With `N` parallel efforts, SessionStart does **not** run `N` reconciles: it reads each effort's
+`progress.json` (file reads only) and renders one cheap summary line per effort, each wrapped in its own
+try/catch (one bad effort degrades to "N−1 briefed, 1 flagged," never a wholesale failure), flags a
+born-but-bad config inline, and reconciles — full RESOLVED/SAFE-DEFAULT/AMBIGUOUS, git and all — only the
+one effort actually being acted on.
 
 **Trailers are hints, not anchors.** DESIGN §5.14B calls Work-Order trailers "convenience, never truth"
 (agents can forge them). SHA accounting against the ledger is truth; the trailer is only a re-claim hint.
@@ -398,6 +430,17 @@ denies it as if the worker had gone rogue.
 cannot self-seed its descriptor (`.reasonable-lane.json` is in `ENFORCEMENT_BUILTINS`, and a write to it by
 any role other than the `lane-provisioner` is denied); the spike quarantine fence and the per-role test-path
 rules — both in `categorical()` — bind as described.
+
+**The birth-location guard is a fence rule, not just an entry-skill courtesy.** The stray-root incident that
+motivated effort discovery (a repo-root `.reasonable/` silently re-born beside a real nested effort,
+shadowing it) is closed at its actual source: `fence.mjs`'s `strayBirthDenyReason` fires on **both**
+first-birth paths it polices — a structured `Write`/`Edit` and a Bash shell write — the instant a write would
+create a repo-root `.reasonable/` while `.reasonable-efforts/` already holds a born effort
+(`assertNoAmbiguousBirth`), denying with a message that names the fix (pass an explicit nested `--root`). A
+truly first birth in a plain repo (no born nested efforts yet) still fails **open**, per invariant #2 — the
+guard is narrow: it fires only *beside* an existing born effort, never as a blanket rule against repo-root
+births. `develop` Step 0 checks the identical condition before it ever writes, so the common path never even
+reaches the fence's denial — but the fence is the one that actually holds if a caller skips or forges Step 0.
 
 **The script holds zero enforcement authority** and is designed as hostile. The script cannot refuse to emit
 an `agent()` lacking an agentType — the substrate gives it no validation hook over its own calls, so that is
@@ -755,8 +798,16 @@ Each mechanism, the gap it closes, and the decision that governs it.
 | 18 | **`behaviorDelta`** field + two-oracle collision classifier in `toGateResult` + ledger events `characterization` / `characterization-promotion` / `change-characterized[-planned]` | none | BF6/BF9 |
 | 19 | **`characterizer` role** + `characterization.workflow.js` + the in-run `characterization-needed` genesis prologue | does not exist | BF5/BF7 |
 | 20 | **Triage fourth trigger** (ungoverned code touched) + `config.brownfield` + `scope:micro` intention | greenfield-only triage | BF7 |
+| 21 | **`effortBirthState(root)`** — one shared birth predicate (`absent`/`corrupt`/`missing-signature`/`ok`), called by both discovery and reconcile | two independent "is this an effort?" checks could disagree | T1.1 |
+| 22 | **`resolveActiveEffort(cwd)`** — additive discovery wrapper: up-walk first, then a down-scan of the canonical nested layout `.reasonable-efforts/<name>/.reasonable/` (depth 1) | a nested effort was invisible to a repo-root up-walk (the motivating incident) | T1.2 |
+| 23 | **Birth-location refusal** (`assertNoAmbiguousBirth` in `develop` Step 0 **and** `fence.mjs`'s first-birth path) + reconcile's repo-root-stray-shadow AMBIGUOUS bucket | a run that lost `--root` silently re-birthed a repo-root effort that shadows a real nested one | T1.3 |
+| 24 | **Lifecycle model** (`active`/`at-land-gate`/`half-concluded`, reconcile-derived from git ancestry + WO status) + `briefing()`'s `Lifecycle:` line | no deterministic "what's left to do" signal | T1.3 |
+| 25 | **`reasonable:abandon`** (`lib/abandon.mjs`) — `'abandoned'` ledger event (mirrors `concluded`) + `.reasonable.abandoned-<effort>/` archive | a walked-away, unfinished effort fenced the repo forever | T1.4a |
+| 26 | **Reconcile S7 born-state HALT** — keys on `effortBirthState`; a recoverable `missing-signature` self-heals from `journal.effort` before ever reaching HALT | a torn/foreign config sailed past the runmode-absent check unnoticed | T1.5 |
+| 27 | **Multi-effort SessionStart briefing** — cheap per-effort summary via `resolveActiveEffort` (file reads only, no per-effort reconcile, per-effort try/catch) | N parallel efforts meant N reconciles, or one effort's briefing silently hiding the rest | T1.5 |
 
-Items 13–20 are brownfield and are no-ops when `config.brownfield` is unset (§18).
+Items 13–20 are brownfield and are no-ops when `config.brownfield` is unset (§18). Items 21–27 are the
+effort-discovery / truth-consistency layer (Layer 1) and are additive to every pre-existing call site.
 
 Foundational modules these build on: `footprint.mjs` (resources + `independent()`), `contract.mjs` (citation
 graph), the enforcement/quarantine/test-path fence rules, `effort.mjs` helpers (`findEffortRoot`, config

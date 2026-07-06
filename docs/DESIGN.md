@@ -310,6 +310,59 @@ and isn't readable from a hook — only a ledger-derived file honors both *deter
 - **Supervision dial** — the *finer* control nested inside gated mode. The run mode (above) decides *whether* the human is waited for at all; the dial decides, within gated mode, *how often* (for between-gate judgment approvals only — no setting ever waives a mechanical check). The **entry skill sets the initial profile** — `develop` starts **strict**, `develop-autonomously` starts **trusting** — lower-level phases never override it, and the retro tunes it thereafter (`supervision.json`). The settings: **strict** — every work-order batch and merge needs a nod; **standard** — retro-blocking + inbox interrupts, merges to the vertical-slice branch autonomous (gate-protected and revertible); **trusting** — amendment batches pre-approve unless flagged.
 - Control-plane/data-plane summary: **the human is the control plane** (vision, route, amendments, dial); **agents are the data plane** (everything between gates).
 
+**Effort discovery, birth, and lifecycle.** A session needs to know, deterministically, *which*
+effort(s) exist and *what state* each is in — never an LLM deduction. Three additive mechanisms,
+none of which replace the pre-existing up-walk (`findEffortRoot`) that ~19 call sites depend on:
+
+- **One shared birth predicate, `effortBirthState(effortRoot)`.** Is `.reasonable/config.json`
+  present, parseable, and carrying a non-empty `config.effort` (the birth signature `develop`
+  Step 0 stamps)? Four states — `absent` (not an effort; skip), `corrupt` (unparseable; born,
+  HALT-worthy), `missing-signature` (parses but no name; born, HALT-worthy *unless* recoverable —
+  next bullet), `ok` (proceed). Discovery and reconcile both call this **one** function, so they
+  can never disagree on "is this a born effort?" (`docs/artifacts.md § config.json`).
+- **A missing signature self-heals when the name survives elsewhere.** A pre-signature (or
+  hand-edited) effort still has an unambiguous identity in `journal.json`'s own `effort` field —
+  it just predates the `config.effort` field. Reconcile's S7 check (below) reconstructs
+  `config.effort` from `journal.effort` automatically and proceeds; a human is bothered only when
+  **no** name is recoverable anywhere, or the config is `corrupt` (unreadable, so it can't be
+  healed).
+- **`resolveActiveEffort(cwd)`** — an additive discovery wrapper, used only at the repo-root
+  interactive SessionStart path: up-walk first (correct at an effort-root/worktree cwd, and free
+  of the "linked worktree returns its own toplevel" trap), then a down-scan of every **born**
+  effort at the canonical nested layout `.reasonable-efforts/<name>/.reasonable/` (depth 1) plus a
+  born repo-root `.reasonable/`. Returns `{kind:'resolved'|'none'|'multiple', root?, roots?,
+  strays?, diagnostics?}` — `multiple` is the **normal** shape for parallel efforts sharing one
+  repo, not an error (`docs/artifacts.md § Effort root`).
+- **Birth-location policy — refuse the ambiguity at its source.** Before a *bare repo-root*
+  birth (no explicit `--root`), `develop` Step 0 checks whether `.reasonable-efforts/` already
+  holds a born effort (`assertNoAmbiguousBirth`); if so it **refuses** and requires an explicit
+  nested `--root .reasonable-efforts/<name>/` instead — a repo-root birth beside real nested
+  efforts would *shadow* them in the up-walk the instant a run loses its `--root`. `fence.mjs`
+  enforces the identical refusal at the write itself (both the structured-edit and the Bash
+  first-birth path), so a slipped bare birth is denied there too, not just discouraged upstream.
+  A truly first effort in a plain repo (no `.reasonable-efforts/` yet) still births at the repo
+  root exactly as before — the guard only fires beside an *existing* born nested effort.
+- **Lifecycle — the born-effort state a live `.reasonable/` is in**, classified by reconcile,
+  cheapest signal first: `active` (frontier has open work, or nothing planned yet), `at-land-gate`
+  (frontier empty, effort branch not yet landed to base → next is LAND), `half-concluded`
+  (frontier empty, effort branch **is** landed to base, still live → next is CONCLUDE).
+  "Landed" ⟺ the effort branch is an ancestor of base. The **dir-name** states — concluded
+  (`.reasonable.done-*`), abandoned (`.reasonable.abandoned-*`), stray (config-less `.reasonable/`)
+  — are the multi-effort *scan*'s job, never reconcile's (reconcile only ever runs on a live
+  effort). `briefing()` renders lifecycle as its own line (`docs/artifacts.md`).
+- **`reasonable:abandon`** — the twin of `conclude` for an effort the operator is *walking away
+  from* rather than finishing: a final `abandoned` ledger event, then `.reasonable/` renamed aside
+  to `.reasonable.abandoned-<effort>/` (mirroring `conclude`'s `.reasonable.done-<effort>/`
+  exactly — same commit-iron-rule HALT-if-still-dirty guard, same archival-not-deletion). Either
+  archive releases the blast-radius fence and drops the effort out of discovery the same cheap
+  way, instead of an unfinished effort lingering forever as a live, fenced effort.
+- **The multi-effort SessionStart briefing is cheap, not a reconcile.** With N parallel efforts,
+  SessionStart reads each one's `progress.json` (file reads only — no git, no ledger fold) and
+  renders one summary line per effort (counts, staleness, last-persisted next action or "reconcile
+  on demand"); each effort's read is wrapped in its own try/catch so one bad effort degrades to
+  "N−1 briefed, 1 flagged" rather than failing the whole briefing; a born-but-bad config is flagged
+  inline. The effort actually being acted on is reconciled on demand, never by this scan.
+
 ### 5.13 Worktree mechanics
 
 - **Orphan accounting in reconciliation:** worktree with no journal lane → harvest commits if they verify, else sweep and re-dispatch; journal lane with no worktree → downgrade to pending. Worktrees are cattle; journal+git is the registry; the registry is checked against the pasture every session start.
@@ -340,7 +393,7 @@ Severity decides route position. **A hotfix is an expedited vertical slice — s
 **(E) Non-functional requirements.** Vision quality attributes compile into executable gates or they will degrade monotonically across twenty green vertical slices: **quality clauses** in contracts where the budget is local ("decides within 5ms"); **system invariant tests** owned by breadth passes where the budget is global (startup time, memory ceiling). Both under the same ratchet. Benchmark flakiness is real: binding tables owe a measurement-harness entry (thresholds with headroom, fixed-load environments).
 
 **(F) Backstop tripwires and the always-escalate classes.** Reconciliation's last line is a set of blunt mechanical reconciles that *cannot* tell a harmless additive change from a real regression — so they never adjudicate, they **surface**. The load-bearing one here is the **byte-level floor-integrity hash**: a floor-tracked file whose bytes changed flags as a mismatch even when the change is an innocuous additive pin (an appended `#[ignore]` characterization test, say). This hash is **demoted from a first-line AMBIGUOUS→HALT decision to a tier-3 backstop tripwire** (§5.6): it still *fires and surfaces* every floor change, but it no longer halts on its own — an **explaining verifier-verdict** (an accept from the pin/characterization adversary, §5.6) **annotates** the surfaced diff as `explained-by-verdict`. **Annotate-not-disarm is non-waivable:** the annotation is advisory only — the floor pass *still* surfaces the diff, and in autonomous mode it *still* queues it to the human inbox. An accept can only ever cause **more** human surfacing, never less; the failure direction is always toward scrutiny. A missing or half-written verdict therefore degrades safely (the diff surfaces unannotated, exactly as if no adversary had run).
-- **The always-escalate classes (unconditional HALT, all modes), now five.** Reconciliation HALTs unconditionally on: (1) **SHA-custody reclaim** mismatch, (2) **ledger-without-commit**, (3) **runmode-absent**, (4) **two-lanes-one-WO**, and (5) **floor-integrity-mismatch** — the surfaced-but-unresolved floor change. The first four are unchanged. The fifth is the floor hash in its new role: it no longer *halts the reconcile* the instant it fires, but an unresolved floor surfacing in **autonomous** mode is queued **BREAKING** to the inbox as a fifth disposition (§5.6's escalation-by-mode ruling) — joining the always-escalate set rather than silently passing.
+- **The always-escalate classes (unconditional HALT, all modes), now seven.** Reconciliation HALTs unconditionally on: (1) **SHA-custody reclaim** mismatch, (2) **ledger-without-commit**, (3) **runmode-absent**, (4) **two-lanes-one-WO**, (5) **floor-integrity-mismatch** — the surfaced-but-unresolved floor change, (6) **repo-root-stray-shadows-nested-effort** — a born `<repoRoot>/.reasonable/` co-existing with a born nested effort under `.reasonable-efforts/`, which would shadow it in the up-walk, and (7) **born-state-unidentifiable** — a config that is `corrupt`, or `missing-signature` with no name recoverable from `journal.effort` (a recoverable missing signature self-heals instead of halting; see the effort-discovery paragraph above). The first four are unchanged. The fifth is the floor hash in its new role: it no longer *halts the reconcile* the instant it fires, but an unresolved floor surfacing in **autonomous** mode is queued **BREAKING** to the inbox as a fifth disposition (§5.6's escalation-by-mode ruling) — joining the always-escalate set rather than silently passing. The sixth and seventh are new AMBIGUOUS buckets from effort discovery (above): both first-line, both modes, exactly like the original four — a torn-truth configuration recovery cannot settle by inference.
 - **The autonomous ESCALATE disposition.** An adversary that returns **escalate** (rather than accept/reject) in autonomous mode does not get machine-resolved away; the verdict is queued BREAKING to the human inbox — the fifth disposition the §5.6 escalation ruling names. Autonomous grinds the machine-resolvable space first and escalates only the genuinely-unsettleable, but once it does, the item waits for the human exactly like a gated escalation.
 
 ---
@@ -381,7 +434,7 @@ Model bindings are configurable; the defaults above encode the user's standing p
 ### 6.4 Skills
 
 **Entry skill** (how an effort starts — it resolves the run mode (§5.12) and tier and routes into the phases). `develop` is the *single* way to start an effort:
-1. `develop` — the single entry. It **asks** two orthogonal axes up front, both explicit and never inferred: **mode** (gated, the default — gates block; or autonomous — gates self-ratify and log, never block, no step skipped) and **tier** (full, the default; or lite — collapses the vertical-slice audit depth, waiving no guard). `gated`/`full` are the safe defaults; `autonomous`/`lite` are each an explicit opt-in.
+1. `develop` — the single entry. It **asks** two orthogonal axes up front, both explicit and never inferred: **mode** (gated, the default — gates block; or autonomous — gates self-ratify and log, never block, no step skipped) and **tier** (full, the default; or lite — collapses the vertical-slice audit depth, waiving no guard). `gated`/`full` are the safe defaults; `autonomous`/`lite` are each an explicit opt-in. Step 0 also writes the effort's **birth signature** (`config.effort`) and, before a bare repo-root write, **refuses** a birth that would shadow an already-born nested effort under `.reasonable-efforts/` — requiring an explicit nested `--root` instead (§5.12's effort-discovery paragraph; `fence.mjs` enforces the identical refusal at the write itself).
 2. `develop-autonomously` — a thin **alias** that presets autonomous and routes into the same `develop` flow (still asks tier). It exists so an explicit autonomous invocation keeps working; mode is never selected from a standing directive.
 
 **Shared reference** (not an entry, not a user command):
@@ -435,7 +488,7 @@ Each rule below is independently enforceable; whatever a dumb script can check, 
 
 The filesystem is the message bus; agents share artifacts, never conversation. Inventory (formats now pinned in `docs/artifacts.md`): **vision** (grilled user stories, quality attributes) · **topology sketch** · **route** (vertical-slice frontier; human-editable) · **vertical-slice specs** · **contracts** (per component; provider-owned clauses) · **ledger** (append-only: enrichments, amendments, verdicts, scope expansions, budget extensions) · **execution journal** (+ approval inbox) · **knowledge artifacts** (spike/dead-end verdicts with expiry) · **bug-report artifacts** · **progress verdicts** · **ripple manifests** · **sanity invariants** · **resource lexicon** · **documentation-integration policy** · **supervision profile** · **config** (stack bindings + run mode). Collectively: the **effort artifacts** (an *effort* = one engagement of the methodology on a project, analysis → completion).
 
-**On disk:** all effort artifacts live under `.reasonable/` at the *target* project root (not the plugin directory); the presence of that directory is what tells every hook an effort is active. `docs/artifacts.md` pins each format and marks the **machine-parsed** ones (`config.json`, `journal.json`, `ledger.jsonl`, `supervision.json`, `contracts/*`, `work-orders/*`, `inbox.json`, `resource-lexicon.json`) whose grammar the engine depends on, versus prose artifacts (vision, vertical-slice specs) with only a recommended shape. Each in-flight lane worktree additionally carries a `.reasonable-lane.json` descriptor — the work order narrowed to what the fence enforces, with a back-pointer to the main checkout's `.reasonable/`. The token `${reasonable}` in any skill or constitution means the installed plugin root (the env var `$CLAUDE_PLUGIN_ROOT` in hooks).
+**On disk:** all effort artifacts live under a `.reasonable/` (not the plugin directory) — at the *target* project root for a single effort, or nested at `.reasonable-efforts/<name>/.reasonable/` when several efforts share one repo; the presence of that directory is what tells every hook an effort is active. `docs/artifacts.md` pins each format and marks the **machine-parsed** ones (`config.json`, `journal.json`, `ledger.jsonl`, `supervision.json`, `contracts/*`, `work-orders/*`, `inbox.json`, `resource-lexicon.json`) whose grammar the engine depends on, versus prose artifacts (vision, vertical-slice specs) with only a recommended shape. Each in-flight lane worktree additionally carries a `.reasonable-lane.json` descriptor — the work order narrowed to what the fence enforces, with a back-pointer to the main checkout's `.reasonable/`. The token `${reasonable}` in any skill or constitution means the installed plugin root (the env var `$CLAUDE_PLUGIN_ROOT` in hooks).
 
 ### 6.7 Per-stack bindings
 
