@@ -36,6 +36,27 @@ Merge commits: `e01e8e9` (T0.2), `097ffe5` (T0.1), `b8e5c58` (T0.3). Interface c
   which also transcribes: ledger `drops`/`resolvesSeq` grammar, journal narrowed shape, and the T0.2
   mirror-atomicity note.
 
+## Layer 0 CLOSED — all merged (suite 37/37 green, v2.4.0)
+
+Wave 0b: T0.4 (`9131c1f`, merged-WO downgrade defect fixed), T0.5 (`f912da5`, drops vocab + workflow
+prose; the wedging `node-failed` redispatch binding removed + dead-end double-surface fixed). Wave 0c:
+T0.doc (`ef1acb6`, artifacts/DESIGN/glossary + version 2.3.1→2.4.0). Post-merge de-flake (`c2f58f9`) of the
+§5.3 concurrency discriminator.
+
+## Carried FORWARD-FLAGS (added during Wave 0b/0c)
+
+3. **redispatch-guard: `node-failed` is intentionally NON-binding** (T0.5). It binds only `dead-end`/`verdict`
+   (hash-gated) + `amendment` drops (resolvesSeq-gated). `resolvesSeq`/`drops` have **no live emitter** —
+   that wiring (retro/amendment/dead-end ceremony in `skills/*`) is future work; the grammar + amendment-drop
+   binding are forward-looking. If a later task wires resolvesSeq emission, re-check the guard/fold agreement.
+4. **T2.3 (Layer 2): harden `writeMirror`'s `renameSync` against the Windows sharing-violation drop.** The
+   de-flake proved that on Windows a concurrent reader colliding with `writeMirror`'s `renameSync(tmp,
+   progress.json)` throws EPERM/EBUSY, which `append()` swallows as an advisory `mirrorError` — silently
+   DROPPING that mirror publish (self-heals on the next append, but a quiescent mirror can lag the ledger by
+   one). Since T2.3 makes `writeMirror` render the `next-action` directive (where a dropped publish would
+   show a stale NEXT at quiescence), fold a bounded `renameSync`-retry-on-EPERM/EBUSY into T2.3 — completing
+   T0.2's atomic-publish intent on the primary platform.
+
 ## Method notes that worked (promote to knowledge)
 - The **discriminator gate** (run a task's new tests against the pre-task commit's lib, require RED) caught
   a hollow-test slip on T0.2 that a green suite hid. Enforce it for every test-bearing task.
