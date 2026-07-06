@@ -365,9 +365,11 @@ one of the three is probably wrong.
   singletons, "the interactive desktop"). A shared claim is a serialization
   point, exactly like an overlapping file locus.
 - **Journal** — the execution state of record (the methodology's program
-  counter): current vertical slice; work-order statuses
-  (`pending / dispatched / checkpointed / merged / dead-end`); in-flight lanes
-  with worktree paths; the approval inbox. **Single writer: the orchestrator.**
+  counter): current vertical slice; the lane registry (in-flight lanes with
+  worktree paths, commits); the program-counter pointers; the approval inbox. It
+  does **not** store a per-work-order status — a work order's status is a **fold of
+  the ledger** (`lib/wo-status.mjs`: `pending / running / blocked / dropped / done`),
+  the source of truth. **Single serialized scribe: `journal-writer` (D3b).**
 - **Reconciliation** — session-start verify-and-downgrade of the journal against
   ground truth (git + tests + ledger). Conservatively downgrade anything
   unverifiable; recompute the DAG (derived, can't be stale).

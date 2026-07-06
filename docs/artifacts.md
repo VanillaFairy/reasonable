@@ -79,14 +79,19 @@ descriptor), and a subagent's cwd is the effort root, the fence cannot resolve t
 for such a write by path. It governs them instead by the **harness agent-role stamp**
 (`agent_type`, present on every subagent tool call; absent for the main session). The
 role×artifact matrix (in `lib/fence.mjs`): contract-writers (implementer, characterizer,
-scaffolder, census) write `contracts/`; **no role** writes the ledger directly (2.0 — every
-append goes through the ledger controller CLI, a Bash invocation the fence does not classify
-as a file write); the journal-writer writes the `journal.json`/`inbox.json` index; census writes
+scaffolder, census) write `contracts/`; **no role** — not even the main session — writes the
+ledger directly (every append goes through the ledger controller CLI, a Bash invocation the
+fence does not classify as a file write; F1c); the journal-writer writes the `journal.json`/`inbox.json` index; census writes
 `baseline.json`; the intention-writer writes `intention.md`; the lane-provisioner writes
 `.reasonable-lane.json`; the work-order-writer writes `work-orders/<id>.json` (persisting the
 route-planner's proposed plan); everything else (config, supervision, vision, route,
 verdicts/, knowledge/, …) is **orchestrator-only**. The **main session**
-(no `agent_type`) is the trusted control plane and may write `.reasonable/` freely.
+(no `agent_type`) is the trusted control plane and may write `.reasonable/` freely — **except the
+ledger**: a direct write to `.reasonable/ledger.jsonl` is a **categorical** denial for **every** actor,
+the main session included (F1c, DESIGN §5.5), fired ahead of the trusted-main exemption — the ledger is
+mutated only through `lib/ledger.mjs` `append()` under its lock, and two sessions writing the file
+directly would race that lock and silently lose an update. (Invoking `node lib/ledger.mjs append …`
+stays allowed; only a raw `Edit`/`Write`/`>>`/`tee`/`cp` onto the file is denied.)
 **Code** writes stay governed the old way — by the worktree descriptor reached via
 `findLane(target)` (locus / floor / test-path).
 
@@ -594,7 +599,8 @@ its resolved node (or the effort root, if it has none) — domain color, never s
 {"seq":24,"ts":"...","type":"intent-check-failure","verticalSlice":"confirm-delete","correctedChoice":"used spinner instead of stale-badge","shouldHavePinged":true,"retro":"R4"}
 {"seq":25,"ts":"...","type":"verifier-verdict","component":"store","diffRef":"src/store/delete.rs","verdict":"accept","oracle":"baseline-intent","by":"intent-verifier","proposed":true,"commit":"sha256:…"}
 {"seq":26,"ts":"...","type":"correction","supersedes":25,"workOrder":"WO-21","commit":"sha256:…","reason":"seq 25 recorded a SHA that does not resolve in git"}
-{"seq":27,"ts":"...","type":"concluded"}
+{"seq":27,"ts":"...","type":"amendment","component":"route","direction":"weaken","approvedBy":"human","reason":"WO-9 retired by a replan; successor WO-30","drops":[{"workOrder":"WO-9","supersededBy":"WO-30"}]}
+{"seq":28,"ts":"...","type":"concluded"}
 ```
 
 Event `type` values, by family — **Family 1:** `node-planned`, `node-dispatched`,
@@ -622,6 +628,21 @@ The additions:
   with a matching new grown test. (A floor break with neither is BREAKING.)
 - `ratification` — a self-ratified gate in **autonomous** run mode (gated mode
   persists an inbox item and returns instead); records which `gate` and `runMode`.
+- `drops` / `resolvesSeq` — the **optional** structured drop + closure vocabulary an
+  `amendment` **or** `ratification` MAY carry (§5.6/F12). `drops` is an array of
+  `{ workOrder: <id>, supersededBy?: <id> }` — a machine-foldable record that a work order
+  is **deliberately superseded** (dropped). `resolvesSeq` is a **positive integer**, a
+  1-based ledger `seq`, that **closes** the blocking/drop event sitting at exactly that seq —
+  a `node-failed` or an amendment-drop — never by a coincidental work-order-id mention. Both
+  are **additive**: pre-Layer-0 events lack them, so neither is ever required, and the
+  controller (`lib/ledger.mjs` `validateDropsAndResolvesSeq`) validates only their **shape**
+  when present (`drops` an array of objects each with a non-empty `workOrder` string and an
+  optional non-empty `supersededBy` string; `resolvesSeq` a positive integer). Three readers
+  key on these fields: the **work-order-status fold** (`lib/wo-status.mjs`: a drop → `dropped`,
+  a `node-failed` → `blocked`, each cleared only by a matching `resolvesSeq`, returning the WO
+  to `pending`), **reconcile**'s blocked/dropped surfacing, and the **redispatch guard**
+  (`lib/redispatch-guard.mjs`: a dropped WO stays dropped until a `resolvesSeq` restores it,
+  last-write-wins on the highest-seq drop).
 - `intent-check-failure` — the falsifiable defeater: the retro logs that the
   human corrected a non-breaking choice the agent did **not** escalate. A rising
   count is the signal the intention is too weak an oracle.
@@ -692,8 +713,15 @@ The additions:
 
 ## journal.json *
 
-The program counter. Single writer: the orchestrator. Statuses:
-`pending | dispatched | checkpointed | merged | dead-end`.
+The program counter — the **derived, rebuildable** index (D3b), written by the single serialized
+scribe (`journal-writer`). It records the **lane registry** (each work order's `worktree`, `branch`,
+`commits`, `mergedCommits?`, `dispatchEpoch`) and the program-counter pointers (`currentVerticalSlice`,
+`phase`, `supervision`, the `lanes` map, the orchestrator's `commits` accounting). It does **not** store a
+per-work-order **`status`** — T0.4 retired that field. A work order's status is a **fold of the ledger**
+(`lib/wo-status.mjs` `foldWorkOrderStatuses`), the source of truth: `pending | running | blocked | dropped |
+done` (`blocked`/`dropped` are cleared only by an exact `resolvesSeq` match — see `ledger.jsonl`). A journal
+`status` twin would only drift and lie; a **legacy** journal that predates the retirement may still carry
+one, which reconcile cross-checks and warns on but never lets govern.
 
 ```json
 {
@@ -703,7 +731,7 @@ The program counter. Single writer: the orchestrator. Statuses:
   "supervision": "strict",
   "workOrders": {
     "WO-12": {
-      "status": "dispatched", "role": "implementer", "verticalSlice": "expr-eval",
+      "role": "implementer", "verticalSlice": "expr-eval",
       "worktree": ".worktrees/WO-12", "branch": "lane/WO-12",
       "contracts": ["parser"], "commits": [], "dispatchEpoch": 1
     }
@@ -721,7 +749,8 @@ reported) — the basis for provenance partitioning (§5.14B). `dispatchEpoch` i
 one each time it lifts this order `pending → dispatched` (first dispatch → 1; each
 re-dispatch after a lost-work crash → 2, 3, …), and **never** on any other
 transition, so a same-run re-pass or a checkpoint-reclaim leaves it unchanged. It
-is preserved across a reconcile downgrade (which touches only `status`). The progress
+is preserved across a reconcile downgrade (which appends a `node-downgraded` ledger event and
+leaves every lane-registry field — `dispatchEpoch`, `worktree`, `branch` — untouched). The progress
 mirror no longer reads it: the ledger controller now derives a node's attempt/reopen
 state directly from the ledger-built tree itself (its own `name[k]` sibling family — see
 `ledger.jsonl` above), so `dispatchEpoch` is journal-only bookkeeping today. Absent on
@@ -733,15 +762,16 @@ reconcile-rebuildable (like `lastReconciled`, it resets from the next wave on a 
 rebuild); it is also the one thing the progress mirror's header line reads from outside
 the ledger (see below).
 
-A work order is **terminal** once `status` is `"merged"` — its code already landed
-on the effort branch, so re-dispatching it is never correct, no matter what its
-`.reasonable/work-orders/<id>.json` spec still says on disk. `lib/reconcile.mjs`'s
-`terminalWorkOrders` (the mechanical set the route-planner and the script both refuse
-to re-dispatch) additionally tolerates a `status:"green"` + `merged:true` shape as
-equivalent. This is a defensive **read-side** tolerance for a real drift incident
-(a work order once landed with the vertical-slice-gate's own `green` vocabulary
-instead of `merged`), not a second value anything should intentionally write —
-the sole writer still only ever produces the work-order statuses above.
+A work order is **terminal** (never re-dispatched, no matter what its
+`.reasonable/work-orders/<id>.json` spec still says on disk) once the **ledger fold** reads
+`done` — the merge membrane appends `node-completed` the instant a lane lands on the effort
+branch (`vertical-slice-execution` §7), which folds to `done`. The journal additionally carries
+a **write-once `merged` terminal fact** — a lane fact, like `mergedCommits`, that never drifts
+the way the old churning `status` did — covering the `merged:true` shape the orchestrator records
+before its `node-completed` lands. `lib/reconcile.mjs`'s `terminalWorkOrders` (the mechanical set
+the route-planner and the script both refuse to re-dispatch) treats **either** signal — fold
+`done` or `merged:true` — as terminal. The retired `status:"merged"` / `status:"green"` values
+are no longer read; the fold's `done` is the source of truth.
 
 ---
 
@@ -754,6 +784,15 @@ after every append, plus a narrowed `PostToolUse` hook that watches `ledger.json
 a belt-and-suspenders regen (the journal and inbox no longer drive the tree, so writing them
 no longer triggers one). Read by no enforcement logic; rebuildable from the ledger at any
 instant; safe to delete.
+
+**Written atomically, and — on the append path — inside the ledger lock (T0.2).** Each of the two files
+is published by writing a private per-process temp (`progress.json.tmp-<pid>` / `progress.md.tmp-<pid>`)
+and `renameSync`-ing it over the target — an atomic same-volume swap on NTFS and POSIX — so a concurrent
+reader never observes a half-written mirror and two processes regenerating at once never clobber each
+other's temp. When the regen runs on the **locked** append path (`lib/ledger.mjs` `append()`), it happens
+**inside the same lock hold** that guards the append, so the mirror can never be torn or left stale by a
+concurrent append; the unsynchronized callers (session-start and the `PostToolUse` refresh, which hold no
+lock) still can't tear it, thanks to the atomic swap.
 
 **Full replay, always — never a patch.** Every regen rebuilds the tree from scratch by
 folding *every* event in `ledger.jsonl`, in `seq` order, through `lib/progress-tree.mjs`'s
