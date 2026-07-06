@@ -143,6 +143,149 @@ files. Tentative order, finalized per wave: **T1.1** foundation → **T1.2** pat
 the one file-disjoint parallel slot) → **T1.3** birth-location + lifecycle-state (fence + develop +
 reconcile) → **T1.5** multi-effort briefing (session-start) → doc.)
 
+## Layer 2 (pinned 2026-07-06 against the merged Layer-0/1 code, tip `71ef7df`)
+
+Layer 2 is a **sequential chain on `reconcile.mjs`** (the hot file) — no parallelism. Order:
+**T2.1** (new artifact + WO field + writers, file-disjoint from reconcile) → **T2.2** (projection) →
+**T2.3** (event + render) → **T2.4** (self-check) → **T2.doc**. Two pure modules are introduced so the
+decision logic is independently unit-testable and `reconcile.mjs` stays an orchestrator:
+`lib/route.mjs` (read+validate route.json) and `lib/next-action.mjs` (pure `projectDirectives` +
+`selfCheckDirectives`). `reconcile()` gathers state, calls them, then appends the result as a ledger event.
+
+### Three spec corrections baked in here (discovered during the 2026-07-06 recon — same status as Defects A/B)
+
+- **Correction C (§7.2 status vocabulary):** the spec's `dependsOn.every(id => status(id) ∈ {green,merged})`
+  names statuses that **do not exist**. The realized fold (`wo-status.mjs foldWorkOrderStatuses`) emits only
+  `pending | running | blocked | dropped | done`; there is no `green`, and `merged` is not a fold status —
+  it is a `journal.workOrders[id].merged` boolean that **`reconcile()`'s own `workOrderStatuses` map already
+  folds into `done`**. The real predicate is **`status(id) === 'done'` read from `reconcile()`'s
+  `workOrderStatuses`**, never a raw `wo-status.mjs` check and never `'green'`. (Root cause of the drift:
+  stale pre-T0.4 prose in `agents/route-planner.md:145-146`; T2.doc corrects that prose.)
+- **Correction D (node-canceled is terminal-abandoned, §7.2/§7.3 + RESUME-HERE flag):** `node-canceled`
+  folds to `'pending'` (wo-status.mjs), which *looks* re-dispatchable. It is not. A deliberately-canceled WO
+  is **terminal**: the projection must never emit `DISPATCH` for it, and it must **not** satisfy a dependent's
+  `dependsOn` (a dep on a canceled WO leaves the dependent NOT-ready → surfaces as `DECIDE`, not `DISPATCH`).
+  Detect "canceled-terminal" by the WO's **latest lifecycle event being `node-canceled`** (its `WoState.lastSeq`
+  points at the cancel), not by the lossy `'pending'` label alone.
+- **Correction E (§9 stale line — reaffirmed from T0.5):** §9's "redispatch-guard fires on `node-failed`" is
+  wrong and already withdrawn in T0.5. The guard keys on (1) hash-matched `dead-end`/`verdict`(infeasible,
+  survivedSkeptic) and (2) an unresolved `amendment` drop — **never raw `node-failed`**. The self-check (T2.4)
+  calls the guard's existing predicate; it must NOT re-introduce a node-failed binding.
+
+### T2.1 — `route.json` (new machine artifact) + WO `dependsOn` + writers + loader
+
+- **New artifact `.reasonable/route.json`** (machine-parsed → `*` in artifacts.md at T2.doc). Minimal shape,
+  single-writer (orchestrator; SEALED-class — `fence.classifyReasonable` already routes any unrecognized
+  `.reasonable/` path to orchestrator-only, **no fence change**):
+```json
+{ "slices": ["walking-skeleton", "expr-eval", "…"],   // ordered vertical-slice ids, best-first; [0] is the walking skeleton
+  "ratifiedAt": "2026-07-06T12:00:00+02:00",           // local ISO — when the human ratified this ordering (route is human-ratified state)
+  "ledgerSeq": 42 }                                     // ledger seq at ratification — back-pointer into the truth log
+```
+  `route.md` stays **human narration, never parsed** (demoted). WO→slice membership comes from each WO spec's
+  existing `verticalSlice` field, not from route.json — route.json carries only the slice **order**.
+- **New pure module `lib/route.mjs`** — `export function readRoute(effortRoot)` → `{ slices, ratifiedAt,
+  ledgerSeq } | null`. Absent file → `null` (Layer-2 forward-compat: a pre-route.json effort briefs without a
+  frontier, never crashes). Present-but-invalid (not an object, `slices` not an array of non-empty strings) →
+  `null` **plus a diagnostic string** the caller can surface (conservative: never fabricate an order). Mirrors
+  the `wo-status.mjs` precedent (a small pure parse module; keeps the hot `effort.mjs` stable).
+- **WO schema gains required `dependsOn: [workOrderId]`** (array of WO-id strings; `[]` = no deps). Because a
+  WO spec is **write-once/immutable** (`work-order-writer` never patches an existing spec), `dependsOn` MUST be
+  populated at write time: `agents/work-order-writer.md`'s JSON template gains the field, and
+  `agents/route-planner.md` proposes it (the readiness/ordering edge — distinct from the footprint
+  independence edges the route-planner already computes; **do not conflate**, per recon gotcha #5). Both are
+  agent-constitution (prose) edits.
+- **Readiness predicate (pinned here, consumed by T2.2):** a WO is **ready** iff it is not itself terminal
+  (not `done`, not dropped, not canceled-terminal) AND every id in its `dependsOn` is `done`
+  (Correction C) AND it is not flagged by the redispatch-guard. A dep that is anything other than `done`
+  (incl. canceled-terminal, Correction D) leaves the WO not-ready.
+- **Scope:** `lib/route.mjs` (new), `agents/work-order-writer.md`, `agents/route-planner.md`,
+  `skills/analysis/SKILL.md` (+/or the orchestrator step that persists route.json), tests. File-disjoint from
+  `reconcile.mjs`/`ledger.mjs`/`progress-map.mjs`. Does NOT touch reconcile or compute any directive.
+
+### T2.2 — the decision projection (`nextAction` as a directive SET) — `lib/next-action.mjs` (new) + `reconcile.mjs`
+
+- **New pure module `lib/next-action.mjs`** — `export function projectDirectives(state)` → an ordered
+  **array** of directive objects (a SET, not a scalar — §7.3). No I/O, no git: it consumes a plain `state`
+  object `reconcile()` assembles. Directive shape (pin):
+```js
+// { kind, slice?, workOrders?, workOrder?, detail? }
+//   kind ∈ 'HALT' | 'AMBIGUOUS' | 'DECIDE' | 'RUNNING' | 'DISPATCH' | 'RETRO' | 'OPEN' | 'LAND' | 'CONCLUDE' | 'DONE'
+```
+- **Projection logic (§7.3), first-match GLOBAL then per-effort SET:**
+  - global, first match wins, returns a single-element set: `HALT`(state.halt/S7) → `AMBIGUOUS`(>1 root) →
+    `DECIDE`(a breaking `openInbox` item) → the reconcile halt-class. (All already computed by reconcile —
+    the projection READS `state.halt`/`state.ambiguities`/`state.openInbox`, never recomputes git.)
+  - else drive off `state.lifecycle` (already git-resolved by reconcile, keeping the projection pure):
+    - `'at-land-gate'` → `[{kind:'LAND'}]`; `'half-concluded'` → `[{kind:'CONCLUDE'}]`;
+    - `'active'` → the per-slice **set** over `state.workOrderStatuses` + `dependsOn` + `route.slices`:
+      `blocked`→`DECIDE: WO <id>`, live `running`→`RUNNING: <ids>`, `ready`(readiness predicate above)→
+      `DISPATCH: slice <S> → <ids>`, slice all-`done`+retro-open→`RETRO: slice <S>`, retro-done→
+      `OPEN: slice <S+1>` (next id in `route.slices`), everything terminal→`DONE`.
+- **`reconcile()` wiring:** after the per-WO crash-recovery loop and all partition/lifecycle/halt computation
+  (i.e. just before building the `result` literal at ~line 624), read `route.json` via `readRoute`, assemble
+  `state`, call `projectDirectives`, and attach the result as **`result.nextAction`** (in-memory array).
+  **Persistence + render are T2.3; the self-check gate is T2.4** — T2.2 stops at the in-memory field.
+- **Scope:** `lib/next-action.mjs` (new, `projectDirectives` only), `reconcile.mjs` (assemble state + call +
+  attach), tests (the §9 decision-projection table — pure `projectDirectives` fixtures: mixed running+ready,
+  blocked+ready, at-land-gate LAND, canceled-dep DECIDE). Does NOT touch ledger.mjs/progress-map.mjs.
+
+### T2.3 — the `next-action` ledger event + mirror render + Windows rename hardening
+
+- **`lib/ledger.mjs`:** add `'next-action': { required: [], validate: validateNextAction }` to `EVENT_SCHEMAS`
+  (Family 3 — the implicit "everything else" branch; do NOT add it to `FAMILY_1_TYPES`/`FAMILY_2_TYPES`).
+  `validateNextAction` mirrors `validateDropsAndResolvesSeq`: `directives`, when present, must be an array of
+  objects each with a non-empty-string `kind`; `computedFrom`, when present, a positive integer. Event shape:
+  `{ type:'next-action', directives:[…], computedFrom:<seq> }`.
+- **`reconcile.mjs`:** after the self-check (T2.4 slots the gate in front of this; T2.3 builds the happy path),
+  append the projected set: `append(effortRoot, { type:'next-action', directives, computedFrom }, { regen:true })`.
+  `computedFrom` = the ledger seq **at computation time** — reconcile's in-scope `ledger` array (read at
+  ~line 158) is STALE after its own `node-downgraded` appends, so re-read the latest seq
+  (`readJsonl(ledgerPath)`; `arr.length ? arr[arr.length-1].seq : 0`) immediately before this append. The
+  append's return gives the new event's seq back as `result.event.seq` if needed.
+- **`lib/progress-map.mjs`:** the mirror renders the **latest** `next-action` event on every regen (survives
+  the wholesale clobber by construction — §7.1):
+  - `writeMirror`/`composeProgressMd`: scan the ledger for the latest `next-action` event; render its
+    `directives` into (a) `progress.json.nextAction` — a **string** (session-start.mjs already reads
+    `p.nextAction` as a trimmed string, the one contract to match) and (b) a `▶ NEXT` block atop `progress.md`
+    (slot it beside the existing `⚠ inbox` blockquote, after the header/counts line). Include the **mechanical
+    staleness** marker: `computed at seq <computedFrom> — <K> events since`, K = `latestSeq − computedFrom`.
+  - `EVENT_MAP`: give `next-action` an entry so the fold does not fall to `legacyFallback` (it should NOT
+    create a tree node — it is a header projection, not a lifecycle event; render it in the mirror composition,
+    not as a tree op).
+  - **Windows rename hardening (layer0-checkpoint flag #4):** wrap `atomicWrite`'s `renameSync` in a **bounded
+    retry on `EPERM`/`EBUSY`** (a concurrent Windows reader can transiently block the rename; today it throws
+    and is swallowed as advisory `mirrorError`, lagging the mirror one behind). A few retries with a tiny
+    synchronous backoff, then give up as today (still advisory, never fatal).
+- **Scope:** `lib/ledger.mjs`, `lib/reconcile.mjs`, `lib/progress-map.mjs`, tests (regen-clobber regression:
+  an append AFTER reconcile re-renders — never erases — the NEXT block; latest-`next-action`-wins; the K
+  counter; the hook path renders but never computes).
+
+### T2.4 — the output self-check (the projection's adversarial verification, §7.4)
+
+- **`lib/next-action.mjs`:** add `export function selfCheckDirectives(directives, context)` →
+  `{ directives, refusals:[{ directive, reason }] }`. Pure, mechanical, non-LLM. Refuses-with-reason:
+  - never `DISPATCH`/`RUNNING` a WO with an **unresolved `amendment` drop or `node-downgraded`** (the drop is
+    authoritative over file/journal existence — kills WO resurrection);
+  - never `DISPATCH` a WO the **redispatch-guard** flags — call the guard's existing predicate
+    (`redispatch-guard.mjs`), which keys on hash-matched dead-end/verdict + unresolved amendment drop, **never
+    `node-failed`** (Correction E);
+  - never `OPEN` a **retired** slice (not in `route.slices`); never `LAND` when the frontier is non-empty.
+- **`reconcile.mjs` wiring:** gate the projected set through `selfCheckDirectives` **before** the T2.3 append.
+  A refused directive is replaced by a `DECIDE` carrying the refusal reason (so a resurrection attempt surfaces
+  as "decide", never as a silent DISPATCH). In **autonomous** mode a refused directive is **not auto-executed**
+  — it escalates (surfaced, logged), matching §7.4.
+- **Scope:** `lib/next-action.mjs` (add `selfCheckDirectives`), `reconcile.mjs` (insert the gate), tests
+  (resurrection refused: a ledger-dropped WO whose file was restored → self-check turns DISPATCH into DECIDE;
+  retired-slice OPEN refused; LAND-with-nonempty-frontier refused).
+
+### T2.doc — Layer-2 doc-sync + version bump 2.5.0 → 2.6.0
+
+`route.json` + the `next-action` ledger grammar → `docs/artifacts.md` (both `*`, machine-parsed); `▶ NEXT`
+mirror render + the K-counter → D19 in DESIGN/architecture; the `nextAction` directive-set model + self-check
+→ §7 cross-refs; correct the stale `route-planner.md:145-146` "merged/green" prose (Correction C). Version
+bump minor (backward-compatible new capability). Note the external `marketplace.json` at handoff.
+
 ## Layer 0
 
 ### T0.1 — work-order status ledger fold — `lib/wo-status.mjs` (new)
