@@ -27,9 +27,15 @@ placeholder:
 answer can be obtained (a truly non-interactive start), take the safe default **gated + full** and log
 that the safe default was assumed; **never** default toward autonomous or lite. When unsure, ask.
 
-Write the resolved values into `.reasonable/config.json`:
+Write the resolved values — and the effort's **birth signature** — into `.reasonable/config.json`:
 - `"runMode"` ∈ `"gated" | "autonomous"` (fence-protected — an agent cannot self-promote the mode).
 - `"tier"` ∈ `"full" | "lite"` (the effort default; fence-protected — an agent cannot self-lower it).
+- `"effort"` — the effort **name**: a short, stable, human-readable slug for *what this effort is
+  about*, taken from the user's stated goal in this invocation. This is the effort's **birth signature**
+  — the durable mark that later tells a born effort (even a crashed one) apart from a stray directory:
+  `effortBirthState` reads it, `conclude` archives under it, and analysis (Step 7a) slugs it into the
+  `effort/<name>` branch. Write it **now, non-empty** — never leave it blank (a missing signature reads
+  as a foreign/hand-edited effort and HALTs recovery). Fence-protected, like the axes above.
 
 **Open the execution tree's first node.** The instant config is durable, plant `analysis` as the tree's
 root phase node and mark it running, so the progress tree has real content from step 0 — not just once
@@ -178,8 +184,9 @@ apply *Mode behavior*: **gated** → STOP and wait for explicit approval (silenc
 **autonomous** → decide, self-ratify, and LOG — except the five always-escalate classes, which queue
 BREAKING even while autonomous.
 
-0. **Resolve and record the two axes (Step 0 above).** Write `config.runMode`, `config.tier`, and the
-   supervision profile. Mode and tier are **never inferred** — only this explicit invocation sets them.
+0. **Resolve and record the two axes + the birth signature (Step 0 above).** Write `config.runMode`,
+   `config.tier`, `config.effort` (the effort-name birth signature), and the supervision profile. Mode
+   and tier are **never inferred** — only this explicit invocation sets them.
 1. **Triage + methodology.** Read `using-reasonable` for the precedence rules, the triage table (is the
    methodology even applicable?), the Three Laws, and where things live. Triage may still route *out* (a
    first-class verdict) — but once you commit to a `reasonable` effort, the protocol is absolute. (A
