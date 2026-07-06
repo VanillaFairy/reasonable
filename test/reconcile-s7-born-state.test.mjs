@@ -73,7 +73,8 @@ check("missing-signature config ({runMode:'gated'}, no effort) → HALT with eff
   const ev = bornEvidence(r);
   assert.ok(ev, `the halt evidence must carry an effortBirthState entry; got ${JSON.stringify(r.evidence)}`);
   assert.equal(ev.evidence.effortBirthState, 'missing-signature');
-  assert.match(r.haltReason, /birth-state/i);
+  assert.match(r.haltReason, /birth signature/i);
+  assert.match(r.haltReason, /"effort"/, 'the missing-signature HALT must name the concrete fix (add the "effort" field)');
 });
 
 // ── corrupt — already halts incidentally (runMode-absent); now ALSO carries born-state evidence ──
