@@ -27,10 +27,48 @@ export function effortBirthState(effortRoot)  // -> { state, reason? }
   runMode-absent HALT (S7) keys off `effortBirthState(root).state !== 'absent'` so a crashed effort HALTs
   instead of silently skipping; `resolveActiveEffort` (T1.2) uses it to decide "born".
 
-### T1.2 — path normalization + `resolveActiveEffort` — pinned when Wave 1b opens
-### T1.3 — birth-location policy — pinned when it opens
-### T1.4 — lifecycle + `reasonable:abandon` — pinned when it opens
-### T1.5 — multi-effort briefing — pinned when it opens
+### T1.2 — path normalization + `resolveActiveEffort` — `lib/effort.mjs`, `lib/reconcile.mjs`
+
+- **Path-norm hygiene:** `rootFromArgv` returns `norm(resolve(...))` at the source (today it returns bare
+  `resolve()`), so every current + future caller gets a forward-slash path by construction. **Hoist**
+  `foldPath`/`samePath`/`underPath` from `reconcile.mjs:80-82` (module-local, win32-lowercasing) into
+  `effort.mjs` as **exported** helpers; `reconcile.mjs` imports them (behavior identical — do not change the
+  win32-lowercase semantics). New discovery code uses `samePath`/`foldPath`, never naive `===`/`startsWith`.
+- **`resolveActiveEffort(cwd)`** — an ADDITIVE wrapper used ONLY at the repo-root interactive SessionStart
+  path (T1.5 wires it in). Do NOT replace `findEffortRoot`/`rootFromArgv` — the ~19 up-walk callers keep them.
+```js
+export function resolveActiveEffort(cwd)  // -> { kind, root?, roots?, strays? }
+//   { kind:'resolved', root }         — exactly one born effort (up-walk hit, or a single down-scan hit)
+//   { kind:'none', strays:[...] }     — no born effort; strays = config-less `.reasonable` dirs found (never adopted)
+//   { kind:'multiple', roots:[...] }  — >1 born effort (NORMAL for parallel efforts)
+```
+  Algorithm (spec §6.2): (1) `up = findEffortRoot(cwd)`; if `up` and `effortBirthState(up).state !== 'absent'`
+  → `{kind:'resolved', root:up}`. (2) else down-scan BORN efforts: `repoRoot = git rev-parse --show-toplevel`
+  (fallback cwd); candidates = direct children of `repoRoot/.reasonable-efforts/` where
+  `existsSync(join(child,'.reasonable','config.json'))` (EXACT path, never prefix) AND name not matching
+  `/(-bak|\.bak|\.old|\.orig|\.archive|_copy)$/i` (BACKUP_EXCLUDE) AND `effortBirthState(child).state !== 'absent'`
+  — union `repoRoot/.reasonable` if born. 0 → `{kind:'none', strays}`; 1 → `{kind:'resolved', root}`; N →
+  `{kind:'multiple', roots}`. (3) A `.reasonable` dir found at depth ≠ 1 under `.reasonable-efforts/` → a LOUD
+  diagnostic (in `strays`/a note), never silent. `.reasonable.done-*` / `.reasonable.abandoned-*` never match born.
+  This ONE function may use git (`git rev-parse`) — it is the discovery entry, unlike the pure `effortBirthState`.
+
+### T1.4a — the abandon COMMAND — `lib/abandon.mjs` (new), `lib/ledger.mjs`, a `reasonable:abandon` skill/command
+
+- Clone `lib/conclude.mjs` (top-level script, no export/CLI-guard; `node abandon.mjs [path] [--root <p>]`):
+  read effort via `rootFromArgv`; fail-open if none; `effort = loadConfig(...).effort || 'effort'`; refuse if
+  the archive dir already exists; append a **`type:'abandoned'` ledger event** via the controller (regen-on;
+  fatal if `!ok`); run the same commit-gate (commit residual in-scope work product, HALT if still dirty);
+  `renameSync(.reasonable → .reasonable.abandoned-<effort>)`; commit the tracked deletion. Mirrors conclude
+  exactly, only the archive suffix + event type differ.
+- **Ledger grammar:** add `'abandoned'` to `EVENT_SCHEMAS` (required `[]`, like `'concluded'`),
+  `FAMILY_1_TYPES`, and `progress-map.mjs` `EVENT_MAP` (map it to a terminal note, mirroring `'concluded'`).
+- Add a `reasonable:abandon` user-invocable skill/command (mirror how `conclude` is surfaced — check how
+  conclude is invoked and follow that pattern).
+- Scope is disjoint from T1.2 (abandon.mjs/ledger/skill vs effort.mjs/reconcile) → **Wave 1b runs T1.2 ∥ T1.4a**.
+- Does NOT compute lifecycle STATE (that's T1.3's reconcile work). This is just the command + its event.
+
+### T1.3 — birth-location policy + lifecycle-state — pinned when Wave 1c opens (reconcile + fence + develop)
+### T1.5 — multi-effort briefing — pinned when Wave 1d opens (session-start)
 
 (Layer-1 is largely SEQUENTIAL — `effort.mjs` (T1.1/T1.2/T1.3) and `reconcile.mjs` (T1.2/T1.3) are the hot
 files. Tentative order, finalized per wave: **T1.1** foundation → **T1.2** path-norm + `resolveActiveEffort`
