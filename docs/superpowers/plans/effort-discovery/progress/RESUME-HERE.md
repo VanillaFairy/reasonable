@@ -52,11 +52,16 @@ complete (code + doc-sync). Plugin at **v2.5.0**. Next up: Layer 2.
      files are RED against the pre-task commit.
 
    **LAYER 2 CODE COMPLETE** — T2.1–T2.4 merged, suite 48/48. Only T2.doc + final remain.
-   - **T2.doc** (NEXT) — doc-sync (route.json + `next-action` grammar `*`, `progress.json.nextAction`/`▶ NEXT`
+   - **T2.doc DONE** (`8987cd9`, suite 48/48) — doc-sync (route.json + `next-action` grammar `*`, `progress.json.nextAction`/`▶ NEXT`
      D19 render + K-staleness, §7 projection-SET + self-check + the AMBIGUOUS=unsettleable-config vs HALT=
      floor-STOP taxonomy, `redispatchBlock`/Correction F, fix stale `route-planner.md:145-146` merged/green
      prose per Correction C) + version bump 2.5.0 → 2.6.0.
-2. **Final:** whole-implementation review + `finishing-a-development-branch`.
+**✅ ALL THREE LAYERS COMPLETE** — Layer 0 (v2.4.0) · Layer 1 (v2.5.0) · Layer 2 (v2.6.0). Suite 48/48 green at
+branch tip `8987cd9`. The effort's CODE is done.
+
+2. **Final (NEXT):** whole-implementation review + `finishing-a-development-branch` (the USER decides
+   merge/PR/cleanup — do NOT merge to master without consent). **Handoff flag:** bump the external
+   `vanillafairy/.claude-plugin/marketplace.json` `reasonable` entry (currently stale `1.11.1`) to `2.6.0`.
 
 ## Carried FORWARD-FLAGS (must not be lost)
 
