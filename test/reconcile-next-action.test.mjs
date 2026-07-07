@@ -12,11 +12,12 @@
 
 import assert from 'node:assert';
 import { execFileSync } from 'node:child_process';
-import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, rmSync, existsSync } from 'node:fs';
+import { mkdtempSync, mkdirSync, writeFileSync, appendFileSync, readFileSync, rmSync, existsSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, dirname } from 'node:path';
 
 import { reconcile, briefing } from '../lib/reconcile.mjs';
+import { hashWorkOrder } from '../lib/redispatch-guard.mjs';
 
 const git = (cwd, ...args) => execFileSync('git', args, { cwd, stdio: ['ignore', 'pipe', 'pipe'] }).toString();
 const write = (root, rel, content) => {
@@ -194,6 +195,43 @@ check('briefing() renders a NEXT line from result.nextAction', () => {
   });
   const text = briefing(reconcile(root));
   assert.match(text, /NEXT: .*DISPATCH slice slice-1 → WO-1/, 'the briefing carries a NEXT line beside Lifecycle');
+});
+
+// ── 6. the output self-check (§7.4, S12): a guard-flagged WO is REFUSED (DECIDE), never DISPATCHed ──
+// A WO with a node-planned (the fold reads it PENDING — a verdict is Family 3, ignored by wo-status) so the
+// projection WOULD DISPATCH it, PLUS a hash-matched refutation-surviving infeasibility verdict. The gap the
+// self-check closes: the fold/projection alone would resurrect a confirmed dead end; the self-check refuses
+// it with the SAME redispatch-guard predicate (redispatchBlock) and downgrades it to a DECIDE — BEFORE the
+// projection is persisted, so the next-action event never records a DISPATCH of the flagged WO.
+check('reconcile().nextAction: a hash-matched dead-ended WO is refused (DECIDE), never DISPATCHed; the persisted event carries the DECIDE', () => {
+  const spec = { verticalSlice: 'slice-1', dependsOn: [] };
+  const root = newEffort({
+    workOrders: { 'WO-dead': { role: 'implementer', verticalSlice: 'slice-1' } },
+    specs: { 'WO-dead': spec },
+    route: { slices: ['slice-1'] },
+    ledger: [{ seq: 1, type: 'node-planned', node: 'WO-dead', kind: 'work-order', title: 'infeasible' }],
+  });
+  // The verdict's `hash` must equal the WO's CURRENT input hash for the guard to bind (Defect B) — compute
+  // it the same way the guard does. (The id does not enter the hash; hashWorkOrder folds gate + spec +
+  // contracts only.) A bare spec (no gate/inputs/contracts) hashes the empty string, deterministically.
+  const hash = hashWorkOrder(root, spec);
+  appendFileSync(join(root, '.reasonable', 'ledger.jsonl'),
+    JSON.stringify({ seq: 2, type: 'verdict', workOrder: 'WO-dead', kind: 'infeasible', survivedSkeptic: true, hash }) + '\n');
+
+  const r = reconcile(root);
+  assert.ok(!dispatchIds(r).includes('WO-dead'),
+    'a redispatch-guard-flagged (dead-ended) WO is NEVER DISPATCHed — the self-check refuses it');
+  const decides = (r.nextAction || []).filter((d) => d.kind === 'DECIDE');
+  assert.ok(decides.some((d) => /WO-dead/.test(d.detail || '')),
+    'the refused DISPATCH is downgraded to a DECIDE naming WO-dead (S12: dead-end/drop authoritative over the on-disk spec)');
+  // The self-check runs BEFORE the persist: the next-action event carries the DECIDE, not a DISPATCH.
+  const na = readLedger(root).filter((l) => l.type === 'next-action').pop();
+  assert.ok(na && Array.isArray(na.directives) && na.directives.some((d) => d.kind === 'DECIDE' && /WO-dead/.test(d.detail || '')),
+    'the PERSISTED next-action event carries the self-checked DECIDE, never a DISPATCH of the flagged WO');
+  assert.ok(!na.directives.some((d) => d.kind === 'DISPATCH' && (d.workOrders || []).includes('WO-dead')),
+    'no persisted DISPATCH names the flagged WO');
+  assert.ok((r.notes || []).some((n) => /self-check refused/.test(n) && /WO-dead/.test(n)),
+    'reconcile surfaces a self-check refusal note');
 });
 
 for (const t of tmps) { try { rmSync(t, { recursive: true, force: true }); } catch { /* best effort */ } }

@@ -11,7 +11,7 @@
 //   kind ∈ 'HALT'|'AMBIGUOUS'|'DECIDE'|'RUNNING'|'DISPATCH'|'RETRO'|'OPEN'|'LAND'|'CONCLUDE'|'DONE'
 
 import assert from 'node:assert';
-import { projectDirectives } from '../lib/next-action.mjs';
+import { projectDirectives, selfCheckDirectives } from '../lib/next-action.mjs';
 
 let passed = 0;
 function check(name, fn) {
@@ -286,6 +286,117 @@ check('projectDirectives tolerates a sparse/garbage state without throwing', () 
   assert.doesNotThrow(() => projectDirectives({}));
   assert.doesNotThrow(() => projectDirectives(undefined));
   assert.deepEqual(projectDirectives({ lifecycle: 'active' }), []);
+});
+
+// ── 8. the output self-check — selfCheckDirectives (T2.4, §7.4) ──────────────────────────
+// A pure, mechanical adversary applied to the PROJECTION: it refuses a directive that would
+// resurrect a drop-authoritative / dead-ended WO (guard-flagged), open a retired slice, or LAND
+// over a non-empty frontier, and REPLACES it with a reasoned DECIDE (which never auto-executes →
+// escalates in both modes). Everything else passes through, order preserved.
+
+function ctx(o = {}) {
+  return {
+    guardBlocked: o.guardBlocked ?? {},
+    routeSlices: o.routeSlices ?? [],
+    frontierNonEmpty: o.frontierNonEmpty ?? false,
+  };
+}
+
+check('self-check: a DISPATCH of a guard-blocked WO becomes a DECIDE carrying the reason (S12)', () => {
+  const dispatch = { kind: 'DISPATCH', slice: 's1', workOrders: ['WO-X'] };
+  const { directives, refusals } = selfCheckDirectives([dispatch],
+    ctx({ guardBlocked: { 'WO-X': { reason: 'dropped by an unresolved amendment (ledger seq 2)' } } }));
+  assert.equal(directives.length, 1);
+  assert.equal(directives[0].kind, 'DECIDE', 'a refused DISPATCH is downgraded to DECIDE (never auto-executes)');
+  assert.match(directives[0].detail, /WO-X/, 'the DECIDE names the offending WO');
+  assert.match(directives[0].detail, /amendment/, 'the DECIDE carries the guard reason');
+  assert.equal(refusals.length, 1);
+  assert.deepEqual(refusals[0].directive, dispatch, 'the refusal records the original directive');
+});
+
+check('self-check: a DISPATCH of a clean WO (not guard-blocked) passes through unchanged', () => {
+  const dispatch = { kind: 'DISPATCH', slice: 's1', workOrders: ['WO-OK'] };
+  const { directives, refusals } = selfCheckDirectives([dispatch], ctx({ guardBlocked: {} }));
+  assert.deepEqual(directives, [dispatch]);
+  assert.equal(refusals.length, 0);
+});
+
+check('self-check: a RUNNING of a guard-blocked WO becomes a DECIDE (dead-end resurrection)', () => {
+  const running = { kind: 'RUNNING', workOrders: ['WO-D'] };
+  const { directives, refusals } = selfCheckDirectives([running],
+    ctx({ guardBlocked: { 'WO-D': { reason: 'a refutation-surviving infeasibility verdict (ledger seq 4)' } } }));
+  assert.equal(directives[0].kind, 'DECIDE');
+  assert.match(directives[0].detail, /WO-D/);
+  assert.equal(refusals.length, 1);
+});
+
+check('self-check: an OPEN of a retired slice (not in routeSlices) becomes a DECIDE', () => {
+  const { directives, refusals } = selfCheckDirectives(
+    [{ kind: 'OPEN', slice: 's-retired' }], ctx({ routeSlices: ['s1', 's2'] }));
+  assert.equal(directives[0].kind, 'DECIDE');
+  assert.equal(directives[0].slice, 's-retired', 'the DECIDE keeps the offending slice');
+  assert.equal(refusals.length, 1);
+});
+
+check('self-check: an OPEN of a slice that IS in the ratified route passes through', () => {
+  const open = { kind: 'OPEN', slice: 's2' };
+  const { directives, refusals } = selfCheckDirectives([open], ctx({ routeSlices: ['s1', 's2'] }));
+  assert.deepEqual(directives, [open]);
+  assert.equal(refusals.length, 0);
+});
+
+check('self-check: a LAND while the frontier is non-empty becomes a DECIDE', () => {
+  const { directives, refusals } = selfCheckDirectives([{ kind: 'LAND' }], ctx({ frontierNonEmpty: true }));
+  assert.equal(directives[0].kind, 'DECIDE');
+  assert.match(directives[0].detail, /frontier/i);
+  assert.equal(refusals.length, 1);
+});
+
+check('self-check: a LAND with an empty frontier passes through', () => {
+  const land = { kind: 'LAND' };
+  const { directives, refusals } = selfCheckDirectives([land], ctx({ frontierNonEmpty: false }));
+  assert.deepEqual(directives, [land]);
+  assert.equal(refusals.length, 0);
+});
+
+check('self-check Correction F: a downgraded WO that is NOT guard-blocked still DISPATCHes (anti-wedge)', () => {
+  // A node-downgraded WO is the D19 legitimate reopen — refusing it would wedge crash recovery. It is
+  // NOT in guardBlocked (the guard binds only drop / dead-end, never node-downgraded), so the self-check
+  // must NOT refuse it. The anti-wedge for the self-check itself (Correction F, §7.4).
+  const dispatch = { kind: 'DISPATCH', slice: 's1', workOrders: ['WO-reopened'] };
+  const { directives, refusals } = selfCheckDirectives([dispatch], ctx({ guardBlocked: {} }));
+  assert.deepEqual(directives, [dispatch]);
+  assert.equal(refusals.length, 0);
+});
+
+check('self-check: a DISPATCH mixing a clean and a guard-blocked WO refuses the WHOLE directive (pinned)', () => {
+  const { directives, refusals } = selfCheckDirectives(
+    [{ kind: 'DISPATCH', slice: 's1', workOrders: ['WO-ok', 'WO-bad'] }],
+    ctx({ guardBlocked: { 'WO-bad': { reason: 'dropped' } } }));
+  assert.equal(directives[0].kind, 'DECIDE', 'the whole DISPATCH is refused, not split');
+  assert.match(directives[0].detail, /WO-bad/, 'only the offending id is named as the blocker');
+  assert.equal(refusals.length, 1);
+});
+
+check('self-check preserves order and passes non-targeted kinds through untouched', () => {
+  const input = [
+    { kind: 'DECIDE', workOrder: 'WO-blk' },                      // a pre-existing DECIDE (untouched)
+    { kind: 'RUNNING', workOrders: ['WO-bad'] },                  // refused → DECIDE
+    { kind: 'DISPATCH', slice: 's1', workOrders: ['WO-good'] },   // clean → passes
+    { kind: 'RETRO', slice: 's0' },                               // untargeted → passes
+  ];
+  const { directives } = selfCheckDirectives(input,
+    ctx({ guardBlocked: { 'WO-bad': { reason: 'dropped' } }, routeSlices: ['s0', 's1'] }));
+  assert.deepEqual(kinds(directives), ['DECIDE', 'DECIDE', 'DISPATCH', 'RETRO'], 'order preserved');
+  assert.deepEqual(directives[0], { kind: 'DECIDE', workOrder: 'WO-blk' }, 'the pre-existing DECIDE is untouched');
+  assert.deepEqual(directives[2], { kind: 'DISPATCH', slice: 's1', workOrders: ['WO-good'] });
+  assert.deepEqual(directives[3], { kind: 'RETRO', slice: 's0' });
+});
+
+check('self-check tolerates empty / garbage input without throwing', () => {
+  assert.deepEqual(selfCheckDirectives([], ctx()), { directives: [], refusals: [] });
+  assert.doesNotThrow(() => selfCheckDirectives(undefined, undefined));
+  assert.deepEqual(selfCheckDirectives(undefined, undefined), { directives: [], refusals: [] });
 });
 
 if (process.exitCode) console.error(`\nnext-action: FAILURES above (${passed} passed).`);
