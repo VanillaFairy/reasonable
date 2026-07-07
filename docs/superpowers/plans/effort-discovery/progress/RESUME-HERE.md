@@ -59,9 +59,25 @@ complete (code + doc-sync). Plugin at **v2.5.0**. Next up: Layer 2.
 **✅ ALL THREE LAYERS COMPLETE** — Layer 0 (v2.4.0) · Layer 1 (v2.5.0) · Layer 2 (v2.6.0). Suite 48/48 green at
 branch tip `8987cd9`. The effort's CODE is done.
 
-2. **Final (NEXT):** whole-implementation review + `finishing-a-development-branch` (the USER decides
-   merge/PR/cleanup — do NOT merge to master without consent). **Handoff flag:** bump the external
-   `vanillafairy/.claude-plugin/marketplace.json` `reasonable` entry (currently stale `1.11.1`) to `2.6.0`.
+2. **Final review DONE** — a fresh read-only whole-implementation reviewer over the Layer-2 pipeline returned
+   **SHIP-WITH-NITS**: pipeline coherent end-to-end (order correct, self-check gates before persistence,
+   producer/consumer contracts align, purity holds, Corrections C/D/E/F honored in code, docs match parsers,
+   §7.1–7.4 + S12 realized). Two LOW findings, both addressed:
+   - **F2 FIXED** (`a3b3ba8`, patch bump → **2.6.1**) — the reconcile self-check skipped the redispatch-guard
+     for a WO whose spec file was absent (`if(!spec) continue`), but the amendment-drop binding needs no spec,
+     so a dropped WO re-dispatched into a live fold state could slip past as RUNNING once its spec was deleted.
+     Now the guard runs regardless of spec presence (drop authoritative over file existence, S12). New test #7
+     in `reconcile-next-action.test.mjs`, RED pre-fix.
+   - **F1 documented** — the self-check's OPEN/LAND rules are defense-in-depth (unreachable under the current
+     projection, which shares their ground truth); commented in `next-action.mjs`. The RUNNING whole-directive-
+     refusal nit is accepted (safe → DECIDE; a guard-blocked *running* WO is itself an inconsistent state).
+
+**🎉 EFFORT COMPLETE** — all three layers + final review + fix. Branch `effort-discovery-truth-consistency` @
+`a3b3ba8`, plugin **v2.6.1**, suite **48/48 green at every commit**. Only the human integration decision
+remains (merge to `master` / PR / keep the branch — NOT done autonomously).
+
+**Handoff flag:** bump the external `vanillafairy/.claude-plugin/marketplace.json` `reasonable` entry
+(currently stale `1.11.1`) to `2.6.1` — it lives one level up, outside this repo, and is synced manually.
 
 ## Carried FORWARD-FLAGS (must not be lost)
 
