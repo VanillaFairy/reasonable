@@ -131,7 +131,8 @@ stays allowed; only a raw `Edit`/`Write`/`>>`/`tee`/`cp` onto the file is denied
   intention.md             # the cited oracle (grilled decision-policy; scope: full|micro)
   topology.md              # the topology sketch
   baseline.json *          # brownfield regression floor + trusted promotions (absent greenfield)
-  route.md                 # ordered vertical-slice frontier (human-editable)
+  route.md                 # ordered vertical-slice frontier (human-editable, NEVER parsed)
+  route.json *             # machine twin of route.md — the ratified slice ORDER only
   journal.json *           # execution state of record (single writer: orchestrator)
   ledger.jsonl *           # append-only event log
   supervision.json *       # profile + default budgets
@@ -366,6 +367,49 @@ whole effort**. The mechanism, deterministic and escalation-free:
 Both are **null on an effort that predates this field** — then lanes are cut from
 bare HEAD (the legacy behaviour) and there is no base to validate against.
 `config.json` is fence-protected, so an agent cannot self-edit the branch pair.
+
+---
+
+## route.json *
+
+The **machine twin of `route.md`** (Layer 2) — the ratified vertical-slice frontier, in the exact
+shape the deterministic `nextAction` projection (`lib/next-action.mjs`) needs to order its `DISPATCH`/
+`RETRO`/`OPEN` directives. `route.md` itself is **demoted to pure human narration and is never
+parsed** — every reader that needs the order machine-readably reads `route.json` instead.
+
+```json
+{ "slices": ["expr-eval", "confirm-delete", "…"], "ratifiedAt": "2026-07-06T10:00:00.000+02:00", "ledgerSeq": 42 }
+```
+
+- `slices` — the full ordered vertical-slice frontier from the ratified route, best-first, `slices[0]`
+  the walking skeleton. **No other fields** — no per-slice tier, no DAG; those stay in
+  `route.md`/`config.json`. WO→slice membership is **not** restated here — it stays on each work
+  order's own `verticalSlice` (`work-orders/<id>.json`, below); `route.json` carries the slice *order*
+  only.
+- `ratifiedAt` / `ledgerSeq` — the local-ISO timestamp and the ledger `seq` (`0` if the ledger was still
+  empty) read at the **moment of ratification** — a back-pointer into the ledger, not a live pointer
+  (rewriting `route.json` at a later re-sort stamps a fresh pair, it never edits history).
+
+**Written by the orchestrator only** — `route.json` sits in the same bucket as `route.md` in the
+role×artifact fence matrix (`SEALED`: config/supervision/vision/route/verdicts/knowledge/… — no role
+gets it, only the main session), so this artifact needed **no fence change**. Two write points, kept in
+sync **by construction**: `analysis` step 10a persists it right after the human ratifies the initial
+route (before the route's nodes are planted in the ledger); `retro` step 5 rewrites it whenever a
+vertical-slice gate re-sorts `route.md`. Never hand-patched out of sync with the human-narrated file.
+
+**Read by `lib/route.mjs`'s `readRoute(effortRoot)`** → `{ route: {slices, ratifiedAt, ledgerSeq} |
+null, diagnostic: string | null }` — conservative by construction, exactly like `effortBirthState`'s
+absent-vs-corrupt split:
+- **absent** (no such file — a pre-Layer-2 or pre-ratification effort) → `{ route: null, diagnostic:
+  null }`. Legitimate, not an error.
+- **present but malformed** (not valid JSON, not an object, or `slices` missing / not an array of
+  non-empty strings) → `{ route: null, diagnostic: '<reason>' }`. Never a partial repair — a broken
+  file degrades the frontier (`nextAction` omits slice ordering — `RETRO`/`OPEN` are suppressed — while
+  WO-level directives and `LAND`/`CONCLUDE` stay unaffected), it never halts `reconcile()` and never
+  fabricates an order.
+- **valid** → `{ route: {slices, ratifiedAt, ledgerSeq}, diagnostic: null }`, `slices` in on-disk order,
+  unmodified; a malformed `ratifiedAt`/`ledgerSeq` individually degrades to `null` without invalidating
+  an otherwise-valid `slices` array.
 
 ---
 
@@ -630,13 +674,15 @@ The rest of the vocabulary is unchanged by this refactor — same types, same fi
 meaning: `enrichment`, `amendment`, `characterization`, `characterization-promotion`,
 `change-characterized`, `change-characterized-planned`, `verdict`, `verifier-verdict`,
 `scope-expansion`, `budget-extension`, `dead-end`, `ratification`, `intent-check-failure`,
-`commit` (plus the pre-existing `correction`, D21, orthogonal to this vocabulary). They are
+`commit` (plus the pre-existing `correction`, D21, orthogonal to this vocabulary), and — new
+in Layer 2 — `next-action` (below). They are
 validated loosely — a known type is accepted; `enrichment`/`characterization` additionally
 require `component`. The only thing that changed is where they land: if the event carries a
 `workOrder` and no `node`, the controller stamps `node` when the id resolves (best-effort
 here, unlike Family 1/2 — an unresolvable `workOrder` just leaves the event node-less rather
 than failing the append). Every Family-3 event folds to **exactly one annotation note** on
-its resolved node (or the effort root, if it has none) — domain color, never structure.
+its resolved node (or the effort root, if it has none) — domain color, never structure
+(`next-action` is the one deliberate exception — it folds to *no* tree op at all; see below).
 
 ```jsonl
 {"seq":1,"ts":"2026-07-02T10:00:00Z","type":"node-planned","node":"expr-eval","kind":"slice","title":"expr-eval"}
@@ -666,7 +712,8 @@ its resolved node (or the effort root, if it has none) — domain color, never s
 {"seq":25,"ts":"...","type":"verifier-verdict","component":"store","diffRef":"src/store/delete.rs","verdict":"accept","oracle":"baseline-intent","by":"intent-verifier","proposed":true,"commit":"sha256:…"}
 {"seq":26,"ts":"...","type":"correction","supersedes":25,"workOrder":"WO-21","commit":"sha256:…","reason":"seq 25 recorded a SHA that does not resolve in git"}
 {"seq":27,"ts":"...","type":"amendment","component":"route","direction":"weaken","approvedBy":"human","reason":"WO-9 retired by a replan; successor WO-30","drops":[{"workOrder":"WO-9","supersededBy":"WO-30"}]}
-{"seq":28,"ts":"...","type":"concluded","effort":"fireside-widget"}
+{"seq":28,"ts":"...","type":"next-action","directives":[{"kind":"DISPATCH","slice":"confirm-delete","workOrders":["WO-21"]}],"computedFrom":27}
+{"seq":29,"ts":"...","type":"concluded","effort":"fireside-widget"}
 ```
 
 (A walked-away effort's last line reads the same shape with `"type":"abandoned"` instead of
@@ -678,8 +725,8 @@ Event `type` values, by family — **Family 1:** `node-planned`, `node-dispatche
 `report-canceled`. **Family 3:** `enrichment`, `amendment`, `characterization`,
 `characterization-promotion`, `change-characterized`, `change-characterized-planned`,
 `verdict`, `verifier-verdict`, `scope-expansion`, `budget-extension`, `dead-end`,
-`ratification`, `intent-check-failure`, `commit`, and the pre-existing `correction` (D21,
-untouched by this vocabulary). The ratchet's invariant carries over unchanged: an `amendment`
+`ratification`, `intent-check-failure`, `commit`, `next-action` (Layer 2, below), and the
+pre-existing `correction` (D21, untouched by this vocabulary). The ratchet's invariant carries over unchanged: an `amendment`
 with `direction:"weaken"` requires `approvedBy:"human"` (or `"retro"`) — the engine flags any
 weakening lacking it.
 
@@ -753,6 +800,23 @@ The additions:
   `workOrder`, `commit` (the SHA), `role`, `by:"commit-record"`. It is a **custody
   anchor, not a verdict** — it accounts the commit for recovery and claims nothing
   about green-ness. Idempotent (one line per SHA); fail-open.
+
+- `next-action` (Layer 2, §7.1 of the effort-discovery/truth-consistency spec) — the deterministic
+  decision projection (`lib/next-action.mjs` `projectDirectives`), **persisted** so the directive
+  survives the next wholesale progress-mirror rebuild by construction (it lives in the truth log, never
+  poked into `progress.json` out of band). Shape:
+  `{ type:'next-action', directives:[{kind, slice?, workOrders?, workOrder?, detail?}, …], computedFrom? }`.
+  `directives`, when present, is an array whose every element is an object with a **non-empty-string**
+  `kind` — the rest (`slice`/`workOrders`/`workOrder`/`detail`) is free-form, shaped by whichever
+  directive kind it is; the controller does not over-validate it. `computedFrom`, when present, is a
+  **positive integer** — the 1-based ledger `seq` that was latest at projection time; an **empty-ledger**
+  projection has no such seq and simply **omits** the field (never `0`). `reconcile()` appends **exactly
+  one** `next-action` event per call — a projection, not a state change: the work-order-status fold
+  (`lib/wo-status.mjs`) **ignores** it entirely, and `progress-map.mjs`'s `EVENT_MAP` maps it to **no
+  tree op** (an explicit `() => []` entry, so it never falls through to the generic domain-note
+  fallback and never stamps a spurious note on the root). See the `progress.json`/`progress.md` section
+  below for how the mirror re-derives it into `nextAction` + the `▶ NEXT` block, and `docs/DESIGN.md`
+  §5.12 / `docs/architecture.md` §12 for the projection's own decision logic and its output self-check.
 
 - `correction` — supersedes an EARLIER event's commit SHA with the real one (D21).
   The append-only ledger is never edited in place, so a bad SHA is fixed forward: a
@@ -870,6 +934,15 @@ other's temp. When the regen runs on the **locked** append path (`lib/ledger.mjs
 concurrent append; the unsynchronized callers (session-start and the `PostToolUse` refresh, which hold no
 lock) still can't tear it, thanks to the atomic swap.
 
+**Windows rename hardening (Layer 2).** The final `renameSync(tmp, target)` swap can transiently fail
+with `EPERM`/`EBUSY` on Windows when a concurrent reader — an editor, a pinned `progress.md` preview, an
+AV scanner — briefly holds the target with a blocking share mode. `atomicWrite` retries **only** those
+two error codes, up to 5 attempts with a small escalating synchronous backoff (10/20/30/40 ms — bounded,
+~100 ms worst case); every other error rethrows immediately (a bad path or a full disk is a real problem,
+never masked). After the last attempt it rethrows exactly as before — still advisory upstream (a failed
+regen degrades to a lagging mirror, `append()`'s caller sees a `mirrorError` note), never fatal to the
+ledger append itself.
+
 **Full replay, always — never a patch.** Every regen rebuilds the tree from scratch by
 folding *every* event in `ledger.jsonl`, in `seq` order, through `lib/progress-tree.mjs`'s
 `apply()`. Nothing is mutated incrementally. This is what makes the interpretation table
@@ -913,6 +986,31 @@ attempt subtree — the old attempt stays beside it as visible history.
   `failed` nodes that carry a `statusTs`; each note renders as its own child bullet,
   `- ✎ [ts?] text`); and, only when `inbox.json` has open items, a trailing
   `> ⚠ **inbox: N awaiting you** — <kinds>` banner.
+
+**`nextAction` + the `▶ NEXT` block (Layer 2, D19 render).** On **every** regen, `writeMirror` re-reads
+`ledger.jsonl` and re-derives the **latest** `next-action` event (highest `seq`; a tie goes to the later
+line in the file) via `lib/progress-map.mjs`'s `composeNextAction` — never a value carried forward from a
+prior render, so the directive **survives the wholesale mirror rebuild by construction**: it lives in the
+ledger, it is never poked into `progress.json` out of band. When at least one `next-action` event exists:
+- **`progress.json.nextAction`** — a trimmed **string**, the shape `session-start.mjs` reads directly for
+  the cheap multi-effort briefing (`docs/artifacts.md § reconcile() result`, below).
+- **`progress.md`**'s `▶ NEXT` block — a blockquote (`> ▶ **NEXT** — <string>`) sitting right under the
+  header/counts line, beside the ⚠ inbox banner's style, so the persisted directive is the first thing a
+  reader sees.
+
+Both render the **same string**: the directive set (`lib/progress-map.mjs`'s `renderDirectives` — one
+compact ` · `-joined line, `renderDirective` per directive, e.g. `DISPATCH slice confirm-delete →
+WO-21`; an empty set renders `(idle)`) plus a **mechanical staleness suffix** — `— computed at seq
+<computedFrom>, <K> event(s) since` (or `, fresh` when `K === 0`) — where `computedFrom` is the
+persisted event's own field (`0` when it was omitted, i.e. an empty-ledger projection) and `K` counts
+every ledger event with `seq > computedFrom` whose `type !== 'next-action'` (a `next-action` projection
+never counts toward its own — or a sibling projection's — staleness). Right after `reconcile()` appends
+one, `K === 0` → `fresh`; `K` grows as real events land, so "a directive with `K>0` is a hint, not an
+order" is mechanically checkable straight off the mirror, no ledger reading required. When the ledger
+carries **no** `next-action` event at all (a Layer-1 / pre-first-reconcile effort), both the
+`progress.json` key and the `▶ NEXT` block are **omitted** — `session-start.mjs` falls back to a plain
+`NEXT: reconcile on demand`. `renderDirectives`/`renderDirective` are shared with `reconcile.mjs`'s own
+`briefing()` NEXT line (below), so the on-screen grammar has exactly one source.
 
 **The two documented presentation exceptions.** Everything else in the mirror comes from
 `ledger.jsonl` alone. The header's cost line (`journal.cost`) and the inbox banner
@@ -960,10 +1058,31 @@ still worth pinning here because two of its fields are new load-bearing vocabula
 - **`halt`** / **`haltReason`** / **`evidence`** — unchanged in shape, now also set by the two
   new AMBIGUOUS buckets documented in `DESIGN.md` §5.12/§5.14F (a repo-root stray shadowing a
   born nested effort; a born effort whose config is corrupt or unidentifiably signature-less).
+- **`nextAction`** (Layer 2) — the deterministic decision-projection directive **SET**
+  (`Array<{kind, slice?, workOrders?, workOrder?, detail?}>`; `kind` ∈ `HALT | AMBIGUOUS | DECIDE |
+  RUNNING | DISPATCH | RETRO | OPEN | LAND | CONCLUDE | DONE`), computed by `lib/next-action.mjs`
+  `projectDirectives` from a `state` object reconcile assembles from everything it already derived
+  (`workOrderStatuses`, `terminalWorkOrders`, `blockedWorkOrders`, `lifecycle`, `halt`, `ambiguities`,
+  `openInbox`) plus two extra reads: `route.json` (the ratified slice order, via `readRoute` above) and
+  each known work order's `dependsOn` + the progress tree's `canceled` flag (`work-orders/<id>.json`,
+  above). `projectDirectives` is **pure** (no I/O of its own) and a **SET**, not a scalar — the `active`
+  lifecycle can carry several true directives at once (running work, separately-ready dispatchable work,
+  a wall needing a decision), and the projection never collapses that honest frontier to one line. See
+  `docs/DESIGN.md` §5.12 / `docs/architecture.md` §12 for the projection logic, the AMBIGUOUS/HALT
+  taxonomy, and the output self-check (`selfCheckDirectives`) reconcile runs against it **before**
+  persisting — a mechanical adversary that downgrades a redispatch-guard-blocked `DISPATCH`/`RUNNING`,
+  an `OPEN` of a retired slice, or a `LAND` over a non-empty frontier to a `DECIDE`, so `result.nextAction`
+  is always the **post-self-check** set. `reconcile()` also **appends** the result as one `next-action`
+  ledger event per call (§ ledger.jsonl Family 3, above) — the in-memory field and the persisted event
+  are the same computation, not two.
 
 `briefing()` renders `lifecycle` as its own line, right under the header: `` Lifecycle:
 **<state>** — <one-line gloss of the definition above>. `` — e.g. `` Lifecycle: **at-land-gate**
-— frontier empty; the effort branch is not yet landed to base. ``
+— frontier empty; the effort branch is not yet landed to base. `` Immediately below it, a `NEXT:` line
+renders `nextAction` through the **same** `renderDirectives` helper the mirror's `▶ NEXT` block uses
+(`lib/progress-map.mjs`, imported by `reconcile.mjs`) — one on-screen grammar, two call sites. An empty
+directive set renders `NEXT: (idle)`; the mechanical staleness suffix lives only in the mirror (the
+briefing always shows the just-computed, by-definition-fresh set).
 
 **The multi-effort SessionStart scan (cheap; not a reconcile).** When
 `resolveActiveEffort(cwd)` (see *Effort root* above) resolves `{kind:'multiple'}`, SessionStart
@@ -994,6 +1113,7 @@ descriptor when it dispatches.
   "gate": "vertical-slices/expr-eval.md#gate",
   "locus": ["src/parser/**", "src/lexer/token.rs"],
   "resourceClaims": ["port:8080"],
+  "dependsOn": ["WO-9"],
   "behaviorDelta": ["delete now defers until confirmed"],
   "floorImpact": ["store::delete_returns_ok"],
   "contractBirth": false,
@@ -1007,6 +1127,37 @@ gate). The **redispatch guard** keys refutation-surviving verdicts on it: an
 identical work order cannot be re-dispatched unless an input changed (so the hash
 changes). `footprint` is **not stored** — it is *computed* from `locus` plus the
 citation closure of `inputs.contracts` at dispatch time (`lib/footprint.mjs`).
+
+`dependsOn` (Layer 2) — the **readiness/ordering edge**: the ids of work orders whose *output* this
+one needs to already exist before it can start. `[]` (or omitted) means "depends on nothing already in
+flight." Proposed once by the route-planner (a declaration, not a computation) and transcribed verbatim
+by the work-order-writer at spec creation — `dependsOn` is **never** recomputed downstream. It answers a
+**different question** than the footprint: footprint independence asks "can these two run in the same
+wave without stepping on each other" (a *conservative set intersection*, folded by `lib/footprint.mjs`);
+`dependsOn` asks "does this one's input even exist yet" (a *declared* precedence edge). A footprint-
+independent, same-wave pair can still carry a real `dependsOn` between them (one's output feeds the
+other), and a footprint-serialized pair (shared locus) may carry none — the two axes are orthogonal, and
+neither is folded into the other.
+
+The **readiness predicate** the deterministic `nextAction` projection (`lib/next-action.mjs`) evaluates:
+a work order is **ready** iff its own status is `pending` (the only dispatchable live state — `running`
+is drawn off separately, `blocked` escalates, `done`/`dropped`/`canceled` are terminal), it is not
+`canceled` (the progress-tree-derived flag, not the ledger fold — see below), **and every id in
+`dependsOn` has `status === 'done'`**. Two corrections pinned during Layer 2, both refining the
+original spec sketch to match what the fold actually computes:
+
+- **Correction C — the status vocabulary.** There is no separate `green`/`merged` work-order status.
+  `lib/wo-status.mjs`'s ledger fold has exactly five: `pending | running | blocked | dropped | done` — a
+  write-once `merged` fact folds straight to `done`
+  (`workOrderStatuses[id] === 'done'`, `lib/reconcile.mjs`). A dependency is satisfied by `done`
+  and nothing else.
+- **Correction D — a canceled dependency never satisfies `dependsOn`.** `node-canceled` folds to the
+  inert `pending` in the ledger fold (it cannot, by itself, distinguish a deliberately-abandoned work
+  order from a fresh one) — so the **terminal-abandoned** signal comes from the progress tree instead
+  (`buildTree` maps `node-canceled` → a `canceled` node status). A dependency whose id reads `canceled`
+  in the tree is treated as **terminal-abandoned**, not `pending`, and does **not** satisfy `dependsOn`
+  — a dependent of a canceled work order simply never becomes ready (it surfaces as an open frontier
+  gap for a human to replan, never a silent skip).
 
 The three brownfield fields (omitted / empty in a greenfield work order):
 

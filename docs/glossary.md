@@ -165,7 +165,10 @@ one of the three is probably wrong.
   individually.** In traversal vocabulary: the goal predicate and the heuristic.
 - **Route** — the ordered backlog of vertical slices and current contracts; the vertical slice
   frontier. Detailed, volatile, **re-sorted freely by the agent after every
-  vertical slice with logged rationale**. Human-editable file; human-ratified at retro.
+  vertical slice with logged rationale**. Human-editable file (`route.md`); human-ratified at retro.
+  Its **machine twin**, `route.json` (Layer 2), carries only the ratified slice **order** — written by
+  the orchestrator after ratification and kept in sync at every retro re-sort; `route.md` itself is
+  never parsed.
 - **Retro** — the mandatory blocking heartbeat at every vertical slice gate. Runs a
   **three-way divergence classification**: every divergence between built and
   vision gets exactly one of (a) **fix the code**, (b) **amend the vision**
@@ -217,7 +220,10 @@ one of the three is probably wrong.
   the absolute path under the *live* attempt, so a worker never tracks which attempt it is in.
   Replaces the retired `action-started` / `action-finished` / `action-obsoleted` trio.
 - **Work order** — one atomic dispatch: named artifact inputs, an artifact
-  output, a gate, a **locus**, **resource claims**, a **budget**.
+  output, a gate, a **locus**, **resource claims**, a **budget**, and a **`dependsOn`** readiness edge
+  (Layer 2 — the ids of work orders whose output must already exist; `[]` when nothing is awaited).
+  `dependsOn` is orthogonal to the footprint: footprint independence says two work orders *can* run in
+  the same wave without collision; `dependsOn` says whether one's input *exists yet*.
 - **Locus** — a work order's declared edit scope (path globs).
 - **Footprint** — `locus ∪ citation-closure of touched contracts`. Two work
   orders are independent **iff their footprints are disjoint**. Computed fresh at
@@ -375,6 +381,18 @@ one of the three is probably wrong.
   unverifiable; recompute the DAG (derived, can't be stale).
 - **Briefing** — the human-facing summary reconciliation emits: current vertical slice,
   lanes, burndown, inbox items awaiting the human.
+- **`nextAction` / directive** — the deterministic **decision projection** (Layer 2): an ordered **SET**
+  of directives (`{kind, slice?, workOrders?, workOrder?, detail?}`, `kind` ∈ `HALT | AMBIGUOUS | DECIDE
+  | RUNNING | DISPATCH | RETRO | OPEN | LAND | CONCLUDE | DONE`) `lib/next-action.mjs`'s pure
+  `projectDirectives` computes from reconcile's own reconstructed state — never a scalar "the next
+  step," because several directives can hold true at once (work running, separately-ready work
+  dispatchable, a wall needing a decision). Refined by an **output self-check**
+  (`selfCheckDirectives`) — the verification trio applied to the projection itself — which downgrades a
+  `DISPATCH`/`RUNNING` the redispatch guard would block, an `OPEN` of a retired slice, or a `LAND` over
+  a non-empty frontier to a `DECIDE`. Persisted as one `next-action` ledger event per `reconcile()` call
+  and re-derived, latest-wins, into `progress.json.nextAction` + the mirror's `▶ NEXT` block on every
+  regen — so it survives a wholesale mirror rebuild by construction, carrying a mechanical **staleness**
+  suffix (`fresh` / `<K> event(s) since`).
 - **Approval inbox** — queued human decisions (vision-amendment requests,
   skeptic-confirmed dead ends, topology smells, second budget extensions).
   Footprint-scoped freezes. **Silence never consents** — a human gate is never

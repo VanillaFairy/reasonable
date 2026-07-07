@@ -146,6 +146,7 @@ Mechanisms:
 
 **Ruling — the status-quo-green default for born-`characterized` pins (the least-change reference).** A clause born GREEN by characterization (brownfield, §5.6 step 5e / architecture §18) carries a question the retro's three-way classification also faces — **is the pinned legacy behaviour correct?** — that has no reference above the artifact. But brownfield's *missing* reference is **supplied by the task itself**: the work order says *change what is stated, preserve the rest*, so "should we pin this behaviour green?" has a **default answer — YES, keep it (bug and all)**, because *changing* unstated behaviour is itself the scope violation. Therefore a born-`characterized` pin that is **orthogonal** to the stated change — one the change neither restates nor moves — is **DEFAULT-KEEP: it self-ratifies and is logged, in both run modes, and does not queue the human.** The human (gated) / adversary (autonomous-queued) is engaged **only on a positive conflict signal**: (a) the characterizer's own `suspectedBug` flag, or (b) the intent-verifier detecting **tension** between the frozen behaviour and the stated change (the pin sits in the change's blast radius / the change implicitly requires it to move). Both signals are judgeable against references that **exist** — the suspicion, and the stated change — so the adversary handles them; everything orthogonal is pinned green and logged. (The intent-verifier's pre-existing *two-defensible-readings* escalate — oracle-silence, not tension-with-the-stated-change — is unchanged and orthogonal to this default; it remains its own escalate independent of the (a)/(b) signals above.) The bet is safe in both directions: where it could be wrong the behaviour is *relevant* and the tension-signal catches it; where it is truly unjudgeable the behaviour is *orthogonal* and preserve-as-is is the *correct* answer, not merely the cautious one — and because pins are logged, a bad bet surfaces downstream, never silently. **This refines the earlier autonomous handling** (which always-queued every born-`characterized` classification BREAKING): treating an absolute-unjudgeable question as always-escalate was wrong where its default answer — keep — is both safe *and* correct for orthogonal behaviour. It does **not** weaken the floor-touch trip-wire (the adversary still **always** runs where a pin touches the floor / a shared contract — risk-gating is unchanged; default-keep is about the verdict/escalation, not about skipping the adversary), nor **annotate-not-disarm** (§5.14F — an accept still only annotates; the floor diff still surfaces), nor the **D13 unexplained-breach STOP** (an *unexplained* autonomous floor breach still halts — a bypassed-adversary signal, orthogonal to this default). And it does **not** apply to the **intention-content scope-out** (§5.6 / §5.14F): that case has *no* status-quo to fall back on for "is this the goal you wanted," so it stays always-escalate, unchanged.
 - **Amendment authority split:** route re-sorting — agent, autonomous, logged. Contract amendments — agent proposes at retro, human approves in batch. Vision amendments — human-gated, always.
+- **`route.json` is the machine twin of `route.md`** (Layer 2): the ratified slice **order** only (WO→slice membership stays on each work order's own `verticalSlice`), written by the orchestrator once at analysis (after the human ratifies the initial route) and rewritten at every retro re-sort — the two files are kept in sync by construction, never hand-patched apart. `route.md` itself is demoted to pure human narration and is **never parsed**; every reader that needs the order machine-readably (the deterministic `nextAction` projection, §5.12) reads `route.json` instead.
 - Breadth passes are the reconciliation points where accumulated cross-vertical-slice inconsistencies get re-squared (dead-reckoning needs star fixes).
 - Agent context windows are ephemeral; the vision must be a named durable artifact loaded at every vertical-slice session start.
 
@@ -363,6 +364,58 @@ none of which replace the pre-existing up-walk (`findEffortRoot`) that ~19 call 
   "N−1 briefed, 1 flagged" rather than failing the whole briefing; a born-but-bad config is flagged
   inline. The effort actually being acted on is reconciled on demand, never by this scan.
 
+**The deterministic `nextAction` projection (Layer 2).** Reconciliation already answers "what state
+is this effort in" (RESOLVED/SAFE-DEFAULT/AMBIGUOUS, plus Lifecycle above); it does not yet answer
+"what happens next" — that is a *separate*, purely computed step layered on top, so an operator (or an
+autonomous loop) never has to re-derive the frontier by reading the tree by eye:
+
+- **A directive SET, not a scalar.** `projectDirectives` (`lib/next-action.mjs`) is a **pure** function
+  — no filesystem, no git, no clock — of a `state` object `reconcile()` assembles from everything it
+  already derived (work-order statuses, terminal/blocked sets, `lifecycle`, `halt`/`ambiguities`, the
+  inbox) plus two extra reads: the ratified `route.json` order and each work order's `dependsOn`
+  (§5.5/artifacts.md) together with the progress tree's `canceled` flag. It returns an **ordered array**
+  of directives, `{kind, slice?, workOrders?, workOrder?, detail?}`, `kind` ∈ `HALT | AMBIGUOUS | DECIDE
+  | RUNNING | DISPATCH | RETRO | OPEN | LAND | CONCLUDE | DONE` — a set because the `active` lifecycle
+  can hold several simultaneous truths (work already running, separately-ready work dispatchable, a
+  wall needing a human decision), and collapsing that to one line would hide real parallel-dispatch
+  opportunity. First-match-wins at the global tier (a halt or a breaking inbox item preempts everything;
+  `at-land-gate`/`half-concluded` project a bare `LAND`/`CONCLUDE`); the `active` lifecycle then builds
+  the full set: a `DECIDE` per blocked work order, one collected `RUNNING` directive, a `DISPATCH` per
+  ready slice in route order, a `RETRO` for a slice whose work is all done but ungated, an `OPEN` for a
+  retro-passed slice's unplanned successor, and `DONE` only when every known work order is terminal.
+- **The AMBIGUOUS/HALT taxonomy the code shipped.** `AMBIGUOUS` is projected for **any** unsettleable
+  configuration in reconcile's `ambiguities` array — this includes the S7 born-state HALT (above) and
+  every other torn-truth class. `HALT` is reserved for the **one** halt class that carries no
+  `ambiguities` entry: the floor-integrity **unexplained-breach STOP** (D13, §5.14F's fifth
+  always-escalate class). Concretely, this maps directly onto §5.14F's now-seven always-escalate
+  classes: **AMBIGUOUS** ⟺ classes (1) SHA-custody, (2) ledger-without-commit, (3) runmode-absent, (4)
+  two-lanes-one-WO, (6) repo-root-stray-shadow, (7) born-state-unidentifiable; **HALT** ⟺ class (5)
+  alone. This **refines** the earlier build sketch's informal "HALT(S7)/AMBIGUOUS(>1 root)" labels to
+  match what `reconcile()` actually partitions — S7 (a corrupt/unidentifiable config) is itself one of
+  the AMBIGUOUS classes, not a separate HALT bucket.
+- **The output self-check (§4's verification trio, applied to the projection itself).** Before
+  `reconcile()` persists the projected set, `selfCheckDirectives` (`lib/next-action.mjs`, pure) runs as
+  a mechanical adversary against it: it refuses (replaces with a reasoned `DECIDE`, which never
+  auto-executes — the refusal *is* the escalation, in both run modes) a `DISPATCH`/`RUNNING` naming a
+  work order the **redispatch guard** would block (an unresolved amendment-drop, or a hash-matched,
+  refutation-surviving dead end) — reusing the guard's own exported `redispatchBlock`/`hashWorkOrder`
+  predicate (`lib/redispatch-guard.mjs`, its CLI is now a thin wrapper over the same function) so the
+  projection can never disagree with the guard; an `OPEN` of a slice **not** in the ratified route (a
+  retired slice); and a `LAND` while the frontier is still non-empty. It deliberately does **not**
+  refuse a `node-downgraded` work order — that is D19's legitimate crash-recovery reopen, and refusing
+  it would wedge recovery.
+- **Persistence and render.** `reconcile()` appends the **post-self-check** set as exactly one
+  `next-action` ledger event per call (Family 3; the work-order-status fold ignores it, and the progress
+  mirror's `EVENT_MAP` folds it to no tree operation — it is a projection, not a lifecycle node). The
+  mirror re-derives the **latest** such event on every regen into `progress.json.nextAction` (a string)
+  and a `▶ NEXT` blockquote atop `progress.md`, each carrying a **mechanical staleness** suffix
+  (`computed at seq <N>, fresh` or `<K> event(s) since`, `K` = non-`next-action` events landed after
+  `<N>`) — so a stale directive is visibly a *hint*, not an order, without anyone re-reading the ledger
+  by hand. Because the directive lives in the ledger and is re-derived fresh on every regen, it
+  **survives the wholesale mirror rebuild by construction** — it is never a value poked into
+  `progress.json` that a regen would silently clobber. `session-start.mjs` and `briefing()` both surface
+  it (`docs/artifacts.md § reconcile() result`, § progress.json/progress.md).
+
 ### 5.13 Worktree mechanics
 
 - **Orphan accounting in reconciliation:** worktree with no journal lane → harvest commits if they verify, else sweep and re-dispatch; journal lane with no worktree → downgrade to pending. Worktrees are cattle; journal+git is the registry; the registry is checked against the pasture every session start.
@@ -393,7 +446,7 @@ Severity decides route position. **A hotfix is an expedited vertical slice — s
 **(E) Non-functional requirements.** Vision quality attributes compile into executable gates or they will degrade monotonically across twenty green vertical slices: **quality clauses** in contracts where the budget is local ("decides within 5ms"); **system invariant tests** owned by breadth passes where the budget is global (startup time, memory ceiling). Both under the same ratchet. Benchmark flakiness is real: binding tables owe a measurement-harness entry (thresholds with headroom, fixed-load environments).
 
 **(F) Backstop tripwires and the always-escalate classes.** Reconciliation's last line is a set of blunt mechanical reconciles that *cannot* tell a harmless additive change from a real regression — so they never adjudicate, they **surface**. The load-bearing one here is the **byte-level floor-integrity hash**: a floor-tracked file whose bytes changed flags as a mismatch even when the change is an innocuous additive pin (an appended `#[ignore]` characterization test, say). This hash is **demoted from a first-line AMBIGUOUS→HALT decision to a tier-3 backstop tripwire** (§5.6): it still *fires and surfaces* every floor change, but it no longer halts on its own — an **explaining verifier-verdict** (an accept from the pin/characterization adversary, §5.6) **annotates** the surfaced diff as `explained-by-verdict`. **Annotate-not-disarm is non-waivable:** the annotation is advisory only — the floor pass *still* surfaces the diff, and in autonomous mode it *still* queues it to the human inbox. An accept can only ever cause **more** human surfacing, never less; the failure direction is always toward scrutiny. A missing or half-written verdict therefore degrades safely (the diff surfaces unannotated, exactly as if no adversary had run).
-- **The always-escalate classes (unconditional HALT, all modes), now seven.** Reconciliation HALTs unconditionally on: (1) **SHA-custody reclaim** mismatch, (2) **ledger-without-commit**, (3) **runmode-absent**, (4) **two-lanes-one-WO**, (5) **floor-integrity-mismatch** — the surfaced-but-unresolved floor change, (6) **repo-root-stray-shadows-nested-effort** — a born `<repoRoot>/.reasonable/` co-existing with a born nested effort under `.reasonable-efforts/`, which would shadow it in the up-walk, and (7) **born-state-unidentifiable** — a config that is `corrupt`, or `missing-signature` with no name recoverable from `journal.effort` (a recoverable missing signature self-heals instead of halting; see the effort-discovery paragraph above). The first four are unchanged. The fifth is the floor hash in its new role: it no longer *halts the reconcile* the instant it fires, but an unresolved floor surfacing in **autonomous** mode is queued **BREAKING** to the inbox as a fifth disposition (§5.6's escalation-by-mode ruling) — joining the always-escalate set rather than silently passing. The sixth and seventh are new AMBIGUOUS buckets from effort discovery (above): both first-line, both modes, exactly like the original four — a torn-truth configuration recovery cannot settle by inference.
+- **The always-escalate classes (unconditional HALT, all modes), now seven.** Reconciliation HALTs unconditionally on: (1) **SHA-custody reclaim** mismatch, (2) **ledger-without-commit**, (3) **runmode-absent**, (4) **two-lanes-one-WO**, (5) **floor-integrity-mismatch** — the surfaced-but-unresolved floor change, (6) **repo-root-stray-shadows-nested-effort** — a born `<repoRoot>/.reasonable/` co-existing with a born nested effort under `.reasonable-efforts/`, which would shadow it in the up-walk, and (7) **born-state-unidentifiable** — a config that is `corrupt`, or `missing-signature` with no name recoverable from `journal.effort` (a recoverable missing signature self-heals instead of halting; see the effort-discovery paragraph above). The first four are unchanged. The fifth is the floor hash in its new role: it no longer *halts the reconcile* the instant it fires, but an unresolved floor surfacing in **autonomous** mode is queued **BREAKING** to the inbox as a fifth disposition (§5.6's escalation-by-mode ruling) — joining the always-escalate set rather than silently passing. The sixth and seventh are new AMBIGUOUS buckets from effort discovery (above): both first-line, both modes, exactly like the original four — a torn-truth configuration recovery cannot settle by inference. (This seven-class partition is exactly what the `nextAction` projection's `AMBIGUOUS`/`HALT` directive kinds key on, §5.12: `AMBIGUOUS` ⟺ classes 1–4/6/7, `HALT` ⟺ class 5 alone.)
 - **The autonomous ESCALATE disposition.** An adversary that returns **escalate** (rather than accept/reject) in autonomous mode does not get machine-resolved away; the verdict is queued BREAKING to the human inbox — the fifth disposition the §5.6 escalation ruling names. Autonomous grinds the machine-resolvable space first and escalates only the genuinely-unsettleable, but once it does, the item waits for the human exactly like a gated escalation.
 
 ---

@@ -353,6 +353,61 @@ try/catch (one bad effort degrades to "N−1 briefed, 1 flagged," never a wholes
 born-but-bad config inline, and reconciles — full RESOLVED/SAFE-DEFAULT/AMBIGUOUS, git and all — only the
 one effort actually being acted on.
 
+**`nextAction` — the fifth thing reconcile derives, beside RESOLVED/SAFE-DEFAULT/AMBIGUOUS and
+Lifecycle (Layer 2).** Once reconcile has settled *what state* the effort is in, a separate, purely
+computed step answers *what happens next* — `projectDirectives` (`lib/next-action.mjs`), a **pure**
+function of a `state` object reconcile pre-digests from what it already derived (work-order statuses,
+terminal/blocked sets, lifecycle, halt/ambiguities, the inbox) plus two reads scoped just for this: the
+ratified `route.json` order (`lib/route.mjs` `readRoute`, conservative — absent is a legitimate
+pre-ratification effort, a malformed file degrades the frontier and surfaces a diagnostic, neither ever
+halts reconcile or fabricates an order) and each work order's `dependsOn` plus the progress tree's
+`canceled` flag. The result is an **ordered SET** of directives, not a scalar — the `active` lifecycle
+routinely holds several simultaneous truths (work running, separately-ready work dispatchable, a wall
+awaiting a human), and the projection preserves all of them rather than picking one. No I/O inside the
+projection itself: `reconcile()` does every read, hands `projectDirectives` a plain object, which is what
+makes the function table-testable and its output reproducible from a fixture alone.
+
+**The AMBIGUOUS/HALT split reuses the RESOLVED/SAFE-DEFAULT/AMBIGUOUS partition directly.**
+`nextAction`'s `AMBIGUOUS` directive fires for **any** member of reconcile's `ambiguities` array — S7
+(above) included — and `HALT` fires only for the **one** halt class that carries no `ambiguities` entry:
+the floor-integrity unexplained-breach STOP (D13, DESIGN §5.14F class 5). Put differently: of DESIGN
+§5.14F's seven always-escalate classes, six (1–4, 6, 7) are `AMBIGUOUS` and one (5) is `HALT` — a strict
+partition, not a heuristic. This is a deliberate **refinement** of the build sketch's original
+"HALT(S7)/AMBIGUOUS(>1 root)" shorthand: S7 is not its own HALT bucket, it is one more AMBIGUOUS class
+like the rest, because reconcile's actual `halt` flag never distinguishes *why* — only the `ambiguities`
+array's presence/absence does.
+
+**The output self-check — the verification trio applied to the projection's own output.** A pure
+projection can still propose something the world's mechanical guards forbid (dispatching a
+dead-ended work order because the projection never consulted the redispatch guard, say), so before
+`reconcile()` persists the set, `selfCheckDirectives` (`lib/next-action.mjs`, also pure) runs as the
+adversary leg: it downgrades to `DECIDE` — never auto-executing, so the downgrade *is* the escalation in
+both run modes — any `DISPATCH`/`RUNNING` naming a work order the redispatch guard would block, any
+`OPEN` of a slice absent from the ratified route (a retired slice), and any `LAND` while the frontier is
+non-empty. The blocking predicate itself is **shared, not duplicated**: `redispatchBlock` +
+`hashWorkOrder` were extracted out of `redispatch-guard.mjs` (its CLI is now a thin wrapper calling the
+same exported function) specifically so the self-check and the standalone guard can never disagree about
+which work order is blocked. One deliberate non-refusal: a `node-downgraded` work order is **not**
+blocked — that is D19's legitimate crash-recovery reopen, and refusing it would wedge recovery, not
+protect it.
+
+**Persistence and render (D19 extended).** `reconcile()` appends the post-self-check set as **one**
+`next-action` ledger event per call — Family 3, but a special case within it: the work-order-status fold
+ignores the type entirely, and the progress mirror's `EVENT_MAP` maps it to **no tree operation** (an
+explicit empty-ops entry, so it can never fall through to the generic domain-note fallback and stamp a
+stray note on the root — the same defect class the `EVENT_MAP` lookup itself already guards against via
+`Object.hasOwn`). On every mirror regen, `lib/progress-map.mjs` separately re-reads `ledger.jsonl` and
+re-derives the **latest** `next-action` event into `progress.json.nextAction` (a string) and a `▶ NEXT`
+block atop `progress.md`, each suffixed with a **mechanical staleness** count (`fresh` at zero
+non-`next-action` events since, else `<K> event(s) since`) — computable straight off the mirror, no
+ledger read required, and it is exactly what makes "a directive with `K>0` is a hint, not an order" a
+checkable claim rather than a promise. Because the directive is re-derived from the ledger on every
+regen rather than carried forward, it **survives the wholesale mirror rebuild by construction** — the
+same guarantee D19's tree fold already gives every other piece of mirror state. `briefing()`'s `NEXT:`
+line renders the identical set through the identical `renderDirectives` helper (`reconcile.mjs` imports
+it from `progress-map.mjs`), so the mirror and the SessionStart briefing can never drift into two
+grammars for the same directive.
+
 **Trailers are hints, not anchors.** DESIGN §5.14B calls Work-Order trailers "convenience, never truth"
 (agents can forge them). SHA accounting against the ledger is truth; the trailer is only a re-claim hint.
 A trailer is never a recovery *anchor* — SHA accounting is; a trailer mismatch is AMBIGUOUS → halt.
@@ -805,9 +860,16 @@ Each mechanism, the gap it closes, and the decision that governs it.
 | 25 | **`reasonable:abandon`** (`lib/abandon.mjs`) — `'abandoned'` ledger event (mirrors `concluded`) + `.reasonable.abandoned-<effort>/` archive | a walked-away, unfinished effort fenced the repo forever | T1.4a |
 | 26 | **Reconcile S7 born-state HALT** — keys on `effortBirthState`; a recoverable `missing-signature` self-heals from `journal.effort` before ever reaching HALT | a torn/foreign config sailed past the runmode-absent check unnoticed | T1.5 |
 | 27 | **Multi-effort SessionStart briefing** — cheap per-effort summary via `resolveActiveEffort` (file reads only, no per-effort reconcile, per-effort try/catch) | N parallel efforts meant N reconciles, or one effort's briefing silently hiding the rest | T1.5 |
+| 28 | **`route.json`** (machine twin of `route.md`, ratified slice order only) + `lib/route.mjs` `readRoute` loader + work-order `dependsOn` (readiness/ordering edge, orthogonal to footprint independence) | no machine-ratified slice order; readiness between work orders was undeclared | T2.1 |
+| 29 | **`projectDirectives`** — the pure decision-projection directive SET (`lib/next-action.mjs`), computed inside `reconcile()` from route order + WO dependsOn/status + lifecycle/ambiguities | no deterministic "what's next" signal beyond Lifecycle's coarse three states | T2.2 |
+| 30 | **`next-action` ledger event** (Family 3, fold-ignored, `EVENT_MAP`→no tree op) + mirror render (`progress.json.nextAction` + `▶ NEXT` block + mechanical staleness suffix) + Windows `EPERM`/`EBUSY` rename-retry hardening | a directive written only to `progress.json` would not survive the next wholesale mirror regen | T2.3 |
+| 31 | **`selfCheckDirectives`** output self-check (redispatch-guard / retired-slice / non-empty-frontier refusal → `DECIDE`) + `redispatchBlock`/`hashWorkOrder` extracted from the guard CLI into a shared predicate | the projection could dispatch a dead-ended/dropped WO, `OPEN` a retired slice, or `LAND` over open work | T2.4 |
 
 Items 13–20 are brownfield and are no-ops when `config.brownfield` is unset (§18). Items 21–27 are the
 effort-discovery / truth-consistency layer (Layer 1) and are additive to every pre-existing call site.
+Items 28–31 are the deterministic-`nextAction` layer (Layer 2) built on top of Layer 1's `lifecycle` field;
+also additive — an effort predating `route.json` simply projects a frontier with `RETRO`/`OPEN` suppressed
+(§12).
 
 Foundational modules these build on: `footprint.mjs` (resources + `independent()`), `contract.mjs` (citation
 graph), the enforcement/quarantine/test-path fence rules, `effort.mjs` helpers (`findEffortRoot`, config

@@ -150,8 +150,10 @@ It is owned by the orchestration/footprint layer, tracked separately in the road
 A merged work order is **done, permanently** — its code already landed on the effort branch. Unlike a
 dead-end (which can un-bind once an input changes, `redispatch-guard.mjs`'s job above), there is no
 input change that makes re-running a merged work order's pipeline correct. The orchestrator's dispatch
-prompt carries `terminalWorkOrders` — the ids `lib/reconcile.mjs` already computed as
-`status:"merged"` or `status:"green"`-with-`merged:true` — straight from the reconcile briefing.
+prompt carries `terminalWorkOrders` — the ids `lib/reconcile.mjs` already computed as terminal, i.e.
+`workOrderStatuses[id] === 'done'` (the ledger's work-order-status fold, `lib/wo-status.mjs`; a
+write-once `merged` fact also folds straight to `done` — there is no separate `green`/`merged` status
+to check) — straight from the reconcile briefing.
 **Never include one of those ids in the `DECOMPOSITION`**, even when:
 - a stale `.reasonable/work-orders/<id>.json` spec file still sits on disk (those files are never
   deleted on merge — presence on disk is not a dispatch candidacy signal, the journal's terminal state
