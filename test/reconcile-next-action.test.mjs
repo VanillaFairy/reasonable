@@ -234,6 +234,34 @@ check('reconcile().nextAction: a hash-matched dead-ended WO is refused (DECIDE),
     'reconcile surfaces a self-check refusal note');
 });
 
+// ── 7. F2 (final-review fix): the drop is authoritative OVER file existence — a dropped WO re-dispatched ──
+// with its spec file DELETED is still refused. The seq-3 node-dispatched folds WO-orphan back to `running`
+// (wo-status.mjs: a post-drop dispatch clears `dropped`), so the projection surfaces RUNNING; but the
+// amendment drop (seq 2) is unresolved, so redispatch-guard's amendment-drop binding (ledger+id only, no
+// spec/hash needed) flags it and the self-check refuses it — EVEN WITH NO spec on disk. Before the F2 fix,
+// reconcile's `if(!spec) continue` skipped the guard for a spec-less WO and this resurrection slipped through.
+check('reconcile().nextAction: a dropped WO re-dispatched with NO spec file is STILL refused (F2: drop authoritative over file existence)', () => {
+  const root = newEffort({
+    workOrders: { 'WO-orphan': { role: 'implementer', verticalSlice: 'slice-1' } },
+    specs: {}, // NO spec file for WO-orphan — the deleted-spec seam
+    route: { slices: ['slice-1'] },
+    ledger: [
+      { seq: 1, type: 'node-planned', node: 'WO-orphan', kind: 'work-order', title: 'to drop' },
+      { seq: 2, type: 'amendment', drops: [{ workOrder: 'WO-orphan' }], approvedBy: 'human', reason: 'retired' },
+      { seq: 3, type: 'node-dispatched', node: 'WO-orphan', kind: 'work-order', attempt: 1 }, // re-dispatch → fold reads running (the resurrection)
+    ],
+  });
+  const r = reconcile(root);
+  const running = (r.nextAction || []).filter((d) => d.kind === 'RUNNING').flatMap((d) => d.workOrders || []);
+  assert.ok(!running.includes('WO-orphan'),
+    'a dropped-then-re-dispatched WO is NOT surfaced as RUNNING even with no spec file (drop authoritative, F2)');
+  assert.ok((r.nextAction || []).some((d) => d.kind === 'DECIDE' && /WO-orphan/.test(d.detail || '')),
+    'it is refused to a DECIDE naming the WO — the guard bound the unresolved amendment drop with no spec');
+  const na = readLedger(root).filter((l) => l.type === 'next-action').pop();
+  assert.ok(na && !na.directives.some((d) => d.kind === 'RUNNING' && (d.workOrders || []).includes('WO-orphan')),
+    'the persisted next-action event never surfaces the resurrected WO as RUNNING');
+});
+
 for (const t of tmps) { try { rmSync(t, { recursive: true, force: true }); } catch { /* best effort */ } }
 
 if (process.exitCode) console.error(`\nreconcile-next-action: FAILURES above (${passed} passed).`);
