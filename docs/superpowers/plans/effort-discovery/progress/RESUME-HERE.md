@@ -40,13 +40,22 @@ complete (code + doc-sync). Plugin at **v2.5.0**. Next up: Layer 2.
      downgrade) + **Windows `renameSync` EPERM/EBUSY retry** in `atomicWrite` (bounded `Atomics.wait` backoff).
      Regen-clobber regression green (the NEXT block survives a wholesale mirror rebuild). `renderDirectives`
      shared by mirror + briefing.
-   - **T2.4** (authored, in flight) — extract redispatch-guard's blocking predicate to an exported
-     `redispatchBlock(ledger, wo)` (DRY, behavior-identical); pure `selfCheckDirectives(directives, context)`
-     (guard-flag / retired-slice / land-nonempty refusals → DECIDE) gated BEFORE the T2.3 append.
-     **Correction F:** the self-check does NOT refuse `node-downgraded` (that is the legitimate reopen; the
-     real invariant is drop-authoritative via the guard, matrix S12).
-   - **T2.doc** — doc-sync (route.json + `next-action` grammar `*`, D19 render, §7 cross-refs, fix stale
-     `route-planner.md:145-146` merged/green prose) + version bump 2.5.0 → 2.6.0.
+   - **T2.4 DONE** (`4501e27`, suite 48/48) — extracted redispatch-guard's blocking predicate to an exported
+     pure `redispatchBlock(ledger, wo, computeHash)` + `hashWorkOrder(effortRoot, wo)` (DRY; the CLI is a thin
+     behavior-identical wrapper, guard test 13/13 unchanged); pure `selfCheckDirectives(directives, context)`
+     (guard-flag / retired-slice / land-nonempty refusals → DECIDE) gated in reconcile BEFORE the T2.3 append.
+     **Correction F:** the self-check does NOT refuse `node-downgraded` (D19 legitimate reopen; the real
+     invariant is drop-authoritative via the guard, matrix S12). **Process note:** the subagent hit the weekly
+     API limit after finishing part 1 (guard extract, verified green); the main session completed
+     `selfCheckDirectives` + the reconcile gate + the S12 resurrection test inline. To offset the self-authoring,
+     a **mutation check** confirmed the S12 test fails when the gate is neutered (real teeth); both new test
+     files are RED against the pre-task commit.
+
+   **LAYER 2 CODE COMPLETE** — T2.1–T2.4 merged, suite 48/48. Only T2.doc + final remain.
+   - **T2.doc** (NEXT) — doc-sync (route.json + `next-action` grammar `*`, `progress.json.nextAction`/`▶ NEXT`
+     D19 render + K-staleness, §7 projection-SET + self-check + the AMBIGUOUS=unsettleable-config vs HALT=
+     floor-STOP taxonomy, `redispatchBlock`/Correction F, fix stale `route-planner.md:145-146` merged/green
+     prose per Correction C) + version bump 2.5.0 → 2.6.0.
 2. **Final:** whole-implementation review + `finishing-a-development-branch`.
 
 ## Carried FORWARD-FLAGS (must not be lost)
