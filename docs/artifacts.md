@@ -848,9 +848,10 @@ Any event, in any of the three families, MAY carry an `effects` array — a code
 of exactly which nodes and edges that event changed (`docs/DESIGN-3.0.md` §8). It is **entirely
 optional**: an event with no `effects` field validates and behaves exactly as it always has — the
 2.x ledger vocabulary above is unchanged by this addition. `lib/effects.mjs` owns the shape
-rules; `lib/ledger.mjs`'s `validateEvent()` calls into it once, after a type's own required-field
-checks, so a malformed `effects` array is reported with the same `<type>: …` prefix as any other
-validation failure.
+rules; `lib/ledger.mjs`'s `validateEvent()` calls into it once, after all of a type's own checks
+(required fields, `kind` enum, any custom `schema.validate`), so a malformed `effects` array is
+reported with the same `<type>: …` prefix as any other validation failure — and never masks a
+type's own validation problem.
 
 ```jsonl
 {"seq":30,"ts":"...","type":"verdict","kind":"green","workOrder":"WO-12","effects":[{"nodeId":"a-1","change":{"state":"merged"}},{"from":"a-1","to":"a-2","edge":"needs","op":"add"}]}
