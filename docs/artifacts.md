@@ -842,6 +842,35 @@ The additions:
   notes instead of the section/item tree it used to produce) rather than erroring or losing
   history; that is backward-viewability, not reconstruction.
 
+### Effects — the optional cross-cutting field (3.0)
+
+Any event, in any of the three families, MAY carry an `effects` array — a code-computed record
+of exactly which nodes and edges that event changed (`docs/DESIGN-3.0.md` §8). It is **entirely
+optional**: an event with no `effects` field validates and behaves exactly as it always has — the
+2.x ledger vocabulary above is unchanged by this addition. `lib/effects.mjs` owns the shape
+rules; `lib/ledger.mjs`'s `validateEvent()` calls into it once, after a type's own required-field
+checks, so a malformed `effects` array is reported with the same `<type>: …` prefix as any other
+validation failure.
+
+```jsonl
+{"seq":30,"ts":"...","type":"verdict","kind":"green","workOrder":"WO-12","effects":[{"nodeId":"a-1","change":{"state":"merged"}},{"from":"a-1","to":"a-2","edge":"needs","op":"add"}]}
+```
+
+Two shapes only:
+
+- **Node effect** — `{nodeId, change}`: `nodeId` is a non-empty string; `change` may be any JSON
+  value (its internal shape belongs to whichever future engine writes it, not to this
+  validator) — but it must be an actual JSON value: an explicit `change: undefined` is rejected,
+  since a `JSON.stringify` round-trip through the ledger's own persistence path would silently
+  drop the key, making it indistinguishable from an absent one and corrupting the record.
+- **Edge effect** — `{from, to, edge, op}`: `from`/`to` are non-empty node-id strings; `edge` ∈
+  `needs | excludes | serves | informs` (DESIGN-3.0 §2.2's vocabulary); `op` ∈ `add | remove`.
+
+**Scope note:** this validates *shape* only. Nothing in the codebase yet folds an `effects` entry
+into a live containment tree or dependency graph, and nothing yet requires any writer to populate
+it — that is future work (DESIGN-3.0's graph engine and rewrite engine). Today, an `effects` array
+is durable, replayable data on the ledger line and nothing more.
+
 ---
 
 ## journal.json *

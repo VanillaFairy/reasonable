@@ -184,6 +184,19 @@ one of the three is probably wrong.
   absolute `node`, discarding whatever the caller sent for any of them. Every write, from
   every actor, goes in through its CLI (`node lib/ledger.mjs append …`) or JS API — there
   is no other door.
+- **Effect** — an optional, additive `effects` array any ledger event may carry (DESIGN-3.0
+  §8): a code-computed record of exactly what that event changed, so the graph *as lived* can
+  eventually be replayed from the ledger alone. Two shapes only — **node effect** and **edge
+  effect** (below). Absent on every pre-3.0 event, and remains valid when absent (the field is
+  optional, never required) — the 2.x ledger vocabulary keeps reading unchanged. Currently
+  validated for **shape only** (`lib/effects.mjs` `validateEffects`, wired into `lib/ledger.mjs`'s
+  `validateEvent`); nothing yet *folds* an effect into a live structure — that is the future graph
+  engine's job.
+- **Node effect** — an effect entry `{nodeId, change}`: `nodeId` is the stable id of the node the
+  event changed; `change` is a free-form description of what changed, shaped by whichever future
+  engine writes it (must be an actual JSON value — `change: undefined` is rejected).
+- **Edge effect** — an effect entry `{from, to, edge, op}`: a dependency edge added or removed
+  between two node ids. `edge` ∈ `needs | excludes | serves | informs`; `op` ∈ `add | remove`.
 - **Node** — a dispatchable unit of the execution tree (a work order, a slice, a spike, a
   scaffold, a worker's own reported span of work, …), addressed by a `/`-joined path from
   the tree root. A node carries a STORED status, an optional free-text detail, and a list
