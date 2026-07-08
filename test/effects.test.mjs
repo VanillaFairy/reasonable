@@ -64,6 +64,16 @@ check('isNodeEffect: rejects an entry with no change key at all', () => {
   assert.strictEqual(isNodeEffect({ nodeId: 'atom-1' }), false);
 });
 
+// `undefined` is not a JSON value (DESIGN-3.0's pinned shape requires `change` to be "any JSON
+// value"), and after a real JSON.stringify/parse round-trip through the ledger, a `change:
+// undefined` key is dropped entirely — indistinguishable from an absent key. An explicit
+// `change: undefined` must therefore be rejected exactly like a missing `change` key, or an
+// entry could pass validation and then silently fail to round-trip through the ledger's own
+// persistence path.
+check('isNodeEffect: rejects an explicit change: undefined (not a JSON value, indistinguishable from absent after persistence)', () => {
+  assert.strictEqual(isNodeEffect({ nodeId: 'a-1', change: undefined }), false);
+});
+
 check('isNodeEffect: rejects non-object entries (null, undefined, primitives, arrays)', () => {
   for (const bad of [null, undefined, 'x', 42, true, [], ['a', 'b']]) {
     assert.strictEqual(isNodeEffect(bad), false, `${JSON.stringify(bad)} must be rejected`);
@@ -176,6 +186,12 @@ check('validateEffects: a malformed edge effect (unknown edge name) is rejected 
 
 check('validateEffects: an invalid op is rejected', () => {
   const r = validateEffects([{ from: 'a', to: 'b', edge: 'needs', op: 'delete' }]);
+  assert.strictEqual(r.ok, false);
+  assert.match(r.error, /effects\[0\]/);
+});
+
+check('validateEffects: a node effect with change: undefined is rejected (not a JSON value; the ledger round-trip would silently drop it)', () => {
+  const r = validateEffects([{ nodeId: 'a-1', change: undefined }]);
   assert.strictEqual(r.ok, false);
   assert.match(r.error, /effects\[0\]/);
 });
