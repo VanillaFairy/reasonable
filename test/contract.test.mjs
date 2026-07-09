@@ -1,7 +1,9 @@
 // contract.test.mjs — pin the grammar invariants the frontier-inventory design leans on:
 // a `## Scenarios` prose section is PARSER-INVISIBLE (zero clauses, zero citations) and does
-// not perturb a real clause's provenance/gates — exactly like `## Topology`. The parser
-// (lib/contract.mjs) is unchanged; this is a regression guard, green from the first run.
+// not perturb a real clause's provenance/gates — exactly like `## Topology`. Clause ids use the
+// v3 durable shape (`<component>#c<N>`, reasonable 3.0 Part 2) and citations attach per clause —
+// everything else in this file's assertions (Scenarios/Seams/Provenance/Supersession/Gate
+// behavior) is unchanged from the pre-v3 grammar; only the fixture syntax was migrated.
 // Run: node test/contract.test.mjs
 
 import assert from 'node:assert';
@@ -48,7 +50,7 @@ component: store
 
 ## Clauses
 
-### §1 Deletes a row
+### store#c1 Deletes a row
 \`delete(id)\` removes the row.
 - Gate: vertical-slice:del / asserts \`deletes_row\`
 
@@ -71,14 +73,12 @@ const CONTRACT_WITH_SEAMS = `---
 component: choice-edge
 ---
 
-## Citations
-- graph-store §1
-
 ## Clauses
 
-### §5 Self-loop renders as a bezier arc
+### choice-edge#c5 Self-loop renders as a bezier arc
 A self-referential edge renders as a curved bezier arc, not a straight line.
 - Gate: vertical-slice:edge-paths / asserts \`self_loop_is_arc\`
+- Cites: graph-store#c1
 
 ## Observable Seams
 - component: default export \`ChoiceEdge\` (the edge component to import)
@@ -98,14 +98,14 @@ check('`## Observable Seams` bullets parse into `seams`', () => {
 check('`## Observable Seams` is footprint-zero (no clauses, no citations leak)', () => {
   const c = parseContract(CONTRACT_WITH_SEAMS, 'choice-edge');
   assert.strictEqual(c.clauses.length, 1, 'exactly the one real clause — seams are not clauses');
-  assert.strictEqual(c.clauses[0].id, '§5', 'the real clause is intact');
-  assert.strictEqual(c.citations.length, 1, 'only the real `## Citations` edge — seams add none');
+  assert.strictEqual(c.clauses[0].id, 'choice-edge#c5', 'the real clause is intact');
+  assert.strictEqual(c.citations.length, 1, 'only the real citation — seams add none');
   assert.strictEqual(c.citations[0].component, 'graph-store', 'the citation graph is unperturbed');
 });
 
 check('a clause after `## Observable Seams` is not attributed to the section', () => {
   const TRAILING_CLAUSE = CONTRACT_WITH_SEAMS + `
-### §6 Guard badge shows the guard label
+### choice-edge#c6 Guard badge shows the guard label
 The badge text is the guard's label.
 - Gate: vertical-slice:edge-paths / asserts \`badge_shows_label\`
 `;
@@ -128,13 +128,11 @@ component: choice-edge
 
 # Contract: choice-edge
 
-## Citations
-- graph-store §2
-
 ## Clauses
-### §8 Auto-route deflects around a crossed node
+### choice-edge#c8 Auto-route deflects around a crossed node
 When the straight source→target segment passes through a node bbox, the path deflects into a channel.
 - Gate: vertical-slice:edge-paths / asserts \`autoroute_deflects_around_node\`
+- Cites: graph-store#c2
 
 ## Input Seams
 - node bboxes: mock \`useStore\` to drive the real selector against \`{ nodeLookup }\` state — \`Map<id, { position, measured:{ width, height } }>\`; supply a node the segment crosses.
@@ -152,14 +150,14 @@ check('`## Input Seams` bullets parse into `inputSeams`', () => {
 check('`## Input Seams` is footprint-zero (no clauses, no citations leak)', () => {
   const c = parseContract(CONTRACT_WITH_INPUT_SEAMS, 'choice-edge');
   assert.strictEqual(c.clauses.length, 1, 'exactly the one real clause — input seams are not clauses');
-  assert.strictEqual(c.clauses[0].id, '§8', 'the real clause is intact');
-  assert.strictEqual(c.citations.length, 1, 'only the real `## Citations` edge — input seams add none');
+  assert.strictEqual(c.clauses[0].id, 'choice-edge#c8', 'the real clause is intact');
+  assert.strictEqual(c.citations.length, 1, 'only the real citation — input seams add none');
   assert.strictEqual(c.citations[0].component, 'graph-store', 'the citation graph is unperturbed');
 });
 
 check('a clause after `## Input Seams` is not attributed to the section', () => {
   const TRAILING = CONTRACT_WITH_INPUT_SEAMS + `
-### §9 Excluded nodes are skipped
+### choice-edge#c9 Excluded nodes are skipped
 A node in the excluded set is never deflected around.
 - Gate: vertical-slice:edge-paths / asserts \`excluded_nodes_skipped\`
 `;
@@ -176,13 +174,11 @@ component: choice-edge
 
 # Contract: choice-edge
 
-## Citations
-- graph-store §2
-
 ## Clauses
-### §8 Auto-route deflects around a crossed node
+### choice-edge#c8 Auto-route deflects around a crossed node
 The path deflects into a channel when it would cross a node.
 - Gate: vertical-slice:edge-paths / asserts \`autoroute_deflects\`
+- Cites: graph-store#c2
 
 ## Observable Seams
 - component: default export \`ChoiceEdge\`
