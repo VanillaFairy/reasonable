@@ -891,10 +891,16 @@ Two shapes only:
 - **Edge effect** — `{from, to, edge, op}`: `from`/`to` are non-empty node-id strings; `edge` ∈
   `needs | excludes | serves | informs` (DESIGN-3.0 §2.2's vocabulary); `op` ∈ `add | remove`.
 
-**Scope note:** this validates *shape* only. Nothing in the codebase yet folds an `effects` entry
-into a live containment tree or dependency graph, and nothing yet requires any writer to populate
-it — that is future work (DESIGN-3.0's graph engine and rewrite engine). Today, an `effects` array
-is durable, replayable data on the ledger line and nothing more.
+**Scope note:** this validates *shape* only. The graph engine (reasonable 3.0 Part 4,
+`lib/graph.mjs`) now folds atoms and **derives** the containment tree and dependency edges from the
+ledger and live contracts — but it does not read or interpret this `effects` field itself: nothing
+in the codebase has ever written a real `effects` array (no event type populates one), so there is
+still nothing for the graph engine to fold from it. Its edges are 100% derived, every time —
+deliberately, since a recorded `effects` override would need precedence rules against derivation
+this design hasn't worked out yet (see `docs/superpowers/specs/2026-07-09-reasonable-3.0-p4-graph-design.md`'s
+"no effects-array overlay layer" note). Populating `effects` for real, and folding it with real
+precedence rules, is the rewrite engine's job (Part 5) — until then, an `effects` array stays
+durable, replayable data on the ledger line and nothing more.
 
 ### Atom lifecycle events — charter, delta, transitions, flags (3.0, Part 3)
 
@@ -934,10 +940,49 @@ produces one.
 **Scope note:** these six event types validate *shape* only (`lib/ledger.mjs`'s `EVENT_SCHEMAS`,
 plus `lib/atom.mjs`'s own reject-before-write checks on top — a malformed premise, an unknown flag
 name, or an illegal transition never reaches the ledger at all). `lib/atom.mjs`'s `loadAtom`/
-`foldAtoms` fold these events into a read-only, in-memory atom record — nothing is written back to
-disk beyond the ledger line itself. Nothing in the codebase yet folds an atom into the dependency
-graph, decides which verdict (R1–R9) applies to a failed attempt, or applies one — that is future
-work (DESIGN-3.0's graph engine, Part 4, and rewrite engine, Part 5).
+`foldAtoms` (and, since Part 4, `foldAtomFromEvents`/`foldAtomsFromEvents`, their pre-filtered-event
+siblings) fold these events into a read-only, in-memory atom record — nothing is written back to
+disk beyond the ledger line itself. Deciding which verdict (R1–R9) applies to a failed attempt, or
+applying one, remains future work (rewrite engine, Part 5) — this part's atoms now DO fold into the
+dependency graph, see below.
+
+### The graph engine — containment, dependency edges, lifting, the two projections (3.0, Part 4)
+
+`lib/graph.mjs` (`docs/DESIGN-3.0.md` §2, §2.1–§2.4) reads — never writes — a ledger. It builds:
+
+- **The containment tree** (`containmentTree`) — every atom nested under a group node named for its
+  own `component`, directly under the effort root. This is the flat, one-level fallback DESIGN-3.0's
+  own vocabulary sanctions as a degenerate case: the real component→subeffort **ownership map** is
+  topology-stage genesis data (Part 6, not built yet); `containmentTree` accepts one as an optional
+  input and produces deeper trees once it exists, with no change to its own output shape.
+- **Four dependency-edge kinds** (`needsEdges`, `excludesEdges`, `servesEdges`, `informsEdges`) —
+  computed, never hand-stored, exactly as DESIGN-3.0 §2.2 requires. Only **actual**-fidelity edges
+  (post-spec, clause-level) are implemented; **planned**-fidelity edges (component-level,
+  pre-delta) need the topologist's ratified ordering data (Part 6) and are deferred whole, not
+  half-built. `excludesEdges`' footprint always treats resource claims as empty — no atom charter
+  or delta field carries them yet, a named, un-owned gap (safe direction of error: it can only
+  under-approximate `excludes`, never produce a wrong edge). `servesEdges`/`informsEdges` are real,
+  tested computation rules with nothing real to call them with yet (no `goals.json`, Part 6; no
+  spike-insert rewrite event, Part 5) — both return `[]` on every live effort today.
+- **Edge lifting** (`liftEdges`) — the per-view quotient (§2.3): a dependency edge between atoms in
+  different containment subtrees lifts to one edge between their common ancestors at the viewed
+  level. Deterministic, computed per view, never stored.
+- **Two graph projections** (§2.4): `foldAsLived(effortRoot, {uptoSeq})` folds *only* the ledger
+  itself (atom charters/deltas — never a live contract file), so it is self-sufficient by
+  construction. `deriveCurrent(effortRoot, {goals, spikeInforms})` additionally reads the real, live
+  `lib/contract.mjs` citation graph — richer, since it also sees clauses that landed before any atom
+  still tracks them. `graphDivergence(effortRoot)` diffs the two; on an effort whose contracts were
+  only ever touched through this engine's own atom pipeline, the two are provably identical, so a
+  non-empty divergence is a real signal — a contract hand-edited outside the ledger-governed
+  pipeline, or a `merged` atom whose clauses are actually absent from disk — not a placeholder for a
+  future feature.
+
+**Scope note:** no `graph.json` disk mirror exists yet, and `lib/ledger.mjs`'s `append()` is
+untouched by this part — nothing reads a graph outside a test today, so wiring a regenerated mirror
+into the hot append path is deferred to whichever part first needs to read one (most likely the
+topology stage's ratification surface, Part 6, or the live view, Part 7). Surfacing
+`graphDivergence`'s output at a human-facing gate is likewise not built here — this part only
+computes the diff.
 
 ---
 
