@@ -896,6 +896,49 @@ into a live containment tree or dependency graph, and nothing yet requires any w
 it — that is future work (DESIGN-3.0's graph engine and rewrite engine). Today, an `effects` array
 is durable, replayable data on the ledger line and nothing more.
 
+### Atom lifecycle events — charter, delta, transitions, flags (3.0, Part 3)
+
+Six new, optional Family 3 event types record an atom's own lifecycle (`docs/DESIGN-3.0.md` §4,
+§4.1). None are required on any pre-3.0 ledger — an effort that never charters an atom never
+produces one.
+
+```jsonl
+{"seq":40,"ts":"...","type":"atom-chartered","component":"lexer","premises":["ledger:12"],"purpose":"Tokenize source text.","locus":["lib/lexer/"],"order":0}
+{"seq":41,"ts":"...","type":"atom-transitioned","atomId":"a-40","from":"chartered","to":"ready"}
+{"seq":42,"ts":"...","type":"atom-delta-authored","atomId":"a-40","clauses":[{"clauseId":"lexer#c12","citations":[],"demandedBy":"goal:g1","locus":["lib/lexer/tokenizer/scan.mjs"]}]}
+{"seq":43,"ts":"...","type":"delta-enrichment","atomId":"a-40","clause":{"clauseId":"lexer#c13","citations":[],"demandedBy":"cite:ast#c1","locus":["lib/lexer/tokenizer/errors.mjs"]}}
+{"seq":44,"ts":"...","type":"atom-flag-set","atomId":"a-40","flag":"frozen","reason":"R2 dead-end"}
+{"seq":45,"ts":"...","type":"atom-flag-cleared","atomId":"a-40","flag":"frozen"}
+```
+
+- **`atom-chartered`** — mints the atom's id (`a-<seq>`, the seq this event itself receives) and
+  records its charter: `component`, `premises` (tagged references, the same `goal:|gate:|cite:|
+  ledger:` grammar `demanded-by` uses), `purpose` (one-line, non-normative prose), `locus` (coarse
+  glob array), `order` (position in the topologist's ratified intra-component ordering). No
+  behavioral musts — genesis-time, structural only.
+- **`atom-transitioned`** — one generic event for every lifecycle move (`{atomId, from, to}`),
+  validated by `lib/atom.mjs`'s pinned adjacency table (`isValidTransition`) before it is ever
+  appended. Not one event type per transition — a single generic, state-carrying event, matching
+  this ledger's existing `verdict`/`ratification` precedent rather than the older, per-type
+  Family 1 node-lifecycle style.
+- **`atom-delta-authored`** — the *initial* delta. Also the event that moves the atom
+  `ready -> spec'd`: DESIGN-3.0 frames authoring the delta as what causes that transition, so there
+  is no separate, redundant `atom-transitioned` event for this one hop.
+- **`delta-enrichment`** — the in-flight success path (DESIGN-3.0 §4.1): an implementer learning a
+  new must appends one additional clause to the delta without changing lifecycle state. The event
+  type name is pinned by DESIGN-3.0 itself, not invented here.
+- **`atom-flag-set` / `atom-flag-cleared`** — the three orthogonal flags (`frozen`,
+  `guard-halted`, `dispatch-barred`) are independent of lifecycle state; two simple, string-shaped
+  event types rather than one generic event carrying a boolean value.
+
+**Scope note:** these six event types validate *shape* only (`lib/ledger.mjs`'s `EVENT_SCHEMAS`,
+plus `lib/atom.mjs`'s own reject-before-write checks on top — a malformed premise, an unknown flag
+name, or an illegal transition never reaches the ledger at all). `lib/atom.mjs`'s `loadAtom`/
+`foldAtoms` fold these events into a read-only, in-memory atom record — nothing is written back to
+disk beyond the ledger line itself. Nothing in the codebase yet folds an atom into the dependency
+graph, decides which verdict (R1–R9) applies to a failed attempt, or applies one — that is future
+work (DESIGN-3.0's graph engine, Part 4, and rewrite engine, Part 5).
+
 ---
 
 ## journal.json *
