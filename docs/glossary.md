@@ -70,10 +70,35 @@ one of the three is probably wrong.
 - **Demanded-by** — a clause's required provenance line, naming the citable demander that
   justified adding it: a goal-scenario assertion (`goal:<id>`), a gate (`gate:<verbatim gate
   string>`), a consuming clause/atom citation (`cite:<component>#c<N>`), or a chartering rewrite
-  event (`ledger:<seq>`) (DESIGN-3.0 §4.2). Load-bearing on the clause-cohesion graph (§4.3, a
-  later part) and the anti-padding audit. Syntax-checked at parse time
-  (`lib/contract.mjs`'s `missingDemandedBy`); resolving what a reference actually points to is
-  later work.
+  event (`ledger:<seq>`) (DESIGN-3.0 §4.2). Load-bearing on the **Cohesion** clause-cohesion graph
+  (§4.3) and the anti-padding audit. Syntax-checked at parse time (`lib/contract.mjs`'s
+  `missingDemandedBy`); resolving what a reference actually points to is later work.
+- **Atom** — the 3.0 work order (DESIGN-3.0 §4): a **Charter** (genesis-time, structural — no
+  behavioral musts) plus a **Delta** (spec-time, the actual proposed clauses). Allocated an id
+  (`a-<seq>`) at charter time under the ledger controller's append lock, the same mechanism as a
+  clause id. Its lifecycle is a pinned ten-state machine (`lib/atom.mjs`'s `LIFECYCLE_STATES`) plus
+  three independent flags (`frozen`, `guard-halted`, `dispatch-barred`) — deciding which verdict
+  moves an atom between states, and applying the move, is later work (Part 5); this part only
+  defines which moves are mechanically legal.
+- **Charter** — an atom's genesis-time data: component, **Premise**s, a one-line purpose
+  (non-normative prose), a coarse locus, and its place in the topologist's ratified intra-component
+  ordering. No clause text, no behavioral musts — the 2.x "nothing behavioral from the vision" law,
+  unchanged.
+- **Delta** — an atom's spec-time proposal: the actual clauses it intends to add, each carrying its
+  own **Demanded-by** provenance. The *initial* delta is authored once, from canonical contract
+  state at spec time; see **Delta-enrichment** for what happens after.
+- **Delta-enrichment** — DESIGN-3.0's success-path feedback event (§4.1): an implementer who learns
+  a new must in flight appends one additional clause to the atom's delta, without changing
+  lifecycle state. The 3.0 continuation of 2.x's "the contract grows from implementation."
+- **Premise** — a stable, tagged reference (the same `goal:|gate:|cite:|ledger:` grammar
+  **Demanded-by** uses) a charter rests on: a goal-scenario assertion, a gate, a contract clause, or
+  the chartering rewrite event itself. Citing `intention.md` by id has no tag yet — a known,
+  un-owned gap (DESIGN-3.0 §12), not fixed by this part.
+- **Cohesion** — the minimality law (DESIGN-3.0 §4.3): a delta's clauses form a graph (edges:
+  shared provider citation, shared **Demanded-by**, loci overlapping below the component root); it
+  must be **one connected component**, computed by `lib/atom.mjs`'s `cohesionComponents`
+  mechanically from the delta's real data — never from an agent's claim. A disconnected delta must
+  split (rule R4); more than one component *is* the split proposal.
 - **Topology** — where an entity lives, its name, owner, relationships. Derived
   **subtractively from the vision** (structure is cheap to predict, expensive to
   move).

@@ -48,11 +48,11 @@ plans rather than strictly sequential.
 
 ## What this roadmap is not
 
-It is not itself an implementation plan — no task list, no code, nothing to execute. Part 1
-(below) is the first plan in the series written to that level of detail. **Parts 2–7 are not
-written yet.** Write them one at a time, after the part before has landed, so each one reflects
-what the previous part's implementation actually taught (exactly the feedback-over-prediction
-principle the design argues for).
+It is not itself an implementation plan — no task list, no code, nothing to execute. Parts 1–3
+(below) are the plans in the series written to that level of detail so far, each one written only
+after the part before landed. **Parts 4–7 are not written yet.** Write them one at a time, after
+the part before has landed, so each one reflects what the previous part's implementation actually
+taught (exactly the feedback-over-prediction principle the design argues for).
 
 ## Part 1
 
@@ -78,3 +78,19 @@ to — it only teaches the parser and the ledger to speak the shape those later 
 This is a **hard, breaking cutover** of an on-disk, machine-parsed grammar (no dual-format
 compatibility, per DESIGN-3.0 §12) — see the plan's design doc for why the version-bump question
 (minor vs. major) is left for explicit human confirmation rather than decided in the plan.
+
+## Part 3
+
+**Plan:** [`2026-07-09-reasonable-3.0-p3-atom/plan.md`](2026-07-09-reasonable-3.0-p3-atom/plan.md)
+
+Builds `lib/atom.mjs`: the atom's charter/delta split, its full lifecycle state machine (ten
+states plus three orthogonal flags), and the minimality/cohesion law (DESIGN-3.0 §4, §4.1, §4.3).
+Deliberately scoped to **the atom's own mechanics only**: this part does not fold atoms into the
+dependency graph (that's Part 4's `lib/graph.mjs`), does not decide which verdict (R1–R9) applies
+to a failed attempt or apply one (that's Part 5's `lib/rewrite.mjs`), and does not touch the
+frontier loop or its guard checkpoints (Part 7). Purely additive — one new file, six new optional
+ledger event types, zero behavior change to any existing caller — so unlike Part 2 it bumps the
+version automatically (minor), with no human-gate STOP. See the plan's design doc for every place
+DESIGN-3.0 left a concrete shape unstated and how this plan resolved it, including a real,
+flagged, un-owned gap: citing `intention.md` from a premise has no grammar yet, and this part does
+not invent one.
