@@ -32,25 +32,42 @@ suite) between parts, rather than sitting broken through one giant rewrite.
 
 ## The series
 
-| Part | Builds | New/changed files | DESIGN-3.0 sections | Depends on |
-|---|---|---|---|---|
-| **P1** | Ledger event **effects** field — the structural mechanism every later part writes its own effects through | `lib/effects.mjs` (new), `lib/ledger.mjs` (extend) | §2.4, §7, §8 | — (builds on the existing `lib/ledger.mjs` controller) |
-| P2 | Contract grammar v3 — durable per-contract clause ids, per-clause citations, `demanded-by` provenance | `lib/contract.mjs` (breaking rewrite) | §4.2, §12 | P1 (clause-id allocation is a ledger event) |
-| P3 | The atom — charter/delta split, the full lifecycle state machine, the minimality/cohesion law | `lib/atom.mjs` (new) | §4, §4.1, §4.3 | P2 (atoms cite clause ids) |
-| P4 | The graph engine — containment-tree fold, dependency-edge computation (`needs`/`excludes`/`serves`/`informs`), edge lifting, as-lived vs. current projections | `lib/graph.mjs` (new) | §2, §2.1–§2.4 | P1 (folds effects), P3 (folds atoms) |
-| P5 | The rewrite engine — the failure calculus, verdict types R1–R9, two-phase (provisional/permanent) effect application | `lib/rewrite.mjs` (new) | §7, §7.1, §7.2 | P4 (rewrites the graph), P3 (transitions atom states) |
-| P6 | The topology stage — `lib/legibility.mjs`, the topologist role, `goals.json`/`policy.json` replacing `route.json`, `topology.html` | `lib/legibility.mjs` (new), `lib/route.mjs` (retire), `agents/topologist.md` (new) | §3, §5, §5.1–§5.3 | P4 (measures the graph), P3 (charters atoms) |
-| P7 | The frontier loop + gates — `lib/frontier.mjs`, the frontier-wave workflow, `GATE_RESULT`, gate cadence, live progress view, 2.x→3.0 migration | `lib/frontier.mjs` (new), `workflows/frontier-wave.workflow.js` (new) | §6, §9, §12 | P5 (dispatches on verdicts), P6 (reads goals/policy) |
+| Part | Builds | New/changed files | DESIGN-3.0 sections | Depends on | Status |
+|---|---|---|---|---|---|
+| **P1** | Ledger event **effects** field — the structural mechanism every later part writes its own effects through | `lib/effects.mjs` (new), `lib/ledger.mjs` (extend) | §2.4, §7, §8 | — (builds on the existing `lib/ledger.mjs` controller) | Landed — v2.8.0 |
+| P2 | Contract grammar v3 — durable per-contract clause ids, per-clause citations, `demanded-by` provenance | `lib/contract.mjs` (breaking rewrite) | §4.2, §12 | P1 (clause-id allocation is a ledger event) | Landed — v3.0.0 |
+| P3 | The atom — charter/delta split, the full lifecycle state machine, the minimality/cohesion law | `lib/atom.mjs` (new) | §4, §4.1, §4.3 | P2 (atoms cite clause ids) | Landed — v3.1.0 |
+| P4 | The graph engine — containment-tree fold, dependency-edge computation (`needs`/`excludes`/`serves`/`informs`), edge lifting, as-lived vs. current projections | `lib/graph.mjs` (new) | §2, §2.1–§2.4 | P1 (folds effects), P3 (folds atoms) | Design drafted — plan not yet written |
+| P5 | The rewrite engine — the failure calculus, verdict types R1–R9, two-phase (provisional/permanent) effect application | `lib/rewrite.mjs` (new) | §7, §7.1, §7.2 | P4 (rewrites the graph), P3 (transitions atom states) | Not started |
+| P6 | The topology stage — `lib/legibility.mjs`, the topologist role, `goals.json`/`policy.json` replacing `route.json`, `topology.html` | `lib/legibility.mjs` (new), `lib/route.mjs` (retire), `agents/topologist.md` (new) | §3, §5, §5.1–§5.3 | P4 (measures the graph), P3 (charters atoms) | Not started |
+| P7 | The frontier loop + gates — `lib/frontier.mjs`, the frontier-wave workflow, `GATE_RESULT`, gate cadence, live progress view, 2.x→3.0 migration | `lib/frontier.mjs` (new), `workflows/frontier-wave.workflow.js` (new) | §6, §9, §12 | P5 (dispatches on verdicts), P6 (reads goals/policy) | Not started |
 
 Rough shape of the dependency chain: **P1 → P2 → P3 → P4 → P5 → (P6, P7)**. P6 and P7 both sit
 on top of P5 but don't depend on each other — once P5 lands they could run as two independent
 plans rather than strictly sequential.
 
+### Keeping the status column current
+
+**Rule — the status cell updates in the same commit that changes the underlying fact, never as a
+follow-up.** The column is a live index of what's actually on disk and in the release history, not
+a changelog someone remembers to update later:
+
+- **Not started → Design drafted**: the moment a design doc for the part lands under
+  `docs/superpowers/specs/`, its row's status changes in that same commit.
+- **Design drafted → Planned**: the moment the part's `plan.md` lands under
+  `docs/superpowers/plans/`, its row's status changes in that same commit.
+- **Planned → Landed — vX.Y.Z**: only in the same commit as the part's own `chore(release)`
+  version bump — never mark a part Landed ahead of its release commit. Cite the version that
+  shipped it, not "done" or "merged".
+
+If a part's status and its actual files on disk ever disagree, trust the files — `git log` and
+`ls` on the relevant `specs/`/`plans/` paths are authoritative, this table is derived from them.
+
 ## What this roadmap is not
 
-It is not itself an implementation plan — no task list, no code, nothing to execute. Parts 1–3
+It is not itself an implementation plan — no task list, no code, nothing to execute. Parts 1–4
 (below) are the plans in the series written to that level of detail so far, each one written only
-after the part before landed. **Parts 4–7 are not written yet.** Write them one at a time, after
+after the part before landed. **Parts 5–7 are not written yet.** Write them one at a time, after
 the part before has landed, so each one reflects what the previous part's implementation actually
 taught (exactly the feedback-over-prediction principle the design argues for).
 
@@ -94,3 +111,31 @@ version automatically (minor), with no human-gate STOP. See the plan's design do
 DESIGN-3.0 left a concrete shape unstated and how this plan resolved it, including a real,
 flagged, un-owned gap: citing `intention.md` from a premise has no grammar yet, and this part does
 not invent one.
+
+## Part 4
+
+**Design doc:** [`2026-07-09-reasonable-3.0-p4-graph-design.md`](../specs/2026-07-09-reasonable-3.0-p4-graph-design.md)
+
+**Plan:** [`2026-07-09-reasonable-3.0-p4-graph/plan.md`](2026-07-09-reasonable-3.0-p4-graph/plan.md)
+
+Builds `lib/graph.mjs`: the containment-tree fold, the four dependency-edge computations
+(`needs`/`excludes`/`serves`/`informs`), edge lifting, and the as-lived-vs-current projection split
+(DESIGN-3.0 §2, §2.1–§2.4). Deliberately scoped to **actual-fidelity edges only** (post-spec,
+clause-level — planned-fidelity edges need Part 6's topologist ordering data, not built yet) and to
+**reading**, never writing, a ledger event — no new `EVENT_SCHEMAS` entry, no rewrite verdicts (Part
+5), no topology/goals data (Part 6), no frontier/dispatch (Part 7). The central finding this part's
+design doc turns on: nothing in the shipped engine has ever written a real `effects` array (Part
+3's `lib/atom.mjs` never attaches one to its own events), so `needs`/`excludes` are always *derived*
+from ledger-embedded delta clauses and live contracts, never read off `effects` — which makes the
+as-lived and current graph projections **provably identical today**, and gives the divergence check
+DESIGN-3.0 requires (§2.4) a real job right now: catching a contract hand-edited outside the
+ledger-governed pipeline, not just a someday rewrite-skew detector. Purely additive — one new file
+plus one small, backward-compatible export addition to the already-shipped `lib/atom.mjs` (so a
+seq-bounded atom fold can be composed without duplicating its per-event switch) — so like Parts 1
+and 3 it bumps the version automatically (minor), no human-gate STOP. See the plan's design doc for
+two real, flagged, un-owned gaps this part does not invent a fix for (no atom field carries resource
+claims yet, so `excludes` treats them as always empty — the safe, under-approximating direction of
+error; and planned-fidelity edges are deferred whole rather than half-built against a topologist
+ordering scheme Part 6 hasn't specified yet), plus one contestable proportionality call (no
+`graph.json` disk mirror yet — nothing reads it today, so wiring it into `lib/ledger.mjs`'s `append()`
+is deferred to whichever part first needs to read it outside a test).
