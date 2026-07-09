@@ -106,6 +106,18 @@ check('foldAsLived at an earlier uptoSeq excludes atoms chartered after that seq
   assert.strictEqual(unbounded.atoms.length, 2);
 });
 
+check('foldAsLived at uptoSeq exactly equal to an atom\'s OWN charter seq includes that atom (inclusive boundary)', () => {
+  const root = newEffort();
+  const { id } = charterAtom(root, { component: 'lexer', premises: ['ledger:1'], purpose: 'test atom', locus: [], order: 0 });
+  const charterSeq = Math.max(...readLedgerLines(root).map((e) => e.seq));
+
+  const atCutoff = foldAsLived(root, { uptoSeq: charterSeq });
+  assert.deepStrictEqual(atCutoff.atoms.map((a) => a.id), [id]);
+
+  const beforeCutoff = foldAsLived(root, { uptoSeq: charterSeq - 1 });
+  assert.deepStrictEqual(beforeCutoff.atoms.map((a) => a.id), []);
+});
+
 check('two atoms of the same component always exclude in the as-lived projection too', () => {
   const root = newEffort();
   const idA = driveToSpecd(root, 'lexer');
