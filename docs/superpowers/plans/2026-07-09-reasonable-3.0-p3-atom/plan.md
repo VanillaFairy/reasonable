@@ -71,20 +71,27 @@ listed files**; `git add -A` is forbidden (see `shared/conventions.md`).
 | T01a | red | — | `test/atom-lifecycle.test.mjs`, `test/atom-cohesion.test.mjs` (authored here) |
 | T01b | green | T01a | `lib/atom.mjs` (new — pure half only; test files READ-ONLY) |
 | T01c | audit | T01b | — (audit only) |
+| T01d | test-hardening | T01c | `test/atom-lifecycle.test.mjs` (append-only, gap fix from T01c audit) |
 | T02a | red | T01b | `test/atom-ledger.test.mjs` (authored here) |
 | T02b | green | T02a, T01b | `lib/atom.mjs` (I/O half, appended), `lib/ledger.mjs` (test file READ-ONLY) |
 | T02c | audit | T02b | — (audit only) |
 | T03 | — | T01c, T02c | `docs/artifacts.md`, `docs/glossary.md` |
-| T04 | — | T02c, T03 | `.claude-plugin/plugin.json`, `README.md`, full-suite check |
+| T04 | — | T01d, T02c, T03 | `.claude-plugin/plugin.json`, `README.md`, full-suite check |
 
 ```dot
 digraph deps {
-    T01a -> T01b -> T01c;
+    T01a -> T01b -> T01c -> T01d;
     T01b -> T02a -> T02b -> T02c;
     T01c -> T03; T02c -> T03;
-    T02c -> T04; T03 -> T04;
+    T01d -> T04; T02c -> T04; T03 -> T04;
 }
 ```
+
+**Added mid-execution:** T01d closes a gap the T01c audit found (mutation-confirmed: the
+lifecycle-table suite derived its oracle from the same object under test rather than an
+independent literal, and the `Object.hasOwn` prototype guard had no targeted coverage). The
+shipped implementation was already correct — T01d adds proof, not a behavior change — see
+`tasks/T01d-atom-lifecycle-guard-hardening.md`.
 
 **Wave Schedule:**
 - Wave 1: T01a (red — pure lifecycle + cohesion tests)
