@@ -189,6 +189,15 @@ check('allocatedClauseIds ignores non-clause-allocated ledger events', () => {
   assert.ok(mirror.lexer);
 });
 
+check('allocatedClauseIds does not fold in a same-component event of a DIFFERENT type (mutation-guard: T01c audit)', () => {
+  const root = newEffort();
+  append(root, { type: 'enrichment', component: 'lexer' }); // carries `component` but wrong `type`
+  allocateClauseId(root, 'ast');
+  const mirror = allocatedClauseIds(root);
+  assert.ok(!('lexer' in mirror), 'an enrichment event must never be folded in as a clause-allocated id, even though it shares the component field');
+  assert.strictEqual(Object.keys(mirror).length, 1);
+});
+
 for (const d of tmps) {
   try { rmSync(d, { recursive: true, force: true }); }
   catch { /* best-effort cleanup */ }
