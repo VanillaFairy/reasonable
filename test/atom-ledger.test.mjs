@@ -117,8 +117,9 @@ function makeClause(root, component, { citations = [], demandedBy = null, locus 
 check("authorDelta requires 'ready': from chartered it is rejected and writes nothing new", () => {
   const root = newEffort();
   const { id } = charterAtom(root, CHARTER);
+  const clause = makeClause(root, 'lexer');
   const before = readLedgerLines(root).length;
-  const r = authorDelta(root, id, [makeClause(root, 'lexer')]);
+  const r = authorDelta(root, id, [clause]);
   assert.strictEqual(r.ok, false);
   assert.strictEqual(readLedgerLines(root).length, before);
 });
