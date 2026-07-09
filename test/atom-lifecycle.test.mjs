@@ -141,5 +141,36 @@ check('isValidFlag rejects an unknown flag name, never throws', () => {
   assert.strictEqual(isValidFlag(undefined), false);
 });
 
+// ── T01d: independent table pin + prototype-guard hardening (T01c audit gap) ──
+
+check('LIFECYCLE_TRANSITIONS matches an independently-authored expected table exactly (not self-referential)', () => {
+  assert.deepStrictEqual(LIFECYCLE_TRANSITIONS, {
+    chartered:         ['ready'],
+    ready:             ["spec'd"],
+    "spec'd":          ['packed', 'ready', 'retired-pending'],
+    packed:            ['tests-red', 'ready', 'retired-pending'],
+    'tests-red':       ['green', 'ready', 'retired-pending'],
+    green:             ['audited', 'ready', 'retired-pending'],
+    audited:           ['merged', 'ready', 'retired-pending'],
+    merged:            [],
+    'retired-pending': ['retired'],
+    retired:           [],
+  });
+});
+
+check('the four previously-implicit direct-reverse pairs are each invalid', () => {
+  assert.strictEqual(isValidTransition('ready', 'chartered'), false);
+  assert.strictEqual(isValidTransition('packed', "spec'd"), false);
+  assert.strictEqual(isValidTransition('tests-red', 'packed'), false);
+  assert.strictEqual(isValidTransition('green', 'tests-red'), false);
+});
+
+check('isValidTransition guards against Object.prototype-shadowing "from" values (never throws, never resolves to an inherited member)', () => {
+  assert.strictEqual(isValidTransition('__proto__', 'ready'), false);
+  assert.strictEqual(isValidTransition('constructor', 'ready'), false);
+  assert.strictEqual(isValidTransition('toString', 'ready'), false);
+  assert.strictEqual(isValidTransition('hasOwnProperty', 'ready'), false);
+});
+
 if (process.exitCode) console.error(`\natom-lifecycle: FAILURES above (${passed} passed).`);
 else console.log(`\natom-lifecycle: all ${passed} checks pass. ✓`);
