@@ -462,7 +462,10 @@ its id moves from `floor` to `trusted` here.
 ## contracts/&lt;component&gt;.md *
 
 A component's must-list. Provider owns the clauses; consumers cite. The grammar
-below is parsed by `lib/contract.mjs`.
+below is parsed by `lib/contract.mjs`. **v3 grammar (reasonable 3.0 Part 2, DESIGN-3.0 §4.2/§12):**
+clause ids are durable and allocated, never positional, and citations attach per clause. This is a
+hard cutover — positional `§N` addressing is no longer recognized at all, with no dual-format
+support.
 
 ```markdown
 ---
@@ -478,37 +481,58 @@ status: active                # active | sealed  (descriptive only — never gat
 - Depends on: lexer, ast
 - Consumed by: evaluator
 
-## Citations
-- lexer §2
-- ast §1
-
 ## Clauses
 
-### §1 Exists and routes
+### parser#c1 Exists and routes
 `parse(tokens: &[Token]) -> Result<Ast, ParseError>` is public and total over
 its input.
 - Gate: vertical-slice:expr-eval / asserts `parses_integer_literal`
+- Cites: ast#c1
+- Demanded-by: goal:parses-arithmetic
 
-### §2 Rejects unbalanced parentheses
+### parser#c2 Rejects unbalanced parentheses
 Returns `Err(ParseError::Unbalanced)` for inputs with mismatched `(`/`)`.
 - Gate: vertical-slice:paren-grouping / asserts `rejects_unbalanced`
+- Cites: lexer#c2
+- Demanded-by: gate:vertical-slice:paren-grouping / asserts `rejects_unbalanced`
 
-### §3 Deletion returns immediately (brownfield, characterized)
+### parser#c3 Deletion returns immediately (brownfield, characterized)
 `delete(id)` returns `Ok` synchronously today.
 - Provenance: characterized (test: `delete_returns_ok`, seam: `src/store/delete.rs`)
 - Seam: `src/store/delete.rs`
 - Supersession: pending
+- Demanded-by: ledger:14
 ```
 
 Parsing rules (exact):
 
-- **Clauses** are level-3 headings matching `^### §(\d+)\s+(.*)$`. The number is
-  the clause id; the rest is the title. Clause bodies run until the next `###`
-  or the end of file.
-- **Citations** are the bullet lines under a `## Citations` heading, each
-  matching `^[-*]\s+([a-z0-9][a-z0-9-]*)\s+§(\d+)\b`. This list is authoritative
-  for the citation graph (footprint closure, citation-resolve). A consumer **must
-  not** restate a provider clause's text — it cites.
+- **Clauses** are level-3 headings matching `^###\s+([a-z0-9][a-z0-9-]*#c\d+)\s+(.*)$` — a
+  **durable, allocated** id in the shape `<component>#c<N>` (e.g. `lexer#c12`), never a
+  positional number. **Allocation is a ledger event** (`clause-allocated`, minted by
+  `lib/clause-id.mjs`'s `allocateClauseId`), serialized under the ledger controller's existing
+  append lock; `N` is simply the seq that append assigns to that event, so two concurrent
+  allocations can never mint the same id and no id is ever reused. Positional `§N` addressing
+  (2.x) is **retired** — a `### §N` heading is no longer recognized as a clause at all (a hard
+  cutover, no dual-format support). Clause bodies run until the next `###` or the end of file.
+- **Citations** attach **per clause**: a repeatable `- Cites: <component>#c<N>` bullet inside a
+  clause's body, matching `^[-*]\s*Cites:\s*([a-z0-9][a-z0-9-]*#c\d+)\b` (one citation per line —
+  the same multi-line-per-clause shape `- Gate:` already uses). This is authoritative for the
+  citation graph (footprint closure, citation-resolve): `lib/contract.mjs`'s returned flat
+  `citations` array is the union of every clause's own citations, each entry additionally carrying
+  `citingClause` (which of THIS component's clauses did the citing). A consumer **must not**
+  restate a provider clause's text — it cites. The 2.x file-level `## Citations` section is
+  retired along with `§N` addressing — the same hard cutover, no dual-format support.
+- Every clause carries a **`- Demanded-by:`** line naming its provenance, matching
+  `^[-*]\s*Demanded-by:\s*((?:goal|gate|cite|ledger):\S.*)$` (DESIGN-3.0 §4.2) — one of four
+  tagged reference kinds: `goal:<id>` (a goal-scenario assertion), `gate:<verbatim gate string>`
+  (reuses the exact string already used in this clause's own `- Gate:` line), `cite:<component>#c<N>`
+  (a consuming clause citation — the common shape for provider enrichments), or `ledger:<seq>` (a
+  chartering rewrite event — including a brownfield clause's own characterization event). Parsing
+  is **permissive**: a clause with no well-formed `- Demanded-by:` line simply parses with
+  `demandedBy: null`, it never throws — but `lib/contract.mjs`'s `missingDemandedBy(effortRoot)`
+  flags this as a grammar-completeness violation, the same style of check `danglingCitations`
+  already runs for citations. This is **syntax validation only**: resolving whether a referenced
+  goal/atom/ledger event actually exists is later work (DESIGN-3.0 §4.3's cohesion graph).
 - A clause **should** carry one or more `- Gate:` lines naming the vertical slice and the
   asserting test, so bidirectional mapping (assertion ↔ clause) is checkable.
 - A clause carries a **provenance**: `grown` (greenfield default — born RED at a
@@ -525,12 +549,12 @@ Parsing rules (exact):
   zero-teeth map of the observable top-level scenarios on the effort's frontier, written by
   `census` at the analysis-time frontier pass (`characterization.workflow.js`). Each bullet is
   `- <key>: <observable> (seam: \`<glob>\`; floor: <test-ids or —>)`. It is **parser-invisible
-  and footprint-zero by construction**: it contains **zero `### §N` clauses** and **zero
-  `## Citations` bullets**, so `lib/contract.mjs` and the citation closure ignore it entirely
-  (the same property `## Topology` prose has). A bullet **must not begin** with the reserved
-  keywords `Gate:` / `Provenance:` / `Supersession:` / `Seam:` (those are clause-body lines).
-  The inventory is **advisory** — a hint for the route-planner and the human birth-ratification
-  gate; tooth-bearing `characterized` clauses are born **separately**, lazily, at first touch.
+  and footprint-zero by construction**: it contains **zero clauses** and **zero citations**, so
+  `lib/contract.mjs` and the citation closure ignore it entirely (the same property `## Topology`
+  prose has). A bullet **must not begin** with the reserved keywords `Gate:` / `Provenance:` /
+  `Supersession:` / `Seam:` / `Demanded-by:` / `Cites:` (those are clause-body lines). The
+  inventory is **advisory** — a hint for the route-planner and the human birth-ratification gate;
+  tooth-bearing `characterized` clauses are born **separately**, lazily, at first touch.
 - A `## Observable Seams` section (optional) declares the **public test-observation surface** for
   render-coupled clauses — the **export** a test imports and a **stable handle** (`data-testid` /
   `role`) per queried element. It is **API surface, not behaviour**: it lets the blind-test-writer
