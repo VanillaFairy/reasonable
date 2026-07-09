@@ -198,5 +198,28 @@ check('Observable and Input seams coexist, disjoint and both footprint-zero', ()
   assert.strictEqual(c.citations.length, 1, 'one real citation; neither seam section leaks an edge');
 });
 
+// A mixed-case `- Cites:` id matches CITE_RE (case-insensitive on the literal word "Cites")
+// but fails parseClauseId()'s lowercase-only shape — must be skipped tolerantly, not crash
+// (code-quality finding on T02b: this previously threw TypeError reading `.component` of null).
+const CONTRACT_WITH_MIXED_CASE_CITE = `---
+component: evaluator
+---
+
+## Clauses
+
+### evaluator#c1 Evaluates an integer literal
+Returns the integer value.
+- Gate: vertical-slice:expr-eval / asserts \`evaluates_integer\`
+- Cites: Lexer#c12
+- Demanded-by: cite:evaluator#c1
+`;
+
+check('a mixed-case `- Cites:` id is skipped tolerantly, not a crash', () => {
+  const c = parseContract(CONTRACT_WITH_MIXED_CASE_CITE, 'evaluator');
+  assert.strictEqual(c.clauses.length, 1, 'the clause itself still parses');
+  assert.strictEqual(c.clauses[0].citations.length, 0, 'the malformed citation is dropped, not thrown');
+  assert.strictEqual(c.citations.length, 0);
+});
+
 if (process.exitCode) console.error(`\ncontract: FAILURES above (${passed} passed).`);
 else console.log(`\ncontract: all ${passed} checks pass. ✓`);
