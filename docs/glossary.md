@@ -61,8 +61,19 @@ one of the three is probably wrong.
   contract = absent or loud; nothing in between.* A bare-200 endpoint is not a
   lie if the gate asserts exactly "exists, routes, returns 200." Dishonesty
   enters only when behavior silently exceeds or simulates the spec.
-- **Clause** — one numbered must in a contract (`§N`). The unit of citation, the
-  unit of enrichment, the unit a test assertion maps to.
+- **Clause** — one must in a contract, addressed by a **durable, allocated id**
+  (`<component>#c<N>`, e.g. `lexer#c12` — reasonable 3.0 Part 2, DESIGN-3.0 §4.2), never a
+  positional number. The id is minted once (a `clause-allocated` ledger event, serialized under
+  the ledger controller's append lock) and never reused, even if the clause is later retired from
+  the file. The unit of citation, the unit of enrichment, the unit a test assertion maps to, and
+  the unit a **demanded-by** line names a provenance for.
+- **Demanded-by** — a clause's required provenance line, naming the citable demander that
+  justified adding it: a goal-scenario assertion (`goal:<id>`), a gate (`gate:<verbatim gate
+  string>`), a consuming clause/atom citation (`cite:<component>#c<N>`), or a chartering rewrite
+  event (`ledger:<seq>`) (DESIGN-3.0 §4.2). Load-bearing on the clause-cohesion graph (§4.3, a
+  later part) and the anti-padding audit. Syntax-checked at parse time
+  (`lib/contract.mjs`'s `missingDemandedBy`); resolving what a reference actually points to is
+  later work.
 - **Topology** — where an entity lives, its name, owner, relationships. Derived
   **subtractively from the vision** (structure is cheap to predict, expensive to
   move).
