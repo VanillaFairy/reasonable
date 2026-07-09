@@ -148,12 +148,15 @@ function driveToPacked(root) {
   return id;
 }
 
-check("enrichDelta requires an in-flight state: from 'ready' it is rejected", () => {
+check("enrichDelta requires an in-flight state: from 'ready' it is rejected and writes nothing new", () => {
   const root = newEffort();
   const { id } = charterAtom(root, CHARTER);
   transitionAtom(root, id, 'ready');
-  const r = enrichDelta(root, id, makeClause(root, 'lexer'));
+  const clause = makeClause(root, 'lexer');
+  const before = readLedgerLines(root).length;
+  const r = enrichDelta(root, id, clause);
   assert.strictEqual(r.ok, false);
+  assert.strictEqual(readLedgerLines(root).length, before);
 });
 
 check("enrichDelta from 'packed' succeeds and appends to deltaClauses (original clauses kept)", () => {
