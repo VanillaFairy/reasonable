@@ -144,6 +144,13 @@ check("a DIRECTORY locus containing another atom's FILE locus counts as an ances
     [{ from: 'a-1', to: 'a-2', edge: 'excludes', op: 'add' }]);
 });
 
+check('two atoms with DISTINCT literal file loci in the SAME directory do not exclude on locus alone (no wildcard means no ancestor-directory truncation)', () => {
+  const a = atom('a-1', 'lexer', [clause('lexer#c1', { locus: ['lib/graph.mjs'] })]);
+  const b = atom('a-2', 'ast', [clause('ast#c1', { locus: ['lib/rewrite.mjs'] })]);
+  const graph = ledgerCitationGraph([a, b]);
+  assert.deepStrictEqual(excludesEdges([a, b], { citationGraph: graph }), []);
+});
+
 check('two atoms whose citation closures transitively share a component exclude, even indirectly', () => {
   const a = atom('a-1', 'lexer', [clause('lexer#c1', { citations: [{ component: 'ast', clause: 'ast#c1' }] })]);
   const b = atom('a-2', 'eval', [clause('eval#c1', { citations: [{ component: 'ast', clause: 'ast#c1' }] })]);
