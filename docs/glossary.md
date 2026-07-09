@@ -99,6 +99,42 @@ one of the three is probably wrong.
   must be **one connected component**, computed by `lib/atom.mjs`'s `cohesionComponents`
   mechanically from the delta's real data — never from an agent's claim. A disconnected delta must
   split (rule R4); more than one component *is* the split proposal.
+- **Containment tree** — the drill-down/progress structure (DESIGN-3.0 §2.1): effort → subefforts →
+  atoms, single-parent, arbitrary depth. An atom's parent is derived from its `component`, through a
+  ratified component→subeffort **ownership map** (topology-stage genesis data, Part 6, not built
+  yet) — absent one, `lib/graph.mjs`'s `containmentTree` falls back to a flat, one-level tree
+  grouped by component, a degenerate case rather than a workaround.
+- **Dependency graph** — the restructure structure (DESIGN-3.0 §2.2): the four edges between atoms
+  (**Needs**, **Excludes**, **Serves**, **Informs**), computed by a fold from deltas, citations, and
+  recorded rewrite events — never hand-stored or hand-repaired. Two fidelities exist in the design:
+  **planned** (component-level, genesis-time) and **actual** (clause-level, post-spec); only actual
+  edges are built (`lib/graph.mjs`) — planned edges need the topologist's ratified ordering data
+  (Part 6) and are deferred whole.
+- **Needs** — readiness edge: atom A cannot start before atom B lands, because A's delta cites a
+  clause B's delta introduces. Clause-id matched, entirely ledger-derivable — `lib/graph.mjs`'s
+  `needsEdges` never touches a live contract file.
+- **Excludes** — conflict edge: two atoms cannot run concurrently (serializes, never orders)
+  because their footprints (locus ∪ citation closure ∪ resource claims) intersect at the contract
+  level. **Symmetric**, unlike the other three edge kinds; same-**Contract** atoms always exclude.
+  The resource-claims component of the footprint is always empty today — no atom field carries one
+  yet, a named, un-owned gap (the safe, under-approximating direction of error).
+- **Serves** — an atom advances a goal's cone: reverse-reachability from the goal's scenario-cited
+  clauses over the **Needs** graph. No `goals.json` exists yet (Part 6) — `lib/graph.mjs`'s
+  `servesEdges` is a real, tested rule with nothing real to call it with, today; it returns `[]` on
+  every live effort.
+- **Informs** — a spike gates an atom's feasibility: the direct effect of a spike-insert rewrite
+  event (rule R5, Part 5, not built yet). Likewise a real, tested rule with no real producer yet.
+- **Edge lifting** — the per-view quotient (DESIGN-3.0 §2.3) that keeps a containment view readable:
+  a dependency edge between atoms deep in different subtrees lifts to one edge between their common
+  ancestors at the viewed level. Deterministic, computed per view (`lib/graph.mjs`'s `liftEdges`),
+  never stored.
+- **As-lived graph** — the graph as it existed at a given ledger seq (DESIGN-3.0 §2.4): folded
+  purely from recorded ledger events — never a live contract file. Self-sufficient by construction.
+- **Current graph** — the graph re-derived fresh from today's ledger plus today's live, on-disk
+  contracts — richer than the **As-lived graph** because it also sees clauses that landed before
+  any atom still tracks them. Diverging from the as-lived graph is a real, mechanically-computed
+  signal (contract drift outside the ledger-governed pipeline), not a placeholder for a future
+  feature — `lib/graph.mjs`'s `graphDivergence`.
 - **Topology** — where an entity lives, its name, owner, relationships. Derived
   **subtractively from the vision** (structure is cheap to predict, expensive to
   move).
