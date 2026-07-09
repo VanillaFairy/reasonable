@@ -71,24 +71,31 @@ listed files**; `git add -A` is forbidden (see `shared/conventions.md`).
 | T01a | red | — | `test/clause-id.test.mjs` (authored here) |
 | T01b | green | T01a | `lib/clause-id.mjs` (new), `lib/ledger.mjs` (test file READ-ONLY) |
 | T01c | audit | T01b | — (audit only) |
+| T01d | test-hardening | T01c | `test/clause-id.test.mjs` (append-only, gap fix from T01c audit) |
 | T02a | red | — | `test/contract-v3-grammar.test.mjs` (authored here) |
 | T02b | green | T02a, T01b | `lib/contract.mjs` (rewrite), `test/contract.test.mjs` (fixture migration — see `shared/conventions.md`'s exception; `test/contract-v3-grammar.test.mjs` stays READ-ONLY) |
 | T02c | audit | T02b | — (audit only) |
 | T03 | — | T02b | `test/contract-consumers.test.mjs` (new); `lib/footprint.mjs`/`lib/citation-resolve.mjs` only if a real gap surfaces |
 | T04 | — | T02b | `docs/artifacts.md`, `docs/glossary.md` |
-| T05 | — | T01c, T02c, T03, T04 | `.claude-plugin/plugin.json`, `README.md` (human decides major vs. minor — see T05) |
+| T05 | — | T01d, T02c, T03, T04 | `.claude-plugin/plugin.json`, `README.md` (human decides major vs. minor — see T05) |
 
 ```dot
 digraph deps {
-    T01a -> T01b -> T01c;
+    T01a -> T01b -> T01c -> T01d;
     T02a -> T02b;
     T01b -> T02b;
     T02b -> T02c;
     T02b -> T03;
     T02b -> T04;
-    T01c -> T05; T02c -> T05; T03 -> T05; T04 -> T05;
+    T01d -> T05; T02c -> T05; T03 -> T05; T04 -> T05;
 }
 ```
+
+**Added mid-execution:** T01d closes a gap the T01c audit found (mutation-confirmed: a test meant
+to prove `allocatedClauseIds` filters by event `type` was satisfiable by a weaker guard, since its
+only fixture event happened to also lack a `component` field). The shipped implementation was
+already correct — T01d adds proof, not a behavior change — see
+`tasks/T01d-clause-id-guard-hardening.md`.
 
 **Wave Schedule:**
 - Wave 1: T01a (red — clause-id tests), T02a (red — contract-v3-grammar tests). These run in
@@ -117,6 +124,7 @@ touch nothing.
 | T01a | Clause-id shape + allocator tests (red) | `tasks/T01a-clause-id-red.md` | Failing tests for `lib/clause-id.mjs` and the new `clause-allocated` ledger event |
 | T01b | Clause-id shape + allocator impl (green) | `tasks/T01b-clause-id-green.md` | Implement `lib/clause-id.mjs` + the one-line `lib/ledger.mjs` schema entry |
 | T01c | Clause-id shape + allocator audit | `tasks/T01c-clause-id-audit.md` | Adversarial audit of tests + impl |
+| T01d | Clause-id guard hardening | `tasks/T01d-clause-id-guard-hardening.md` | Mutation-proof test for `allocatedClauseIds`'s type guard (T01c audit gap, no behavior change) |
 | T02a | Contract grammar v3 tests (red) | `tasks/T02a-contract-grammar-red.md` | Failing tests for the new `parseContract()` grammar (ids, per-clause citations, demanded-by) |
 | T02b | Contract grammar v3 impl (green) | `tasks/T02b-contract-grammar-green.md` | Rewrite `parseContract()`; migrate `test/contract.test.mjs`'s pre-existing fixtures to the new syntax |
 | T02c | Contract grammar v3 audit | `tasks/T02c-contract-grammar-audit.md` | Adversarial audit of tests, impl, and the migration's honesty |
