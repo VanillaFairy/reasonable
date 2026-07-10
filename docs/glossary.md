@@ -281,6 +281,25 @@ one of the three is probably wrong.
   much ceremony it earns: the ordered `bandScale`, the band→phase-materialization cutoffs, and the
   band→gate-cadence index. Because it can size ceremony *down*, it is vision-class — human-gated in both
   modes, agent-unwritable by capability. The classifier (Part 6c) *reads* dials; it never writes them.
+- **Complexity band** — a node's risk tier, drawn from `policy.json`'s ordered `dials.bandScale`. The
+  **Complexity classifier** emits it; the **Ceremony-escalation effect** ratchets it up on evidence; the
+  **Ceremony-sizing dial**'s band→cutoff and band→cadence maps translate it into how much ceremony the
+  node earns. Classifier and escalation share one ordered scale, so a classified band is a valid input to
+  escalation (Part 6c, DESIGN-3.0 §5.4).
+- **Complexity classifier** — the pure `classify(inputs, dials)` (`lib/ceremony.mjs`, Part 6c,
+  DESIGN-3.0 §5.4): a **monotone** map from five t0-observable risk inputs — **Blast radius** width,
+  whether a trusted suite already covers the locus, domain criticality, the run's supervision, and the
+  horizon *under a minimal driver* — to a **Complexity band**. Monotone means higher risk on any axis
+  never lowers the band, which is also the anti-gaming guarantee: an inflated footprint can only *raise*
+  ceremony, never buy it down. It *reads* the **Ceremony-sizing dial**; it never writes it.
+- **Phase degeneration** — a phase proven, mechanically, to have nothing to do — recorded as a
+  `phase-degenerated` result (never a silent skip), so a reviewer sees *ran-and-found-nothing*. Pinned as
+  three pure predicates (`lib/ceremony.mjs`, Part 6c, DESIGN-3.0 §5.4): the **Walking skeleton** scaffold
+  degenerates only when no new goal **Cone** appears and no newly-chartered atom touches the outer shell
+  (a depth-0 **Serves** provider, or a not-yet-skeletonized component); re-chartering degenerates on an
+  empty amendment batch; retro cross-cone classification degenerates when the fired goal gate spans ≤ 1
+  landed cone. Conservative — when in doubt it materializes. Who dispatches or skips a role on the result
+  is Part 7's.
 - **Retro** — the mandatory blocking heartbeat at every vertical slice gate. Runs a
   **three-way divergence classification**: every divergence between built and
   vision gets exactly one of (a) **fix the code**, (b) **amend the vision**
@@ -314,7 +333,8 @@ one of the three is probably wrong.
 - **Ceremony-escalation effect** — an effect a verdict may carry that ratchets a cone's complexity
   band **up** (monotone, capped, never down; DESIGN-3.0 §7), deepening its audit and tightening its
   gate cadence. Its **unwind** is the exact inverse (apply-then-unwind = identity). The band
-  vocabulary and thresholds are Part 6. The unwind's apply-then-unwind = identity invariant is
+  vocabulary (`policy.json`'s `dials.bandScale`) is Part 6d; the **Complexity classifier** that emits it
+  and its thresholds are Part 6c. The unwind's apply-then-unwind = identity invariant is
   proven only for a single, isolated escalation per cone — not yet exact under two escalations
   stacked on the same cone before either resolves (a known, unresolved gap; see
   `docs/artifacts.md`).

@@ -482,8 +482,16 @@ that, with `goals.json`, takes over `route.json`'s role at 3.0. An **object** wi
   rename either or fold coupling into `maxTangle`; a one-line change, since the law gates shape not value.
 - `cadence` — the band-indexed gate-cadence floor: each band → `{ n, m }` finite numbers (§9).
 - `dials` — the ceremony-sizing dials: `bandScale` (the ordered band vocabulary `lib/rewrite.mjs`'s
-  `ceremonyEscalation` indexes into and P6c's classifier emits from), plus the band-keyed `phaseCutoffs`
-  and `cadenceIndex` maps.
+  `ceremonyEscalation` indexes into and the complexity classifier `lib/ceremony.mjs` (Part 6c) emits
+  from), plus the band-keyed `phaseCutoffs` and `cadenceIndex` maps (read by the classifier's *consumers*
+  — P7 — never by `classify` itself). The classifier also reads `dials.classifier` — its per-axis risk
+  cutoffs (`blastRadiusCutoffs` / `horizonCutoffs` / `criticalityCutoffs` finite-number arrays, plus
+  `autonomousPressure` / `trustedRelief` finite numbers) — a **P6c-coined** key that rides `policy.json`'s
+  **open** dials grammar: `readPolicy` validates only `bandScale`/`phaseCutoffs`/`cadenceIndex` and
+  returns the object verbatim, so `dials.classifier` survives un-validated (`lib/ceremony.mjs` reads it
+  from a caller-supplied object and treats an absent cutoff as "disable that lift," never a fabricated
+  default). Ships flagged-uncalibrated (§16); a reviewer may rename it or choose a different monotone
+  combiner — a local change, since `classify` gates shape not value.
 
 Numeric defaults ship **flagged-uncalibrated** (§16) — the loader validates *shape*, never *value*, so a
 mistuned-but-well-formed policy loads clean. The `r8Retries` / `cadence.<band>.{n,m}` / `dials.*` keys
@@ -1117,8 +1125,10 @@ against hand-built fixtures, exactly as Part 4's `servesEdges`/`informsEdges` ar
   the armed checks) — DESIGN-3.0's own untested open edge, now built with an apply-then-unwind =
   identity invariant.
 
-**Scope note — the flagged gaps, now partly closed:** the complexity-band **vocabulary, thresholds,
-and storage** (`policy.json`'s ceremony-sizing dials) remain **Part 6c/6d**; the **legibility density
+**Scope note — the flagged gaps, now closed:** the complexity-band **vocabulary and storage**
+(`policy.json`'s `dials.bandScale`, Part 6d) and the **classifier + thresholds** that emit and size it
+(`lib/ceremony.mjs`'s `classify`, its P6c-coined `dials.classifier` cutoffs, and the phase-degeneration
+predicate — Part 6c) are now built; the **legibility density
 metric** that triggers and validates R8's regrouping is now built — `lib/legibility.mjs` (Part 6b):
 `legibilityFindings` computes the triggers and `regroupingReducesTangle` is R8's "regroup only if
 density measurably drops" guard (raw cross-group edge count must strictly fall, so empty grouping
