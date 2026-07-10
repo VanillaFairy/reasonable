@@ -145,5 +145,37 @@ check('every emitted edge is a valid effects.mjs edge effect', () => {
   for (const e of edges) assert.deepStrictEqual(Object.keys(e).sort(), ['edge', 'from', 'op', 'to']);
 });
 
+check('cross-component quotient is DIRECT, not transitive (a 3-component chain)', () => {
+  // parser cites ast; ast cites lexer. parser must NOT planned-need lexer (no transitive closure).
+  const charters = [
+    { id: 'p-1', component: 'parser', premises: ['cite:ast#c1'], order: 0 },
+    { id: 'ast-1', component: 'ast', premises: ['cite:lexer#c1'], order: 0 },
+    { id: 'lex-1', component: 'lexer', premises: [], order: 0 },
+  ];
+  assert.deepStrictEqual(
+    sortEdges(plannedNeedsEdges(charters)),
+    sortEdges([E('p-1', 'ast-1'), E('ast-1', 'lex-1')]), // NO p-1 → lex-1
+  );
+});
+
+check('intra-component strata are gap-tolerant (non-contiguous order values)', () => {
+  const charters = [
+    { id: 'a-1', component: 'parser', premises: [], order: 0 },
+    { id: 'a-2', component: 'parser', premises: [], order: 5 },
+    { id: 'a-3', component: 'parser', premises: [], order: 9 },
+  ];
+  // immediate-predecessor STRATUM by ascending distinct order: 5-needs-0, 9-needs-5
+  assert.deepStrictEqual(sortEdges(plannedNeedsEdges(charters)), sortEdges([E('a-2', 'a-1'), E('a-3', 'a-2')]));
+});
+
+check('a charter with an absent premises key (not []) yields no cross edge and does not crash', () => {
+  const charters = [
+    { id: 'a-1', component: 'parser', order: 1 },            // no premises key at all
+    { id: 'a-2', component: 'parser', premises: [], order: 0 },
+  ];
+  // only the intra edge a-1 → a-2 (order 1 after 0); the absent premises yields no cross edge
+  assert.deepStrictEqual(plannedNeedsEdges(charters), [E('a-1', 'a-2')]);
+});
+
 if (process.exitCode) console.error(`\ngraph-planned-edges: FAILURES above (${passed} passed).`);
 else console.log(`\ngraph-planned-edges: all ${passed} checks pass. ✓`);
