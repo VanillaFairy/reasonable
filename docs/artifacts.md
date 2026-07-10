@@ -898,9 +898,11 @@ in the codebase has ever written a real `effects` array (no event type populates
 still nothing for the graph engine to fold from it. Its edges are 100% derived, every time —
 deliberately, since a recorded `effects` override would need precedence rules against derivation
 this design hasn't worked out yet (see `docs/superpowers/specs/2026-07-09-reasonable-3.0-p4-graph-design.md`'s
-"no effects-array overlay layer" note). Populating `effects` for real, and folding it with real
-precedence rules, is the rewrite engine's job (Part 5) — until then, an `effects` array stays
-durable, replayable data on the ledger line and nothing more.
+"no effects-array overlay layer" note). Computing these effect sets is now the rewrite engine's job (Part 5,
+`lib/rewrite.mjs`, below) — a pure function from a verdict to a two-phase effect set. But nothing
+yet *appends* a verdict carrying them, and nothing *folds* them with precedence: that is the
+frontier loop's job (Part 7). So today an `effects` array is still never present on a real event,
+and the graph engine's edges stay 100% derived.
 
 ### Atom lifecycle events — charter, delta, transitions, flags (3.0, Part 3)
 
@@ -942,9 +944,11 @@ plus `lib/atom.mjs`'s own reject-before-write checks on top — a malformed prem
 name, or an illegal transition never reaches the ledger at all). `lib/atom.mjs`'s `loadAtom`/
 `foldAtoms` (and, since Part 4, `foldAtomFromEvents`/`foldAtomsFromEvents`, their pre-filtered-event
 siblings) fold these events into a read-only, in-memory atom record — nothing is written back to
-disk beyond the ledger line itself. Deciding which verdict (R1–R9) applies to a failed attempt, or
-applying one, remains future work (rewrite engine, Part 5) — this part's atoms now DO fold into the
-dependency graph, see below.
+disk beyond the ledger line itself. Which verdict (R1–R9) *applies* to a failed attempt is audited
+model judgment, and *applying* an effect set is the frontier loop's job (Part 7); *computing* the
+effect set for a given verdict is now the rewrite engine's job (Part 5, `lib/rewrite.mjs`). This
+part's atoms fold into the dependency graph (Part 4) and are transitioned by those computed effects
+once Part 7 applies them.
 
 ### The graph engine — containment, dependency edges, lifting, the two projections (3.0, Part 4)
 
@@ -963,7 +967,8 @@ dependency graph, see below.
   or delta field carries them yet, a named, un-owned gap (safe direction of error: it can only
   under-approximate `excludes`, never produce a wrong edge). `servesEdges`/`informsEdges` are real,
   tested computation rules with nothing real to call them with yet (no `goals.json`, Part 6; no
-  spike-insert rewrite event, Part 5) — both return `[]` on every live effort today.
+  applied spike-insert rewrite event — Part 5's rewrite engine now *computes* that birth effect,
+  see below, but nothing yet *applies* it, Part 7) — both return `[]` on every live effort today.
 - **Edge lifting** (`liftEdges`) — the per-view quotient (§2.3): a dependency edge between atoms in
   different containment subtrees lifts to one edge between their common ancestors at the viewed
   level. Deterministic, computed per view, never stored.
@@ -983,6 +988,64 @@ into the hot append path is deferred to whichever part first needs to read one (
 topology stage's ratification surface, Part 6, or the live view, Part 7). Surfacing
 `graphDivergence`'s output at a human-facing gate is likewise not built here — this part only
 computes the diff.
+
+### The rewrite engine — the failure calculus (3.0, Part 5)
+
+`lib/rewrite.mjs` (`docs/DESIGN-3.0.md` §7, §7.1, §7.2) is a **pure** library: given an
+already-typed, already-audited R1–R9 verdict and a read-only graph snapshot, `computeVerdictEffects`
+returns a two-phase `{provisional, permanent}` set of effects in the shapes above. It **computes**
+effect sets; it does not append a ledger event, apply an effect, read disk, or mint a born node's id
+— the append-path wiring, the collision-free 3.0-verdict event type, and the effects-overlay fold
+are all the frontier loop's job (Part 7). So today nothing calls it on a live effort; it is tested
+against hand-built fixtures, exactly as Part 4's `servesEdges`/`informsEdges` are.
+
+- **Totality (§7.2).** The router binds all nine verdict kinds (`checkpoint`, `dead-end`, `ripple`,
+  `oversized`, `unknown-blocking`, `cycle-detected`, `parity-breach`, `illegible`, `stale-spec`) and
+  **HALTs on any other** — `{ok:false, error}`, fail-closed. An illegal atom transition inside a rule
+  HALTs the same way (validated with `lib/atom.mjs`'s `isValidTransition` before any `{state}` effect
+  is emitted).
+- **Two-phase effects (§7.2).** Provisional effects (reversible graph-state changes) are computed for
+  verdict time; permanent effects (retirement permanence, ratified births, any shared-branch
+  mutation) for gate ratification. Rules whose §7 "permanent" cell is "—" (R1, R4, R9) return
+  `permanent: []`.
+- **Born nodes are charter-intents.** R4 sub-atoms, R5's spike, and R6's placeholder are new nodes
+  whose real `a-<seq>` id is minted only at apply (Part 7), so a birth is a node effect carrying a
+  `change.charter` addressed by a synthetic anchor (`a-1/sub-0`, `spike/a-1`, `birth/<concept>`).
+- **The routing ladder (§7.1)** is `routeRefutedPremise` — a pure classifier from where a refuted
+  premise lives (`delta`/`contract`/`goal`/`intention`) to one of five routes; the `intention` layer
+  routes to the always-human `intent-fork`.
+- **The ceremony-escalation effect (§7, §5.4, §9)** is `ceremonyEscalation` — a sibling call
+  (Part 7 makes it alongside `computeVerdictEffects`) that may ratchet a cone's complexity band **up
+  one step, monotone, capped, never down**, on a wide R2 / foreign R3 / integration-exposing R9 /
+  second R1. Its **unwind**, `unwindCeremonyEscalation`, is the exact inverse (restore the band, disarm
+  the armed checks) — DESIGN-3.0's own untested open edge, now built with an apply-then-unwind =
+  identity invariant.
+
+**Scope note — the flagged, un-owned gaps:** the complexity-band **vocabulary, thresholds, and
+storage** (`policy.json`'s ceremony-sizing dials) and the **legibility density metric** that triggers
+and validates R8's regrouping are `lib/legibility.mjs` / `policy.json`, **Part 6** — Part 5 implements
+only the *mechanism* against a caller-supplied ordered band scale and per-cone bound, inventing no
+band names and no thresholds; R8's own "regroup only if density measurably drops" guard belongs to
+Part 6 to enforce, and Part 5 does not fake it. The R1 reprice **factor α is uncalibrated** (§16) —
+the effect carries it symbolically, it computes no number. **R2's sibling-reprice population is a
+supervisor-resolved interpretation, not settled design prose:** `ruleDeadEnd` emits
+`{reprice:{factor:'α'}}` for any other atom holding a direct citation to the exact refuted
+`{component, clause}`, read from DESIGN-3.0 §7's row text ("intersecting atoms freeze; siblings
+sharing citations reprice") — the prose alone doesn't pin whether "siblings" means exact-citation-match
+(the reading implemented, locked by `test/rewrite-r2-reprice.test.mjs`) or something broader (e.g.
+lineage/co-parentage — data this part has no access to); flag it as reviewable. **The
+ceremony-escalation unwind is exact only for a single, isolated escalation per cone — not under
+stacking.** Mutation testing proves it correct for the literal scenario DESIGN-3.0 and the locked
+tests state (one escalation from a clean armed state), and proves it **incorrect** — demonstrated,
+not hypothetical — for two escalations landing on the same cone before either resolves: the `armed`
+marker set is a fixed, unnamespaced 3-item literal keyed only by check name, so unwinding the later
+escalation strips markers the earlier, still-ratified escalation also needs — a residual
+silent-ratchet failure of exactly the kind §3's policy anti-attack exists to prevent. This is a real,
+unfixed gap; fixing it needs a shape change (e.g. namespacing armed markers by escalation identity),
+which is an architecture call for whoever specs Part 7 (the part that will actually apply multiple
+verdicts across a real gate-cadence window, making stacking routine rather than theoretical) or a
+DESIGN-3.0 ratification pass. **Part 7 must not assume the unwind is exact under stacked escalations
+on one cone until this is resolved.**
 
 ---
 

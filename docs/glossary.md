@@ -269,6 +269,28 @@ one of the three is probably wrong.
   engine writes it (must be an actual JSON value — `change: undefined` is rejected).
 - **Edge effect** — an effect entry `{from, to, edge, op}`: a dependency edge added or removed
   between two node ids. `edge` ∈ `needs | excludes | serves | informs`; `op` ∈ `add | remove`.
+- **Blast radius** — the widen-only citation closure of a refuted premise recorded by an R2
+  **Verdict**; every atom whose footprint intersects it freezes.
+- **Ceremony-escalation effect** — an effect a verdict may carry that ratchets a cone's complexity
+  band **up** (monotone, capped, never down; DESIGN-3.0 §7), deepening its audit and tightening its
+  gate cadence. Its **unwind** is the exact inverse (apply-then-unwind = identity). The band
+  vocabulary and thresholds are Part 6. The unwind's apply-then-unwind = identity invariant is
+  proven only for a single, isolated escalation per cone — not yet exact under two escalations
+  stacked on the same cone before either resolves (a known, unresolved gap; see
+  `docs/artifacts.md`).
+- **Failure calculus** — the total function (`lib/rewrite.mjs`, DESIGN-3.0 §7) mapping an
+  already-typed, already-audited **Verdict** to a two-phase effect set. Pure: it computes effects, it
+  does not apply them (the frontier loop does, Part 7).
+- **Provisional / permanent effect** — the two phases of a verdict's effect set: provisional
+  (reversible graph-state changes) lands at verdict time; permanent (retirement permanence, ratified
+  births, any shared-branch mutation) lands only at a **gate**.
+- **Routing ladder** — the §7.1 classifier (`routeRefutedPremise`) mapping where a refuted premise
+  lives to its escalation route; an intention-layer premise always routes to the human-only intent
+  fork.
+- **Verdict (R1–R9)** — a typed outcome of an attempt (`checkpoint`, `dead-end`, `ripple`,
+  `oversized`, `unknown-blocking`, `cycle-detected`, `parity-breach`, `illegible`, `stale-spec`).
+  Its type and payload are audited model judgment; its effect set is code-computed by the **Failure
+  calculus**.
 - **Node** — a dispatchable unit of the execution tree (a work order, a slice, a spike, a
   scaffold, a worker's own reported span of work, …), addressed by a `/`-joined path from
   the tree root. A node carries a STORED status, an optional free-text detail, and a list
