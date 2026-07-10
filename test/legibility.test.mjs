@@ -190,5 +190,15 @@ check('every finding has {kind, metric, threshold, <locator>} and is JSON-serial
   }
 });
 
+// ── 9. audit follow-up: atom leaves never fire over-wide, regardless of threshold sign ────────
+
+check('bounded width: atom leaves never fire over-wide, even under an absurd negative maxWidth (audit follow-up)', () => {
+  const atoms = [0, 1, 2, 3].map((i) => ({ id: `a-${i}`, component: 'big' }));
+  const fs = ofKind(legibilityFindings(graphOf(atoms), { legibility: { maxWidth: -1 } }), 'over-wide');
+  // Only containment root/group nodes may fire; atom leaves (children: []) never do, regardless of
+  // threshold sign — a negative maxWidth still fires on root ('') and the 'big' group, never on atoms.
+  assert.deepStrictEqual(fs.map((f) => f.nodeId).sort(), ['', 'big']);
+});
+
 if (process.exitCode) console.error(`\nlegibility: FAILURES above (${passed} passed).`);
 else console.log(`\nlegibility: all ${passed} checks pass. ✓`);
