@@ -101,6 +101,18 @@ check('extra top-level entry fields are dropped (closed per-entry grammar)', () 
   assert.deepStrictEqual(Object.keys(goals[0]).sort(), ['id', 'ledgerSeq', 'ratifiedAt', 'scenario', 'scenarioCitations']);
 });
 
+check('ledgerSeq of 0 is carried through, not coerced to null (off-by-0 trap: an empty ledger has seq 0)', () => {
+  const { goals, diagnostic } = readGoals(write([{ id: 'g', scenario: 's', scenarioCitations: [], ledgerSeq: 0 }]));
+  assert.strictEqual(diagnostic, null);
+  assert.strictEqual(goals[0].ledgerSeq, 0);
+});
+
+check('a non-integer finite ledgerSeq (e.g. 3.5) is carried through as-is, never coerced or rejected', () => {
+  const { goals, diagnostic } = readGoals(write([{ id: 'g', scenario: 's', scenarioCitations: [], ledgerSeq: 3.5 }]));
+  assert.strictEqual(diagnostic, null);
+  assert.strictEqual(goals[0].ledgerSeq, 3.5);
+});
+
 // ── present but invalid — null + a surfaced diagnostic, never a repair ───────
 
 const hasDiag = (root) => { const { goals, diagnostic } = readGoals(root); assert.strictEqual(goals, null); assert.ok(typeof diagnostic === 'string' && diagnostic.length > 0, 'diagnostic is a non-empty string'); };
@@ -119,6 +131,10 @@ check('an entry missing scenarioCitations entirely -> null + diagnostic', () => 
 check('a citation that is a bare string (not an object) -> null + diagnostic', () => hasDiag(write([{ id: 'g', scenario: 's', scenarioCitations: ['lexer#c1'] }])));
 check('a citation object missing clause -> null + diagnostic', () => hasDiag(write([{ id: 'g', scenario: 's', scenarioCitations: [{ component: 'lexer' }] }])));
 check('a citation with an empty-string clause -> null + diagnostic', () => hasDiag(write([{ id: 'g', scenario: 's', scenarioCitations: [{ clause: '' }] }])));
+
+check('a citation that is null (not an object) -> null + diagnostic, never throws', () => hasDiag(write([{ id: 'g', scenario: 's', scenarioCitations: [null] }])));
+
+check('a valid citation followed by a malformed citation within one entry -> null + diagnostic (validates every index, not just 0)', () => hasDiag(write([{ id: 'g', scenario: 's', scenarioCitations: [{ clause: 'lexer#c1' }, { clause: '' }] }])));
 
 check('ONE malformed entry among valid ones fails the WHOLE load (all-or-nothing, never partial)', () => {
   hasDiag(write([validGoal, { id: 'bad', scenario: 's' /* no scenarioCitations */ }, validGoal]));
