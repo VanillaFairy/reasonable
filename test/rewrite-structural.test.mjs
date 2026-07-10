@@ -52,9 +52,13 @@ check('R2 retires the atom pending, records the sorted blast radius, and freezes
   const r = computeVerdictEffects({ kind: 'dead-end', atomId: 'a-1', premise }, state);
   assert.strictEqual(r.ok, true);
   assert.strictEqual(r.route, 'amendment');
+  // a-2's citation { component: 'x', clause: 'x#c1' } is an EXACT match to the premise, so per
+  // T02d-r2-reprice-red.md (audit follow-up: DESIGN-3.0 §7's R2 row — "siblings sharing citations
+  // reprice") it must also receive a separate {reprice:{factor:'α'}} effect, in addition to freeze.
   assert.deepStrictEqual(r.provisional, [
     { nodeId: 'a-1', change: { state: 'retired-pending', premise, blastRadius: ['x'] } },
     { nodeId: 'a-2', change: { flag: 'frozen', op: 'set', reason: 'R2 blast radius' } },
+    { nodeId: 'a-2', change: { reprice: { factor: 'α' } } },
   ]);
   assert.deepStrictEqual(r.permanent, [
     { nodeId: 'a-1', change: { state: 'retired', lineage: 'R2-gate' } },
