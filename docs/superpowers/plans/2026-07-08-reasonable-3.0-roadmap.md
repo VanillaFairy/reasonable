@@ -232,7 +232,7 @@ used for its pivotal call):
 | **P6b** | The **legibility law** — bounded width, tangle density, coupling & chain smells, and R8's density-reduction guard. Pure over planned+actual edges. | `lib/legibility.mjs` (new) | P6a | Landed — merged (no bump, 3.2.0) |
 | **P6c** | The **ceremony dial** — the complexity classifier (t0 risk → band) + the **phase-degeneration predicate** (mechanically pinned) + band-scale mechanics. | `lib/ceremony.mjs` (new) | P6a, P6d | Landed — merged (no bump, 3.2.0) |
 | **P6d** | **`goals.json` + `policy.json`** grammar + conservative loaders (weights, legibility/cadence thresholds, ceremony-sizing dials). Additive; `route.mjs` untouched. | `lib/goals.mjs`, `lib/policy.mjs` (new) | — | Landed — merged (no bump, 3.2.0) |
-| **P6e** | The **topologist role** + **`topology.html`** viewer (self-contained layered-DAG renderer; component / cone / diff views). | `agents/topologist.md`, `lib/topology-view.mjs` (new) | P6a–P6d | Not started |
+| **P6e** | The **topologist role** + **`topology.html`** viewer (self-contained layered-DAG renderer; component / cone / diff views). | `agents/topologist.md`, `lib/topology-view.mjs` (new) | P6a–P6d | Planned |
 
 **Sub-series dependency order:** P6a → P6d → { P6b, P6c } → P6e. P6a is the foundation (genesis
 legibility is vacuous without planned edges — a charter has no deltas, so `needsEdges` returns `[]`).
