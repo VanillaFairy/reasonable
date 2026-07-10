@@ -149,6 +149,38 @@ check('coordinates: y strictly increases with rank; same-rank nodes have distinc
   }
 });
 
+check('ranks/width/height: the bounding box matches the actual rank/order extents (non-degenerate input)', () => {
+  // A,B rank0 (2 orders); C,D rank1 (2 orders, C fed by both A and B, D fed by A); E rank2 (1 order).
+  const g = {
+    nodes: [{ id: 'A' }, { id: 'B' }, { id: 'C' }, { id: 'D' }, { id: 'E' }],
+    edges: [{ from: 'A', to: 'C' }, { from: 'B', to: 'C' }, { from: 'A', to: 'D' }, { from: 'C', to: 'E' }],
+  };
+  const L = layoutTopology(g);
+  const r = byId(L);
+
+  // `ranks` is a COUNT: one past the highest rank actually assigned to a node — not the max rank
+  // itself. Derive the max rank from the nodes' own `rank` field (never from `L.ranks` circularly).
+  const maxRank = Math.max(...L.nodes.map((n) => n.rank));
+  assert.strictEqual(L.ranks, maxRank + 1, 'ranks did not equal (max rank + 1)');
+
+  // Derive the grid's per-step x/y spacing from the layout's OWN output — never a hardcoded
+  // XGAP/YGAP (those are cosmetic constants local to lib/topology-view.mjs, not exported). Rank 0
+  // holds two nodes (A, B) at two distinct orders, so their x's differ by exactly one order-step;
+  // A (rank0) and C (rank1) are adjacent ranks, so their y's differ by exactly one rank-step.
+  const rank0xs = L.nodes.filter((n) => n.rank === 0).map((n) => n.x).sort((a, b) => a - b);
+  const xStep = rank0xs[1] - rank0xs[0];
+  const yStep = r.get('C').y - r.get('A').y;
+  assert.ok(xStep > 0, 'could not derive a positive x order-step from the fixture');
+  assert.ok(yStep > 0, 'could not derive a positive y rank-step from the fixture');
+
+  // width/height are the bounding box: (max order + 1) / (max rank + 1) steps — exactly the box
+  // that contains every node, no more, no less. An off-by-one (dropped or extra `+1`) on either
+  // formula throws this off by exactly one step, which this equality catches both ways.
+  const maxOrder = Math.max(...L.nodes.map((n) => n.order));
+  assert.strictEqual(L.width, (maxOrder + 1) * xStep, 'width is not (max order + 1) steps wide');
+  assert.strictEqual(L.height, (maxRank + 1) * yStep, 'height is not (max rank + 1) steps tall');
+});
+
 // ── cycle-safety (defensive; never hangs, never throws — plan Flag 5) ─────────────────────────────
 
 check('cycle-safety: a 2-cycle A→B→A lays out without hanging and keeps both nodes', () => {
