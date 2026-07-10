@@ -120,6 +120,10 @@ one of the three is probably wrong.
   ordering (DESIGN-3.0 §2.2). Planned edges order the frontier and feed the legibility law (Part 6b);
   once a delta is authored, edges refine to **actual**, which alone govern packing, dispatch, and
   merges.
+- **Stratum** — one rank of a total order: within a component, the atoms sharing an `order` value (a
+  **Planned fidelity** intra-component **Needs** edge runs from each stratum to the immediately-preceding
+  one); in a containment view, one grouping level. Inserting an *empty* stratum to cosmetically reduce a
+  node's width is what the **Legibility law**'s density-reduction guard exists to reject.
 - **Excludes** — conflict edge: two atoms cannot run concurrently (serializes, never orders)
   because their footprints (locus ∪ citation closure ∪ resource claims) intersect at the contract
   level. **Symmetric**, unlike the other three edge kinds; same-**Contract** atoms always exclude.
@@ -129,12 +133,28 @@ one of the three is probably wrong.
   clauses over the **Needs** graph. No `goals.json` exists yet (Part 6) — `lib/graph.mjs`'s
   `servesEdges` is a real, tested rule with nothing real to call it with, today; it returns `[]` on
   every live effort.
+- **Cone** — the set of atoms that advance one goal: the **Serves** reverse-reachability from that goal's
+  scenario-cited clauses over the **Needs** graph. Cones can overlap (a shared provider serves several
+  goals). The **Legibility law**'s coupling smell flags two goals whose *exclusive* cones are densely
+  interlinked (goals that should be independent but are not).
 - **Informs** — a spike gates an atom's feasibility: the direct effect of a spike-insert rewrite
   event (rule R5, Part 5, not built yet). Likewise a real, tested rule with no real producer yet.
 - **Edge lifting** — the per-view quotient (DESIGN-3.0 §2.3) that keeps a containment view readable:
   a dependency edge between atoms deep in different subtrees lifts to one edge between their common
   ancestors at the viewed level. Deterministic, computed per view (`lib/graph.mjs`'s `liftEdges`),
   never stored.
+- **Legibility law** — the pure calculus (`lib/legibility.mjs`, Part 6b, DESIGN-3.0 §5.2) that measures
+  the *shape* of the dependency graph against the thresholds in **policy.json**'s `legibility` block and
+  emits **Legibility finding**s: bounded width (a containment node's child count), bounded tangle
+  (cross-sibling **Edge lifting** density), coupling smells (cross-**Cone** density + god-component
+  fan-in), and the longest **Needs**-chain. It runs over **Planned fidelity** edges at genesis and
+  **actual** edges as deltas refine — edge-source-agnostic. It also hosts `regroupingReducesTangle`, the
+  density-reduction guard that accepts a regrouping only if it strictly reduces cross-group edge count
+  (so inserting empty grouping **Stratum**s to fake-restore width is rejected) — the guard R8 leaves open.
+- **Legibility finding** — one violation the **Legibility law** emits: `{ kind, metric, threshold, ‹locator› }`,
+  where `kind` is `over-wide` / `over-tangled` / `cross-cone-coupling` / `god-component` / `over-serialized`.
+  A finding is drop-in usable as the `proposal` of an R8 `illegible` verdict (which threads it through
+  opaquely), so the law and the rewrite calculus compose without either inventing a shape.
 - **As-lived graph** — the graph as it existed at a given ledger seq (DESIGN-3.0 §2.4): folded
   purely from recorded ledger events — never a live contract file. Self-sufficient by construction.
 - **Current graph** — the graph re-derived fresh from today's ledger plus today's live, on-disk

@@ -473,7 +473,13 @@ that, with `goals.json`, takes over `route.json`'s role at 3.0. An **object** wi
 - `weights` — priority weights: a non-empty object of finite numbers (the six axes — integration-risk
   retirement, info gain, unlocks, goal proximity, staleness, cost).
 - `legibility` — the pinned thresholds the legibility law (Part 6b) reads by name: `maxWidth`,
-  `maxTangle`, `maxChain` (finite numbers), and `r8Retries` (the R8 retry bound N).
+  `maxTangle`, `maxChain` (finite numbers), and `r8Retries` (the R8 retry bound N). Part 6b's coupling
+  smells also read `maxCoupling` (cross-cone density) and `maxFanIn` (god-component fan-in) — two
+  **P6b-coined** keys the design named by role, not by key. They ride `policy.json`'s **open** grammar:
+  `readPolicy` returns the object verbatim and gates only the four required names, so these extras
+  survive un-validated (`lib/legibility.mjs` reads them from a caller-supplied object and treats an
+  absent/non-finite threshold as "disable that check," never a fabricated default). A reviewer may
+  rename either or fold coupling into `maxTangle`; a one-line change, since the law gates shape not value.
 - `cadence` — the band-indexed gate-cadence floor: each band → `{ n, m }` finite numbers (§9).
 - `dials` — the ceremony-sizing dials: `bandScale` (the ordered band vocabulary `lib/rewrite.mjs`'s
   `ceremonyEscalation` indexes into and P6c's classifier emits from), plus the band-keyed `phaseCutoffs`
@@ -1048,8 +1054,12 @@ once Part 7 applies them.
   emits the same `{from,to,edge:'needs',op:'add'}` shape as `needsEdges` — planned vs actual is
   which function produced the array, never a per-edge tag. Planned `excludes`/`serves`/`informs`
   remain actual-only for now (a charter carries no resource claims or scenario citations yet — the
-  same un-owned gaps noted below); the legibility law that consumes planned `needs` at genesis is
-  Part 6b. `excludesEdges`' footprint always treats resource claims as empty — no atom charter
+  same un-owned gaps noted below); the legibility law that consumes planned `needs` at
+  genesis is now built (`lib/legibility.mjs`, Part 6b): a pure calculus over this file's output that
+  measures bounded width, bounded tangle, coupling smells (cross-cone density + god-component fan-in),
+  and the longest `needs`-chain against `policy.json`'s `legibility` thresholds, emitting findings
+  drop-in usable as an R8 `illegible` verdict's `proposal`; it also hosts `regroupingReducesTangle`,
+  R8's density-reduction guard. `excludesEdges`' footprint always treats resource claims as empty — no atom charter
   or delta field carries them yet, a named, un-owned gap (safe direction of error: it can only
   under-approximate `excludes`, never produce a wrong edge). `servesEdges`/`informsEdges` are real,
   tested computation rules with nothing real to call them with yet (no `goals.json`, Part 6; no
@@ -1107,12 +1117,14 @@ against hand-built fixtures, exactly as Part 4's `servesEdges`/`informsEdges` ar
   the armed checks) — DESIGN-3.0's own untested open edge, now built with an apply-then-unwind =
   identity invariant.
 
-**Scope note — the flagged, un-owned gaps:** the complexity-band **vocabulary, thresholds, and
-storage** (`policy.json`'s ceremony-sizing dials) and the **legibility density metric** that triggers
-and validates R8's regrouping are `lib/legibility.mjs` / `policy.json`, **Part 6** — Part 5 implements
-only the *mechanism* against a caller-supplied ordered band scale and per-cone bound, inventing no
-band names and no thresholds; R8's own "regroup only if density measurably drops" guard belongs to
-Part 6 to enforce, and Part 5 does not fake it. The R1 reprice **factor α is uncalibrated** (§16) —
+**Scope note — the flagged gaps, now partly closed:** the complexity-band **vocabulary, thresholds,
+and storage** (`policy.json`'s ceremony-sizing dials) remain **Part 6c/6d**; the **legibility density
+metric** that triggers and validates R8's regrouping is now built — `lib/legibility.mjs` (Part 6b):
+`legibilityFindings` computes the triggers and `regroupingReducesTangle` is R8's "regroup only if
+density measurably drops" guard (raw cross-group edge count must strictly fall, so empty grouping
+strata are rejected). Part 5 implemented only the *mechanism* against a caller-supplied ordered band
+scale and per-cone bound, inventing no band names and no thresholds, and did not fake R8's guard —
+Part 6b now enforces it. The R1 reprice **factor α is uncalibrated** (§16) —
 the effect carries it symbolically, it computes no number. **R2's sibling-reprice population is a
 supervisor-resolved interpretation, not settled design prose:** `ruleDeadEnd` emits
 `{reprice:{factor:'α'}}` for any other atom holding a direct citation to the exact refuted
