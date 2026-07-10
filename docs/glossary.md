@@ -300,6 +300,18 @@ one of the three is probably wrong.
   empty amendment batch; retro cross-cone classification degenerates when the fired goal gate spans ≤ 1
   landed cone. Conservative — when in doubt it materializes. Who dispatches or skips a role on the result
   is Part 7's.
+- **Topologist** — the genesis planner (`agents/topologist.md`, Part 6e, DESIGN-3.0 §5.1), the
+  **Route**-planner reborn: a thin, mostly-read-only role that **proposes** the five §5.1 outputs — the
+  **Topology**, the full initial **Charter**ing (structure only, §13 — never a **Delta**, never a
+  behavioral must), the **Containment tree** + component→subeffort ownership map, the **policy.json**
+  priority-policy proposal, and the **Complexity classifier**'s t0 classification — and, post-genesis,
+  supplies rewrite payloads on demand and proposes re-chartering batches at gates (both riding the
+  mechanical `retopologize`). It **proposes** **goals.json** / **policy.json** but **cannot write** them
+  (vision-class, human-gated §3): its read-only tool allowlist (`Read, Grep, Glob`, mirroring the
+  route-planner) grants no file-writing tool — capability, not promise. It consumes the **Legibility
+  law**'s findings to re-cut; it never re-measures the graph itself. An `opus` judgment role that cites
+  the **intention** oracle on every priority/scope fork; the orchestrator (and a human-gated narrow
+  writer) persist what it proposes. The stage that *dispatches* it into the phase flow is Part 7's.
 - **Retro** — the mandatory blocking heartbeat at every vertical slice gate. Runs a
   **three-way divergence classification**: every divergence between built and
   vision gets exactly one of (a) **fix the code**, (b) **amend the vision**
