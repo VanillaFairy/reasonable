@@ -228,7 +228,7 @@ used for its pivotal call):
 
 | Sub-part | Builds | New/changed files | Depends on | Status |
 |---|---|---|---|---|
-| **P6a** | The **planned-edge fold** — component-quotient `needs` (from `cite:` premises) + intra-component ordering (from `order`). Finishes P4's deferral. | `lib/graph.mjs` (extend, additive) | P3, P4 | Planned — [`p6a plan`](2026-07-10-reasonable-3.0-p6a-planned-edges/plan.md) |
+| **P6a** | The **planned-edge fold** — component-quotient `needs` (from `cite:` premises) + intra-component ordering (from `order`). Finishes P4's deferral. | `lib/graph.mjs` (extend, additive) | P3, P4 | Landed — merged (no bump, 3.2.0) |
 | **P6b** | The **legibility law** — bounded width, tangle density, coupling & chain smells, and R8's density-reduction guard. Pure over planned+actual edges. | `lib/legibility.mjs` (new) | P6a | Not started |
 | **P6c** | The **ceremony dial** — the complexity classifier (t0 risk → band) + the **phase-degeneration predicate** (mechanically pinned) + band-scale mechanics. | `lib/ceremony.mjs` (new) | P6a, P6d | Not started |
 | **P6d** | **`goals.json` + `policy.json`** grammar + conservative loaders (weights, legibility/cadence thresholds, ceremony-sizing dials). Additive; `route.mjs` untouched. | `lib/goals.mjs`, `lib/policy.mjs` (new) | — | Not started |
