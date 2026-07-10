@@ -39,7 +39,7 @@ suite) between parts, rather than sitting broken through one giant rewrite.
 | P3 | The atom — charter/delta split, the full lifecycle state machine, the minimality/cohesion law | `lib/atom.mjs` (new) | §4, §4.1, §4.3 | P2 (atoms cite clause ids) | Landed — v3.1.0 |
 | P4 | The graph engine — containment-tree fold, dependency-edge computation (`needs`/`excludes`/`serves`/`informs`), edge lifting, as-lived vs. current projections | `lib/graph.mjs` (new) | §2, §2.1–§2.4 | P1 (folds effects), P3 (folds atoms) | Landed — v3.2.0 |
 | P5 | The rewrite engine — the failure calculus, verdict types R1–R9, two-phase (provisional/permanent) effect application, **and the ceremony-escalation effect** (a verdict may ratchet a cone's complexity band up — grow-ceremony-on-evidence) | `lib/rewrite.mjs` (new) | §7, §7.1, §7.2, §17 | P4 (rewrites the graph), P3 (transitions atom states) | Landed — merged (no bump, 3.2.0) |
-| P6 | The topology stage — `lib/legibility.mjs`, the topologist role, `goals.json`/`policy.json` (now carrying the **ceremony-sizing dials**) replacing `route.json`, `topology.html`, **plus the complexity classifier + phase degeneration** | `lib/legibility.mjs` (new), `lib/route.mjs` (retire), `agents/topologist.md` (new) | §3, §5, §5.1–§5.4, §17 | P4 (measures the graph), P3 (charters atoms) | Not started |
+| P6 | The topology stage (heart № 2) — **split into P6a–P6e** (see Part 6): planned edges, the legibility law, the ceremony dial (complexity classifier + phase degeneration), `goals.json`/`policy.json` (**additive**, carrying the ceremony-sizing dials), the topologist role, `topology.html` | `lib/graph.mjs` (extend), `lib/legibility.mjs`, `lib/ceremony.mjs`, `lib/goals.mjs`, `lib/policy.mjs`, `lib/topology-view.mjs`, `agents/topologist.md` (all new/additive); `route.json` superseded but **retired in P7's migration**, not here | §3, §5, §5.1–§5.4, §9, §17 | P4 (measures the graph), P3 (charters atoms) | Split → P6a–P6e (P6a planned) |
 | P7 | The frontier loop + gates — `lib/frontier.mjs`, the frontier-wave workflow, `GATE_RESULT`, **band-indexed** gate cadence, live progress view, 2.x→3.0 migration, **plus lazy role-minimal provisioning (the micro-effort fast path)** | `lib/frontier.mjs` (new), `workflows/frontier-wave.workflow.js` (new) | §6, §9, §12, §17 | P5 (dispatches on verdicts), P6 (reads goals/policy) | Not started |
 | P8 | The zero-commit **scout** — standalone pre-effort exploration reusing the spike quarantine, writing no `.reasonable/` state, seeding the genesis graph | `skills/scout/` (new); reuses the `spike-runner` agent + quarantine fence | §17 | P6 (its output seeds the topologist's genesis graph) | Not started |
 
@@ -195,20 +195,48 @@ every other effect, and — the open edge the design flags for attack — its pe
 must unwind exactly as R7's provisional cone freeze does; P5 is where that unwind gets built and
 tested, not just asserted.
 
-## Part 6 — not yet planned
+## Part 6 — split into P6a–P6e; P6a planned
 
-**Design:** DESIGN-3.0 §3, §5, §5.1–**§5.4**, §17 — **including the draft-five sizing classifier and
-phase-degeneration ruling (§5.4)**.
+**Design doc (whole stage):**
+[`2026-07-10-reasonable-3.0-p6-topology-design.md`](../specs/2026-07-10-reasonable-3.0-p6-topology-design.md)
 
-Builds `lib/legibility.mjs`, the topologist role, and the `goals.json` / `policy.json` pair that
-retires `route.json`. The draft-five additions this part now owns: the **complexity classifier** (a
-fifth topologist output, §5.1) that reads the t0-observable loss-setting variables and emits a
-per-node complexity band into `policy.json`'s **ceremony-sizing dials** (§3, vision-class and
-agent-unwritable like the priority weights); and **phase degeneration** (§5.4) — the mechanical
-*introduces-a-new-goal-cone / touches-the-outer-shell?* predicate over the genesis graph that lets
-the scaffold and re-chartering phases collapse to a recorded no-op when their input is empty, never a
-waived guard. The precise mechanical spec of that predicate is the open edge flagged for the next
-attack; P6 must pin it, not leave it prose.
+**Design:** DESIGN-3.0 §3, §5, §5.1–**§5.4**, §9, §17 — **including the draft-five sizing classifier
+and phase-degeneration ruling (§5.4)**.
+
+Builds the topology stage: planned edges, the legibility law (`lib/legibility.mjs`), the ceremony dial
+(the **complexity classifier** §5.1 + the **phase-degeneration** predicate §5.4), the `goals.json` /
+`policy.json` pair (carrying the **ceremony-sizing dials**), the topologist role, and `topology.html`.
+The design doc **pins the phase-degeneration predicate mechanically** (the open edge the roadmap
+required P6 to close, not leave as prose) and flags the calibration residues (the classifier's
+thresholds and band→cutoff maps stay uncalibrated `policy.json` defaults, §16).
+
+Two scoping calls were confirmed with the human before any plan was written (the discipline P5's doc
+used for its pivotal call):
+
+- **P6 is additive.** The roadmap's `route.mjs (retire)` cannot mean "delete it this part":
+  `route.mjs` is imported by `reconcile.mjs`, the recovery prologue that runs every session, so
+  deleting it breaks the live 2.x engine between parts (the roadmap's own "keeps working between
+  parts" invariant). §12 puts the `nextAction` rebuild-over-goals/cones inside the **migration**,
+  which is **P7's**. So P6 builds the new engine/grammar/role/viewer as new files *alongside* the live
+  route path; **P7's migration retires `route.mjs` and rebuilds the projection.** This mirrors P5's
+  "build the calculus, defer the wiring to P7" exactly.
+- **P6 splits into a sub-series** — it is ~2–3× P5 and spans five subsystems (one of which, planned
+  edges, is work P4 deferred). Each sub-part is planned and landed **one at a time**, so each reflects
+  what the previous taught (the design's own feedback-beats-prediction thesis). Execution model
+  (human-set): plans authored in Opus, implemented by a series of fresh **Sonnet subagents** under
+  subagent-driven-development (one per red/green/audit role, Opus supervising).
+
+| Sub-part | Builds | New/changed files | Depends on | Status |
+|---|---|---|---|---|
+| **P6a** | The **planned-edge fold** — component-quotient `needs` (from `cite:` premises) + intra-component ordering (from `order`). Finishes P4's deferral. | `lib/graph.mjs` (extend, additive) | P3, P4 | Planned — [`p6a plan`](2026-07-10-reasonable-3.0-p6a-planned-edges/plan.md) |
+| **P6b** | The **legibility law** — bounded width, tangle density, coupling & chain smells, and R8's density-reduction guard. Pure over planned+actual edges. | `lib/legibility.mjs` (new) | P6a | Not started |
+| **P6c** | The **ceremony dial** — the complexity classifier (t0 risk → band) + the **phase-degeneration predicate** (mechanically pinned) + band-scale mechanics. | `lib/ceremony.mjs` (new) | P6a, P6d | Not started |
+| **P6d** | **`goals.json` + `policy.json`** grammar + conservative loaders (weights, legibility/cadence thresholds, ceremony-sizing dials). Additive; `route.mjs` untouched. | `lib/goals.mjs`, `lib/policy.mjs` (new) | — | Not started |
+| **P6e** | The **topologist role** + **`topology.html`** viewer (self-contained layered-DAG renderer; component / cone / diff views). | `agents/topologist.md`, `lib/topology-view.mjs` (new) | P6a–P6d | Not started |
+
+**Sub-series dependency order:** P6a → P6d → { P6b, P6c } → P6e. P6a is the foundation (genesis
+legibility is vacuous without planned edges — a charter has no deltas, so `needsEdges` returns `[]`).
+The P6b–P6e plans are written just-in-time, each after its predecessor lands.
 
 ## Part 7 — not yet planned
 
