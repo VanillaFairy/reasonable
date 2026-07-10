@@ -960,10 +960,16 @@ once Part 7 applies them.
   topology-stage genesis data (Part 6, not built yet); `containmentTree` accepts one as an optional
   input and produces deeper trees once it exists, with no change to its own output shape.
 - **Four dependency-edge kinds** (`needsEdges`, `excludesEdges`, `servesEdges`, `informsEdges`) —
-  computed, never hand-stored, exactly as DESIGN-3.0 §2.2 requires. Only **actual**-fidelity edges
-  (post-spec, clause-level) are implemented; **planned**-fidelity edges (component-level,
-  pre-delta) need the topologist's ratified ordering data (Part 6) and are deferred whole, not
-  half-built. `excludesEdges`' footprint always treats resource claims as empty — no atom charter
+  computed, never hand-stored, exactly as DESIGN-3.0 §2.2 requires. **Actual**-fidelity edges
+  (post-spec, clause-level) cover all four kinds. **Planned**-fidelity `needs` (component-level,
+  pre-delta) is now built (`plannedNeedsEdges`, Part 6a): it derives genesis-time edges from
+  charters alone — the cross-component quotient from each charter's `cite:` premises, and the
+  intra-component ordering from each charter's `order` stratum (`docs/DESIGN-3.0.md` §2.2). It
+  emits the same `{from,to,edge:'needs',op:'add'}` shape as `needsEdges` — planned vs actual is
+  which function produced the array, never a per-edge tag. Planned `excludes`/`serves`/`informs`
+  remain actual-only for now (a charter carries no resource claims or scenario citations yet — the
+  same un-owned gaps noted below); the legibility law that consumes planned `needs` at genesis is
+  Part 6b. `excludesEdges`' footprint always treats resource claims as empty — no atom charter
   or delta field carries them yet, a named, un-owned gap (safe direction of error: it can only
   under-approximate `excludes`, never produce a wrong edge). `servesEdges`/`informsEdges` are real,
   tested computation rules with nothing real to call them with yet (no `goals.json`, Part 6; no

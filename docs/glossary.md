@@ -107,12 +107,19 @@ one of the three is probably wrong.
 - **Dependency graph** — the restructure structure (DESIGN-3.0 §2.2): the four edges between atoms
   (**Needs**, **Excludes**, **Serves**, **Informs**), computed by a fold from deltas, citations, and
   recorded rewrite events — never hand-stored or hand-repaired. Two fidelities exist in the design:
-  **planned** (component-level, genesis-time) and **actual** (clause-level, post-spec); only actual
-  edges are built (`lib/graph.mjs`) — planned edges need the topologist's ratified ordering data
-  (Part 6) and are deferred whole.
+  **planned** (component-level, genesis-time) and **actual** (clause-level, post-spec) — see
+  **Planned fidelity / planned edge**. Only **Needs** has a planned form built so far
+  (`plannedNeedsEdges`, Part 6a); **Excludes**/**Serves**/**Informs** remain actual-only.
 - **Needs** — readiness edge: atom A cannot start before atom B lands, because A's delta cites a
   clause B's delta introduces. Clause-id matched, entirely ledger-derivable — `lib/graph.mjs`'s
   `needsEdges` never touches a live contract file.
+- **Planned fidelity / planned edge** — a dependency edge computed from **charters** before any
+  **delta** exists (genesis time), as opposed to **actual** fidelity (computed from spec-time
+  clause citations). Only **Needs** has a planned form today (`plannedNeedsEdges`, Part 6a): the
+  cross-component quotient from a charter's `cite:` premises plus the intra-component `order`
+  ordering (DESIGN-3.0 §2.2). Planned edges order the frontier and feed the legibility law (Part 6b);
+  once a delta is authored, edges refine to **actual**, which alone govern packing, dispatch, and
+  merges.
 - **Excludes** — conflict edge: two atoms cannot run concurrently (serializes, never orders)
   because their footprints (locus ∪ citation closure ∪ resource claims) intersect at the contract
   level. **Symmetric**, unlike the other three edge kinds; same-**Contract** atoms always exclude.
