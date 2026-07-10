@@ -71,13 +71,22 @@ check('component view: the atom-level edge is LIFTED to a component-to-component
 
 // ── view routing: component / cone / diff produce DIFFERENT content ────────────────────────────────
 
-check('the three views route to different renderings', () => {
+check('the three views route to different renderings (distinct node sets, not just title text)', () => {
   const g = withGoal();
   const comp = renderTopologyHtml(g, { view: 'component' });
   const cone = renderTopologyHtml(g, { view: 'cone', goalId: 'g1' });
   const diff = renderTopologyHtml(g, { view: 'diff', lastRatified: twoComp() });
   assert.notStrictEqual(comp, cone);
   assert.notStrictEqual(comp, diff);
+
+  // the load-bearing strengthening: prove the PROJECTED CONTENT differs, not merely the title text —
+  // the component view draws component-level nodes; the cone view draws atom-level nodes (+ the goal).
+  // A project() that silently ignored `view` and always returned the component projection would still
+  // make comp/cone/diff differ by title alone; this pins the actual node-id sets apart.
+  assert.ok(comp.includes('data-node-id="lexer"'), 'component view missing its component node');
+  assert.ok(!comp.includes('data-node-id="a-1"'), 'component view leaked an atom-level node id');
+  assert.ok(cone.includes('data-node-id="a-1"'), 'cone view missing its serving atom');
+  assert.ok(!cone.includes('data-node-id="lexer"'), 'cone view leaked a component-level node id');
 });
 
 // ── cone view: only the atoms that SERVE the named goal ────────────────────────────────────────────
