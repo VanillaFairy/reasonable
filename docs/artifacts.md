@@ -133,6 +133,8 @@ stays allowed; only a raw `Edit`/`Write`/`>>`/`tee`/`cp` onto the file is denied
   baseline.json *          # brownfield regression floor + trusted promotions (absent greenfield)
   route.md                 # ordered vertical-slice frontier (human-editable, NEVER parsed)
   route.json *             # machine twin of route.md — the ratified slice ORDER only
+  goals.json *             # ratified top-level scenario set (array of goal entries) — read by lib/goals.mjs (P6d)
+  policy.json *            # ratified priority policy (weights/legibility/cadence/dials) — read by lib/policy.mjs (P6d)
   journal.json *           # execution state of record (single writer: orchestrator)
   ledger.jsonl *           # append-only event log
   supervision.json *       # profile + default budgets
@@ -377,6 +379,11 @@ shape the deterministic `nextAction` projection (`lib/next-action.mjs`) needs to
 `RETRO`/`OPEN` directives. `route.md` itself is **demoted to pure human narration and is never
 parsed** — every reader that needs the order machine-readably reads `route.json` instead.
 
+> **Superseded (3.0) but not yet retired.** `route.json` is superseded by `goals.json` + `policy.json`
+> (their grammar + conservative loaders landed in **P6d**), but stays **live** until **P7's migration**
+> rebuilds the `nextAction` projection over goals + cones and retires the route path. P6 is purely
+> additive — `route.json`, `lib/route.mjs`, and `lib/reconcile.mjs` are untouched (design doc Call #1).
+
 ```json
 { "slices": ["expr-eval", "confirm-delete", "…"], "ratifiedAt": "2026-07-06T10:00:00.000+02:00", "ledgerSeq": 42 }
 ```
@@ -410,6 +417,79 @@ absent-vs-corrupt split:
 - **valid** → `{ route: {slices, ratifiedAt, ledgerSeq}, diagnostic: null }`, `slices` in on-disk order,
   unmodified; a malformed `ratifiedAt`/`ledgerSeq` individually degrades to `null` without invalidating
   an otherwise-valid `slices` array.
+
+---
+
+## goals.json *
+
+The **ratified top-level scenario set** (`docs/DESIGN-3.0.md` §3, §5.5) — the machine-parsed twin of the
+parked top-level scenario suite. An **array** of goal entries; each goal's `scenarioCitations` are the
+per-clause references `lib/graph.mjs`'s `servesEdges` consumes to compute which atoms serve that goal.
+
+```json
+[
+  { "id": "expr-eval", "scenario": "evaluate an arithmetic expression end to end",
+    "scenarioCitations": [{ "component": "lexer", "clause": "lexer#c1" }],
+    "ratifiedAt": "2026-07-10T10:00:00+02:00", "ledgerSeq": 42 }
+]
+```
+
+- `id` — required non-empty string; `servesEdges` emits `{ to: goal.id }`.
+- `scenario` — required non-empty string; the top-level scenario the parked suite pins.
+- `scenarioCitations` — required array of **objects**, each carrying a non-empty string `clause` (a
+  `component#cN` ref). Preserved **verbatim** by the loader (a `component` field or any other survives),
+  so the loaded goals feed `servesEdges(atoms, goals)` with no translation layer. An empty array is a
+  shape-valid, cone-less goal.
+- `ratifiedAt` / `ledgerSeq` — optional ratification back-pointers (local-ISO string / ledger seq),
+  degraded to `null` when malformed, never fabricated.
+
+**Read by `lib/goals.mjs`'s `readGoals(effortRoot)`** → `{ goals: [...] | null, diagnostic }` — the same
+conservative three-state contract as `readRoute` (absent → `null`, no diagnostic; present-but-malformed
+→ `null` + a surfaced diagnostic, one bad entry failing the whole load; never a repair). **Vision-class
+enforcement path** (§3): human-gated in both run modes, agent-unwritable (the topologist *proposes* it;
+a narrow writer persists it after human ratification). **P6d builds the loader + grammar; nothing reads
+`goals.json` and no writer exists until P7's frontier loop + migration.**
+
+---
+
+## policy.json *
+
+The **ratified priority policy** (`docs/DESIGN-3.0.md` §3, §9) — the machine-parsed planning policy
+that, with `goals.json`, takes over `route.json`'s role at 3.0. An **object** with an **open** field set.
+
+```json
+{
+  "weights":   { "integrationRisk": 5, "infoGain": 3, "unlocks": 2, "goalProximity": 4, "staleness": 1, "cost": -2 },
+  "legibility":{ "maxWidth": 25, "maxTangle": 0.5, "maxChain": 8, "r8Retries": 3 },
+  "cadence":   { "low": { "n": 1, "m": 3 }, "high": { "n": 1, "m": 1 } },
+  "dials": {
+    "bandScale":   ["low", "mid", "high"],
+    "phaseCutoffs":{ "low": "skip-scaffold", "mid": "materialize", "high": "materialize" },
+    "cadenceIndex":{ "low": 0, "mid": 1, "high": 2 }
+  }
+}
+```
+
+- `weights` — priority weights: a non-empty object of finite numbers (the six axes — integration-risk
+  retirement, info gain, unlocks, goal proximity, staleness, cost).
+- `legibility` — the pinned thresholds the legibility law (Part 6b) reads by name: `maxWidth`,
+  `maxTangle`, `maxChain` (finite numbers), and `r8Retries` (the R8 retry bound N).
+- `cadence` — the band-indexed gate-cadence floor: each band → `{ n, m }` finite numbers (§9).
+- `dials` — the ceremony-sizing dials: `bandScale` (the ordered band vocabulary `lib/rewrite.mjs`'s
+  `ceremonyEscalation` indexes into and P6c's classifier emits from), plus the band-keyed `phaseCutoffs`
+  and `cadenceIndex` maps.
+
+Numeric defaults ship **flagged-uncalibrated** (§16) — the loader validates *shape*, never *value*, so a
+mistuned-but-well-formed policy loads clean. The `r8Retries` / `cadence.<band>.{n,m}` / `dials.*` keys
+are **P6d-coined** (the design pinned each field's role, not its key), contestable and cheap to rename.
+
+**Read by `lib/policy.mjs`'s `readPolicy(effortRoot)`** → `{ policy: object | null, diagnostic }` — the
+conservative three-state contract (absent → `null`, no diagnostic; malformed → `null` + a surfaced
+diagnostic; never a repair). On success the parsed object is returned **verbatim** (open grammar —
+unknown keys and any ratification metadata survive), a deliberate divergence from `route.mjs`'s
+closed-grammar projection. **Vision-class enforcement path** (§3): human-gated in both modes,
+agent-unwritable by capability, so a struggling autonomous run can never size its own rigor down. **P6d
+builds the loader + grammar; the write path is P7's.**
 
 ---
 

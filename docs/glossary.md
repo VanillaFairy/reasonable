@@ -248,6 +248,19 @@ one of the three is probably wrong.
   Its **machine twin**, `route.json` (Layer 2), carries only the ratified slice **order** — written by
   the orchestrator after ratification and kept in sync at every retro re-sort; `route.md` itself is
   never parsed.
+- **goals.json** — the machine-parsed twin of the ratified top-level scenario set: an array of goal
+  entries `{ id, scenario, scenarioCitations, ratifiedAt?, ledgerSeq? }`, each goal's
+  `scenarioCitations` the per-clause refs **Serves** consumes to compute which atoms serve it. Read by
+  `lib/goals.mjs` (Part 6d); with **policy.json** it supersedes **Route**'s `route.json` at 3.0 (wired
+  in Part 7). Vision-class, human-gated in both run modes.
+- **policy.json** — the machine-parsed twin of the ratified priority policy: `{ weights, legibility,
+  cadence, dials }` — the priority weights, the legibility thresholds, the band-indexed gate-cadence
+  floor, and the **ceremony-sizing dial** set. Read by `lib/policy.mjs` (Part 6d), which validates its
+  *shape*, never its *value* (defaults ship uncalibrated). Vision-class, human-gated, agent-unwritable.
+- **Ceremony-sizing dial** — a tunable in **policy.json**'s `dials` mapping a node's risk band to how
+  much ceremony it earns: the ordered `bandScale`, the band→phase-materialization cutoffs, and the
+  band→gate-cadence index. Because it can size ceremony *down*, it is vision-class — human-gated in both
+  modes, agent-unwritable by capability. The classifier (Part 6c) *reads* dials; it never writes them.
 - **Retro** — the mandatory blocking heartbeat at every vertical slice gate. Runs a
   **three-way divergence classification**: every divergence between built and
   vision gets exactly one of (a) **fix the code**, (b) **amend the vision**
