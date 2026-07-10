@@ -158,5 +158,39 @@ check('round-trip: a classified TOP band is capped by ceremonyEscalation (no esc
   assert.strictEqual(ceremonyEscalation(wideR2Verdict, wideR2State(band, d.bandScale)), null);
 });
 
+// ── audit follow-up (P6c, T01c): close two surviving-mutant gaps + two minor shape-only gaps ─────
+
+check('clamp ceiling: an axis producing pressure beyond bandScale length still caps cleanly (no undefined band)', () => {
+  const d = dials();
+  d.classifier.blastRadiusCutoffs = [1, 2, 3, 4, 5]; // 5 ascending cutoffs on a 3-band scale (top index 2) —
+                                                       // raw pressure can reach 5, far past the scale's ceiling
+  const band = classify({ ...lowRisk, blastRadius: 100 }, d); // meets all 5 cutoffs -> raw pressure 5
+  assert.strictEqual(band, 'full'); // must clamp to the top band, never undefined / out-of-range
+  assert.ok(d.bandScale.includes(band));
+});
+
+check('monotone / anti-gaming (isolated from saturation): dropping trusted coverage strictly raises the band away from the top', () => {
+  const d = dials(); const scale = d.bandScale;
+  const nearMid = { ...lowRisk, blastRadius: 15 }; // pressure 1 of 2 -- deliberately UNSATURATED (top is pressure 2)
+  const withTrust = scale.indexOf(classify({ ...nearMid, trustedSuiteCovers: true }, d));
+  const without = scale.indexOf(classify({ ...nearMid, trustedSuiteCovers: false }, d));
+  assert.ok(without > withTrust, 'losing trusted coverage must strictly raise the band once away from saturation');
+});
+
+check('a negative-but-well-formed cutoff loads and fires per the numbers given (shape, never value)', () => {
+  const d = dials();
+  d.classifier.blastRadiusCutoffs = [-5, -1]; // both negative, ascending
+  const band = classify({ ...lowRisk, blastRadius: -3 }, d); // meets -5, not -1 -> pressure 1
+  assert.strictEqual(band, 'standard');
+});
+
+check('fully-absent inputs never throws and behaves as all-zero risk (lowest band)', () => {
+  const d = dials();
+  assert.strictEqual(classify(undefined, d), 'micro');
+  assert.strictEqual(classify(null, d), 'micro');
+  assert.doesNotThrow(() => classify(undefined, undefined));
+  assert.doesNotThrow(() => classify(null, null));
+});
+
 if (process.exitCode) console.error(`\nceremony-classify: FAILURES above (${passed} passed).`);
 else console.log(`\nceremony-classify: all ${passed} checks pass. ✓`);
