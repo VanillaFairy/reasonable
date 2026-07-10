@@ -38,7 +38,7 @@ suite) between parts, rather than sitting broken through one giant rewrite.
 | P2 | Contract grammar v3 — durable per-contract clause ids, per-clause citations, `demanded-by` provenance | `lib/contract.mjs` (breaking rewrite) | §4.2, §12 | P1 (clause-id allocation is a ledger event) | Landed — v3.0.0 |
 | P3 | The atom — charter/delta split, the full lifecycle state machine, the minimality/cohesion law | `lib/atom.mjs` (new) | §4, §4.1, §4.3 | P2 (atoms cite clause ids) | Landed — v3.1.0 |
 | P4 | The graph engine — containment-tree fold, dependency-edge computation (`needs`/`excludes`/`serves`/`informs`), edge lifting, as-lived vs. current projections | `lib/graph.mjs` (new) | §2, §2.1–§2.4 | P1 (folds effects), P3 (folds atoms) | Landed — v3.2.0 |
-| P5 | The rewrite engine — the failure calculus, verdict types R1–R9, two-phase (provisional/permanent) effect application, **and the ceremony-escalation effect** (a verdict may ratchet a cone's complexity band up — grow-ceremony-on-evidence) | `lib/rewrite.mjs` (new) | §7, §7.1, §7.2, §17 | P4 (rewrites the graph), P3 (transitions atom states) | Planned |
+| P5 | The rewrite engine — the failure calculus, verdict types R1–R9, two-phase (provisional/permanent) effect application, **and the ceremony-escalation effect** (a verdict may ratchet a cone's complexity band up — grow-ceremony-on-evidence) | `lib/rewrite.mjs` (new) | §7, §7.1, §7.2, §17 | P4 (rewrites the graph), P3 (transitions atom states) | Landed — merged (no bump, 3.2.0) |
 | P6 | The topology stage — `lib/legibility.mjs`, the topologist role, `goals.json`/`policy.json` (now carrying the **ceremony-sizing dials**) replacing `route.json`, `topology.html`, **plus the complexity classifier + phase degeneration** | `lib/legibility.mjs` (new), `lib/route.mjs` (retire), `agents/topologist.md` (new) | §3, §5, §5.1–§5.4, §17 | P4 (measures the graph), P3 (charters atoms) | Not started |
 | P7 | The frontier loop + gates — `lib/frontier.mjs`, the frontier-wave workflow, `GATE_RESULT`, **band-indexed** gate cadence, live progress view, 2.x→3.0 migration, **plus lazy role-minimal provisioning (the micro-effort fast path)** | `lib/frontier.mjs` (new), `workflows/frontier-wave.workflow.js` (new) | §6, §9, §12, §17 | P5 (dispatches on verdicts), P6 (reads goals/policy) | Not started |
 | P8 | The zero-commit **scout** — standalone pre-effort exploration reusing the spike quarantine, writing no `.reasonable/` state, seeding the genesis graph | `skills/scout/` (new); reuses the `spike-runner` agent + quarantine fence | §17 | P6 (its output seeds the topologist's genesis graph) | Not started |
@@ -164,7 +164,7 @@ ordering scheme Part 6 hasn't specified yet), plus one contestable proportionali
 `graph.json` disk mirror yet — nothing reads it today, so wiring it into `lib/ledger.mjs`'s `append()`
 is deferred to whichever part first needs to read it outside a test).
 
-## Part 5 — planned, not yet built
+## Part 5 — landed (merged, no bump, 3.2.0)
 
 **Design doc:** [`2026-07-09-reasonable-3.0-p5-rewrite-design.md`](../specs/2026-07-09-reasonable-3.0-p5-rewrite-design.md)
 
