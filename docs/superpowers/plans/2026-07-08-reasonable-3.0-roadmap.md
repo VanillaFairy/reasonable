@@ -40,7 +40,7 @@ suite) between parts, rather than sitting broken through one giant rewrite.
 | P4 | The graph engine — containment-tree fold, dependency-edge computation (`needs`/`excludes`/`serves`/`informs`), edge lifting, as-lived vs. current projections | `lib/graph.mjs` (new) | §2, §2.1–§2.4 | P1 (folds effects), P3 (folds atoms) | Landed — v3.2.0 |
 | P5 | The rewrite engine — the failure calculus, verdict types R1–R9, two-phase (provisional/permanent) effect application, **and the ceremony-escalation effect** (a verdict may ratchet a cone's complexity band up — grow-ceremony-on-evidence) | `lib/rewrite.mjs` (new) | §7, §7.1, §7.2, §17 | P4 (rewrites the graph), P3 (transitions atom states) | Landed — merged (no bump, 3.2.0) |
 | P6 | The topology stage (heart № 2) — **split into P6a–P6e** (see Part 6): planned edges, the legibility law, the ceremony dial (complexity classifier + phase degeneration), `goals.json`/`policy.json` (**additive**, carrying the ceremony-sizing dials), the topologist role, `topology.html` | `lib/graph.mjs` (extend), `lib/legibility.mjs`, `lib/ceremony.mjs`, `lib/goals.mjs`, `lib/policy.mjs`, `lib/topology-view.mjs`, `agents/topologist.md` (all new/additive); `route.json` superseded but **retired in P7's migration**, not here | §3, §5, §5.1–§5.4, §9, §17 | P4 (measures the graph), P3 (charters atoms) | Split → P6a–P6e — all landed (merged, no bump, 3.2.0) |
-| P7 | The frontier loop + gates — `lib/frontier.mjs`, the frontier-wave workflow, `GATE_RESULT`, **band-indexed** gate cadence, live progress view, 2.x→3.0 migration, **plus lazy role-minimal provisioning (the micro-effort fast path)** | `lib/frontier.mjs` (new), `workflows/frontier-wave.workflow.js` (new); `lib/ledger.mjs`/`lib/reconcile.mjs`/`lib/next-action.mjs`/`lib/progress-map.mjs` (extend); `lib/route.mjs` (deleted, last) | §6, §9, §12, §17 | P5 (dispatches on verdicts), P6 (reads goals/policy) | Design drafted |
+| P7 | The frontier loop + gates — `lib/frontier.mjs`, the frontier-wave workflow, `GATE_RESULT`, **band-indexed** gate cadence, live progress view, 2.x→3.0 migration, **plus lazy role-minimal provisioning (the micro-effort fast path)** | `lib/frontier.mjs` (new), `workflows/frontier-wave.workflow.js` (new); `lib/ledger.mjs`/`lib/reconcile.mjs`/`lib/next-action.mjs`/`lib/progress-map.mjs`/`lib/footprint.mjs` (extend); `lib/route.mjs` (deleted, last) | §6, §9, §12, §17 | P5 (dispatches on verdicts), P6 (reads goals/policy) | Planned |
 | P8 | The zero-commit **scout** — standalone pre-effort exploration reusing the spike quarantine, writing no `.reasonable/` state, seeding the genesis graph | `skills/scout/` (new); reuses the `spike-runner` agent + quarantine fence | §17 | P6 (its output seeds the topologist's genesis graph) | Not started |
 
 Rough shape of the dependency chain: **P1 → P2 → P3 → P4 → P5 → (P6, P7)**, with **P8** sitting on
@@ -238,10 +238,12 @@ used for its pivotal call):
 legibility is vacuous without planned edges — a charter has no deltas, so `needsEdges` returns `[]`).
 The P6b–P6e plans are written just-in-time, each after its predecessor lands.
 
-## Part 7 — design drafted
+## Part 7 — planned
 
 **Design doc:**
 [`2026-07-11-reasonable-3.0-p7-frontier-design.md`](../specs/2026-07-11-reasonable-3.0-p7-frontier-design.md)
+
+**Plan:** [`2026-07-11-reasonable-3.0-p7-frontier/plan.md`](2026-07-11-reasonable-3.0-p7-frontier/plan.md)
 
 **Design:** DESIGN-3.0 §6, §9, §12, §17 — **including the draft-five lazy-provisioning bullet (§6)
 and band-indexed heartbeat-floor ruling (§9)**.
