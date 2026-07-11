@@ -41,11 +41,15 @@ branch. Implement exactly what the locked tests require; do not modify any test 
   `resolveFamily1Address`/`resolveFamily2` failure paths already do.
 - Build the snapshot exactly as `../shared/interfaces.md` §2 pins it: `deriveCurrent(root, {goals})`
   for `{atoms, edges}`; `citationGraph(root)` (imported from `./contract.mjs`) for `citationGraph`;
-  `readPolicy(root).policy` (may be `null`) for `bandScale`; `bands: {}` and `bandBounds: {}` (the two
+  `readPolicy(root).policy` (may be `null`) for `bandScale`; `bands: {}` and `bandBounds: {}` (two
   flagged, honest-empty defaults); `priorVerdicts: []` (no live per-atom verdict history store yet —
   name this as a THIRD small honest default in your commit message, not a silent omission — it means
   the R1 "second independent exhaustion" auto-promotion never fires until a real store exists; the
-  happy-path test only exercises a FIRST checkpoint, so this default does not break T04a).
+  happy-path test only exercises a FIRST checkpoint, so this default does not break T04a);
+  `escalations: {}` (a FOURTH honest empty default, same category — `ceremonyEscalation` reads
+  `state.escalations[coneId]` to derive its `escalationId`, see `../shared/interfaces.md` §2's extended
+  gap note; this is added here for the same reason as the others, even though `ceremonyEscalation`
+  never fires through this branch today anyway, since `bands: {}` already makes every band lookup miss).
 - Overwrite `stamped.effects` with `eff.provisional` (+ the ceremony-escalation effect, if any,
   appended) and set `stamped.pendingPermanent = eff.permanent`.
 
@@ -140,6 +144,11 @@ Replace it with:
             // No live per-atom verdict-history store yet either — the R1 "second independent
             // exhaustion" auto-promotion cannot fire until one exists (flagged, same discipline).
             priorVerdicts: [],
+            // No live per-cone escalation-history store yet either (same category) — ceremonyEscalation
+            // reads this to derive its escalationId (T04e); every escalation computed through this
+            // branch today gets ordinal 0, which is harmless since bands: {} above already makes every
+            // escalation trigger return null before this is ever consulted.
+            escalations: {},
           };
           const eff = computeVerdictEffects(stamped, state);
           if (!eff.ok) return { ok: false, error: eff.error };

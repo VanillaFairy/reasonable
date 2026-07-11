@@ -275,12 +275,45 @@ ledger self-sufficient (§2.4):
   — every `atom-verdict` whose seq has no consuming `ratification` above it — never a mutable
   side-table. `reconcile.mjs` computes it the same way (Decision 6), which is what lets the `starved`
   gate know what it must ratify.
-- **The ceremony-escalation unwind (P5's flagged open edge, now wired).** A gate that **rejects** a
-  permanent band raise appends a ratification whose effects are `unwindCeremonyEscalation(escEffect)`
-  — the pure inverse P5 built and tested (clear the band back to `from`, disarm the armed checks).
-  Because the provisional escalation only ever *armed* deeper checks (it disarmed nothing), the unwind
-  restores the cone exactly (the apply-then-unwind = identity invariant P5 pinned). P7's job is only to
-  *call* it on the reject path; the correctness was proven in P5.
+- **The ceremony-escalation unwind — P5's flagged open edge, now RESOLVED, not merely wired.**
+  `docs/artifacts.md`'s P5 retrospective (§ "Scope note — the flagged gaps") recorded a real,
+  demonstrated defect, not a hypothetical one: the apply-then-unwind = identity invariant P5 proved
+  holds **only for a single, isolated escalation per cone**; under **two escalations stacked on the
+  same cone before either resolves**, the old `armed` marker set was a fixed, unnamespaced 3-item
+  literal keyed only by check name, so unwinding the *later* escalation stripped markers the *earlier*,
+  still-valid escalation also needed — a silent-ratchet failure of exactly the kind §3's policy
+  anti-attack exists to prevent. The retrospective named this as **P7's own architecture call**,
+  because P7 is the part that applies multiple verdicts across a real gate-cadence window, making
+  stacking routine rather than theoretical. **This design makes that call: `ceremonyEscalation` and
+  `unwindCeremonyEscalation` are extended to namespace every escalation by a stable `escalationId`**
+  (`` `${coneId}#esc${N}` ``, `N` = the count of prior escalations already recorded against that cone in
+  `state.escalations[coneId]` — the same pure-counting pattern `state.priorVerdicts` already uses for
+  R1's "second independent exhaustion" trigger), and every `armed` entry is tagged with that id
+  (`` `${check}@${escalationId}` ``) so an unwind can only ever strip *its own* escalation's markers,
+  never a co-resident one's. **New task trio (P7 Phase B): T04d (red) / T04e (green) / T04f (audit)**
+  — T04d rewrites P5's one hard-coded literal assertion in `test/rewrite-ceremony.test.mjs` (the exact
+  shape changed, so the locked test pinning the old shape must be re-authored as part of the change,
+  the same discipline `plan.md`'s T08a already uses for a deliberate contract cutover) and adds
+  `test/rewrite-ceremony-stacking.test.mjs` (two escalations on one cone, reject the later one, assert
+  the earlier one's markers survive intact byte-for-byte); T04e implements the shape change in
+  `lib/rewrite.mjs`; T04f audits it. See the plan's `shared/interfaces.md` §2 for the exact shapes and
+  the residual this fix does **not** close (below).
+  - **What this fix resolves:** the *demonstrated* defect — a rejected escalation can no longer
+    disarm a co-resident escalation's still-needed checks, because the checks it disarms are now
+    identity-scoped to itself alone.
+  - **What remains open (named, not papered over):** (a) the *live* wiring — `state.escalations` (like
+    `state.bands`/`state.bandBounds`, §2's already-flagged gap) has no real per-cone store yet, so
+    through the actually-wired `append()` path every escalation today computes as if it were the first
+    on its cone (`escalations: {}` always) — the namespacing is correct and tested at the pure-function
+    level, but is only *observable* once a live escalation-history store exists, which is the same
+    already-flagged, honest gap `bands`/`bandBounds` sit in, not a new one this fix opens; (b) the
+    band-*revert* value under **multiple rejections in reverse order** (reject the *earlier* of two
+    stacked escalations while the *later* one is still pending) is not fully closed by this fix — each
+    unwind still reverts to its own `from`, which is exact when unwinds happen in reverse-chronological
+    (LIFO) order but is not proven exact under an arbitrary rejection order; T04d's stacking test
+    covers the reject-the-later-one case (the one the retrospective's own example describes) and
+    explicitly flags the reverse-order case as a narrower residual for a future hardening pass, not a
+    silent gap.
 
 *Flagged, contestable (minor):* recording `pendingPermanent` on the verdict event, rather than
 re-deriving the permanent set fresh from `(verdict, state)` at ratification time, is a small
@@ -495,4 +528,9 @@ unilaterally.
   test suite green after every task; `route.mjs` is deleted only after nothing imports it; the
   directive grammar downstream consumers read is preserved throughout.
 - **Open-edge check:** P5's flagged ceremony-escalation *unwind* is *called* on the gate-reject path
-  here (Decision 5) — the open edge P5 proved is now wired, not re-opened.
+  (Decision 5) — but "wired" alone would have re-opened the exact defect the P5 retrospective
+  demonstrated (unwind is exact only for one escalation per cone, not under stacking). This design does
+  not just wire it — it **resolves** the demonstrated defect (escalation-id namespacing, T04d/T04e/T04f)
+  and names precisely what remains open afterward: the live per-cone escalation-history store (same
+  already-flagged gap as `bands`/`bandBounds`) and the reverse-rejection-order band-revert case
+  (narrower, explicitly flagged, not silently dropped). See Decision 5 for the full account.

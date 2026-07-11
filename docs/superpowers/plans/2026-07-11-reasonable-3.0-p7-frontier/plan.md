@@ -18,12 +18,23 @@
 > effect computation — §2.4 taken literally) and the **five-step additive-then-subtractive migration
 > order** that keeps the plugin's own suite green after every task.
 
-> **STOP — confirm the pivotal call before Phase B.** The design's central decision — *the append
-> path (`append()`) code-computes the effect set for an `atom-verdict`, not the frontier loop* — is
-> flagged contestable. If it is reversed (frontier computes, `append()` validates), Phase B's tasks
-> move into `lib/frontier.mjs` and change shape. **The supervisor must confirm this with the human
-> before dispatching Phase B (T04+).** Phases A, C-deriver groundwork can proceed; the append wiring
-> cannot until confirmed.
+> **STOP — confirm the pivotal call before Phase B, AND review the ceremony-escalation stacking fix
+> below before dispatching T04d.** Two things need human confirmation before Phase B proceeds past
+> T04c:
+> 1. The design's central decision — *the append path (`append()`) code-computes the effect set for an
+>    `atom-verdict`, not the frontier loop* — is flagged contestable. If it is reversed (frontier
+>    computes, `append()` validates), Phase B's tasks move into `lib/frontier.mjs` and change shape.
+> 2. **A real, demonstrated defect in P5's own shipped `lib/rewrite.mjs`** — the ceremony-escalation
+>    unwind is exact only for one escalation per cone, not under stacking (`docs/artifacts.md`'s P5
+>    retrospective proved this with mutation testing, not as a hypothetical) — is resolved in this plan
+>    by a real shape change (escalation-id namespacing, new tasks T04d/T04e/T04f, inserted after T04c
+>    and before T05a). This touches P5's own already-shipped `lib/rewrite.mjs` and rewrites one
+>    hard-coded literal in its locked test `test/rewrite-ceremony.test.mjs` — confirm this resolution
+>    (design doc Decision 5, `shared/interfaces.md` §0 correction 3) before T04d dispatches.
+>
+> **The supervisor must confirm BOTH with the human before dispatching Phase B (T04+).** Phases A,
+> C-deriver groundwork can proceed; the append wiring and the ceremony-escalation fix cannot until
+> confirmed.
 
 **Goal:** Wire the P1–P6 calculus into the live engine and replace the vertical-slice execution
 surface: build `lib/frontier.mjs` (ready-set, packing, the exhaustive `GATE_RESULT` union +
@@ -70,8 +81,9 @@ signature grounded in shipped code), `shared/conventions.md` (harness, the three
 migration safety, no-bump), `shared/architecture.md` (one-page orientation + the pivotal call),
 `knowledge/running-tests.md` (how to run the suite).
 
-**Two grounding corrections this plan carries (design-doc self-review claimed shipped reuse that does
-NOT exist as read — `shared/interfaces.md` §0 pins the corrected forms):**
+**Three grounding corrections this plan carries (`shared/interfaces.md` §0 pins the corrected forms —
+two are "shipped reuse" claims that don't exist as read, the third is a "proven correct" claim P5 only
+proved for a narrower case than P7 needs):**
 1. **`footprint.groupDisjoint` does not exist — and `footprint.mjs`'s CLI body is UNGUARDED, a latent
    bug never yet triggered.** `lib/footprint.mjs` exports nothing; the only `groupDisjoint` is inlined
    in the shipped `vertical-slice-runner.workflow.js`. Worse: its top-level code (including a bare
@@ -85,6 +97,17 @@ NOT exist as read — `shared/interfaces.md` §0 pins the corrected forms):**
 2. **The workflow cannot `import` `lib/frontier.mjs`** (substrate forbids `import`). `frontier.mjs` is
    the tested source of truth, imported by its `lib/` consumers; the **workflow inlines mirrors** of
    `pack`/`gateDue` (the repo's own `groupDisjoint` precedent). T09 pins this.
+3. **The ceremony-escalation unwind is exact only for a single escalation per cone, not under
+   stacking — a demonstrated defect (`docs/artifacts.md`'s P5 retrospective, mutation-tested, not
+   hypothetical), and the design doc's own "the correctness was proven in P5" line repeats P5's
+   overclaim.** Two escalations on one cone before either resolves share one unnamespaced `armed`
+   marker set keyed only by check name — unwinding the later one strips markers the earlier, still-valid
+   one needs. **T04d/T04e/T04f (new, inserted after T04c, before T05a) fix this for real**: namespace
+   every escalation by a stable `escalationId`, tag every `armed` entry with it, and rewrite the one
+   pre-existing hard-coded literal in `test/rewrite-ceremony.test.mjs` the shape change breaks (the
+   same "the contract changed, so the locked test pinning it must be re-authored" discipline T08a
+   already uses). See the design doc's Decision 5 and `shared/interfaces.md` §0 correction 3 for the
+   full account, including what remains open afterward.
 
 ---
 
@@ -97,6 +120,12 @@ files**; `git add -A` is forbidden (see `shared/conventions.md`).
 **Confirm the pivotal call** (design doc, "The central scoping fact"): the append path owns effect
 computation. Get the human's explicit yes before Phase B. Phase A does not depend on it.
 
+**Confirm the ceremony-escalation stacking fix** (design doc Decision 5, `shared/interfaces.md` §0
+correction 3): namespacing `ceremonyEscalation`/`unwindCeremonyEscalation` by `escalationId` closes a
+real, demonstrated defect in P5's own shipped `lib/rewrite.mjs`. Get the human's explicit yes before
+T04d dispatches — T04c (T04's own audit) does not depend on it, but T04d/e/f and everything downstream
+of them (T05+) do.
+
 ## File Structure
 
 | File | New/changed | Responsibility |
@@ -104,6 +133,7 @@ computation. Get the human's explicit yes before Phase B. Phase A does not depen
 | `lib/frontier.mjs` | **new, pure** | ready-set, wave packing, `GATE_RESULT` + `gateDue`, band-indexed cadence, `requiredRoles` |
 | `lib/footprint.mjs` | extend (guard + additive export) | wrap the unguarded CLI body in a `runCli()` guard (mirrors `ledger.mjs`, a real fix — its top-level code exits(1) unconditionally today), then extract `footprintsDisjoint(a,b)` from the private `independent()` algebra (correction 1) |
 | `lib/ledger.mjs` | extend | register `atom-verdict` + `phase-degenerated`; `append()` code-computes verdict effects |
+| `lib/rewrite.mjs` | extend (shape fix) | **P5's own file** — namespace `ceremonyEscalation`/`unwindCeremonyEscalation` by a stable `escalationId` so stacked escalations on one cone unwind independently (correction 3; T04d/T04e/T04f) |
 | `lib/next-action.mjs` | extend | the goals/cones order deriver feeding the unchanged directive projection |
 | `lib/reconcile.mjs` | extend, then narrow | select the goals/cones projection; replay effect sets; drop `readRoute` last |
 | `lib/progress-map.mjs` | extend | `EVENT_MAP` gains the 3.0 atom / verdict / degeneration interpretations |
@@ -129,7 +159,10 @@ computation. Get the human's explicit yes before Phase B. Phase A does not depen
 | T04a | red | T03c | `test/ledger-atom-verdict.test.mjs` |
 | T04b | green | T04a | `lib/ledger.mjs` (`atom-verdict`+`phase-degenerated` schemas; `append()` verdict branch) |
 | T04c | audit | T04b | — |
-| T05a | red | T04b | `test/ledger-two-phase.test.mjs` |
+| T04d | red | T04c | `test/rewrite-ceremony.test.mjs` (rewrite the one literal the shape change breaks), `test/rewrite-ceremony-stacking.test.mjs` (new) |
+| T04e | green | T04d | `lib/rewrite.mjs` (escalation-id namespacing on `ceremonyEscalation`/`unwindCeremonyEscalation`) |
+| T04f | audit | T04e | — |
+| T05a | red | T04f | `test/ledger-two-phase.test.mjs` |
 | T05b | green | T05a, T04b | `lib/ledger.mjs` (ratification fold of `pendingPermanent`; unwind on reject) |
 | T05c | audit | T05b | — |
 | T06a | red | T03c | `test/next-action-cones.test.mjs` |
@@ -157,7 +190,8 @@ digraph deps {
   T01b -> T03a -> T03b -> T03c;
   T02b -> T03b;
   T03c -> T04a -> T04b -> T04c;
-  T04b -> T05a -> T05b -> T05c;
+  T04c -> T04d -> T04e -> T04f;
+  T04f -> T05a -> T05b -> T05c; T04b -> T05b;
   T03c -> T06a -> T06b -> T06c;
   T06b -> T07a -> T07b -> T07c; T05b -> T07b;
   T07b -> T08a -> T08b -> T08c;
@@ -177,36 +211,43 @@ digraph deps {
   - Wave 4: T02b (green)
   - Wave 5: T02c (audit), T03b (green — appends below T02b's marker; depends on T02b)
   - Wave 6: T03c (audit)
-- **Phase B — append-path wiring (STOP-gated on the pivotal call):**
+- **Phase B — append-path wiring (STOP-gated on the pivotal call AND the ceremony-escalation stacking
+  fix, confirm both before Wave 10):**
   - Wave 7: T04a (red)
   - Wave 8: T04b (green)
-  - Wave 9: T04c (audit), T05a (red), T10a (red — Phase E can start here; depends only on T04b), T06a (red — Phase C can start; depends on T03c)
-  - Wave 10: T05b (green), T06b (green), T10b (green) — **disjoint files** (`ledger.mjs` / `next-action.mjs` / `progress-map.mjs`), parallel-safe
-  - Wave 11: T05c (audit), T06c (audit), T10c (audit)
+  - Wave 9: T04c (audit), T10a (red — Phase E can start here; depends only on T04b), T06a (red — Phase C can start; depends on T03c) — disjoint files, parallel-safe
+  - Wave 10: T04d (red — the ceremony-escalation stacking fix; depends on T04c), T06b (green), T10b (green) — **disjoint files** (`test/rewrite-ceremony*.test.mjs` / `next-action.mjs` / `progress-map.mjs`), parallel-safe
+  - Wave 11: T04e (green — `lib/rewrite.mjs` escalation-id namespacing), T06c (audit), T10c (audit)
+  - Wave 12: T04f (audit — confirms the stacking fix; Phase B's second STOP gate lives here)
+  - Wave 13: T05a (red — depends on T04f, the fixed unwind)
+  - Wave 14: T05b (green)
+  - Wave 15: T05c (audit)
 - **Phase C — migration (additive → subtractive):**
-  - Wave 12: T07a (red)
-  - Wave 13: T07b (green)
-  - Wave 14: T07c (audit), T08a (red)
-  - Wave 15: T08b (green — flips default, **deletes** `route.mjs`)
-  - Wave 16: T08c (audit)
+  - Wave 16: T07a (red)
+  - Wave 17: T07b (green)
+  - Wave 18: T07c (audit), T08a (red)
+  - Wave 19: T08b (green — flips default, **deletes** `route.mjs`)
+  - Wave 20: T08c (audit)
 - **Phase D — the workflow:**
-  - Wave 17: T09a (red)
-  - Wave 18: T09b (green — **deletes** `vertical-slice-runner.workflow.js`)
-  - Wave 19: T09c (audit)
+  - Wave 21: T09a (red)
+  - Wave 22: T09b (green — **deletes** `vertical-slice-runner.workflow.js`)
+  - Wave 23: T09c (audit)
 - **Phase F — docs + final:**
-  - Wave 20: T11 (docs + skill repoint)
-  - Wave 21: T12 (roadmap status + full suite — **no version bump**)
+  - Wave 24: T11 (docs + skill repoint)
+  - Wave 25: T12 (roadmap status + full suite — **no version bump**)
 
 **File conflict rule holds, with the named `lib/frontier.mjs` and `lib/ledger.mjs` exceptions:** no two
 tasks *without a dependency edge* touch the same file. The deliberate exceptions are (a) T01b/T02b/T03b
 all appending **disjoint, strictly-appended sections** to `lib/frontier.mjs` below a marker comment
 (each depends on the last — real edges, exactly P5's `rewrite.mjs` practice), and (b) T04b/T05b/T07b/T08b
 editing `lib/ledger.mjs`/`lib/reconcile.mjs` in a **dependency chain** (T05b depends on T04b; T08b on
-T07b), never in parallel. Wave 10's parallel greens (T05b/T06b/T10b) touch **three different files**.
-`lib/footprint.mjs` is touched by **T02b only** (the CLI-guard wrap + the `footprintsDisjoint`
-extraction, correction 1) — no other task reads or writes it, so no conflict. **Phase E** (the progress-view fold,
-T10a/b/c) is *interleaved* into Waves 9–11: it depends only on T04b, touches only `lib/progress-map.mjs`,
-and runs parallel-safe alongside Phase B/C greens.
+T07b), never in parallel. Wave 10's parallel tasks (T04d/T06b/T10b) and Wave 11's (T04e/T06c/T10c) touch
+**three different files** each. `lib/footprint.mjs` is touched by **T02b only** (the CLI-guard wrap + the
+`footprintsDisjoint` extraction, correction 1) — no other task reads or writes it, so no conflict.
+`lib/rewrite.mjs` and its test files are touched by **T04d/T04e/T04f only** (correction 3) — no other
+task reads or writes them, so no conflict with T04b/T05b's `lib/ledger.mjs` edits. **Phase E** (the
+progress-view fold, T10a/b/c) is *interleaved* into Waves 9–11: it depends only on T04b, touches only
+`lib/progress-map.mjs`, and runs parallel-safe alongside Phase B/C greens.
 
 ## Task Index
 
@@ -224,7 +265,10 @@ and runs parallel-safe alongside Phase B/C greens.
 | T04a | `atom-verdict` append tests (red) | `tasks/T04a-atom-verdict-red.md` | Failing tests: new event schemas; `append()` code-computes provisional effects; HALT on unknown kind |
 | T04b | `atom-verdict` append impl (green) | `tasks/T04b-atom-verdict-green.md` | `EVENT_SCHEMAS` + the `append()` verdict branch (snapshot → `computeVerdictEffects` + `ceremonyEscalation`) |
 | T04c | append audit | `tasks/T04c-atom-verdict-audit.md` | Adversarial audit — teeth on the no-model-in-the-loop boundary |
-| T05a | two-phase tests (red) | `tasks/T05a-two-phase-red.md` | Failing tests: `pendingPermanent` recorded at verdict; ratification folds it; reject → unwind |
+| T04d | ceremony-escalation stacking tests (red) | `tasks/T04d-ceremony-stacking-red.md` | Rewrites `test/rewrite-ceremony.test.mjs`'s one hard-coded literal to the namespaced shape; adds `test/rewrite-ceremony-stacking.test.mjs` (two escalations on one cone, reject the later, assert the earlier survives) |
+| T04e | ceremony-escalation stacking impl (green) | `tasks/T04e-ceremony-stacking-green.md` | `lib/rewrite.mjs`: `escalationId` namespacing on `ceremonyEscalation`/`unwindCeremonyEscalation` (correction 3 — P5's own flagged, demonstrated gap, now closed) |
+| T04f | ceremony-escalation stacking audit | `tasks/T04f-ceremony-stacking-audit.md` | Adversarial audit — teeth on cross-escalation isolation; confirms Phase B's second STOP is resolved before T05a |
+| T05a | two-phase tests (red) | `tasks/T05a-two-phase-red.md` | Failing tests: `pendingPermanent` recorded at verdict; ratification folds it; reject → unwind (now over the namespaced escalation shape) |
 | T05b | two-phase impl (green) | `tasks/T05b-two-phase-green.md` | The ratification fold of `pendingPermanent` + `unwindCeremonyEscalation` on reject |
 | T05c | two-phase audit | `tasks/T05c-two-phase-audit.md` | Adversarial audit — teeth on the apply-then-unwind identity at the wiring level |
 | T06a | goals/cones deriver tests (red) | `tasks/T06a-cones-red.md` | Failing tests for the goals+cones order deriver (readGoals + servesEdges + weights) |
@@ -251,10 +295,13 @@ and runs parallel-safe alongside Phase B/C greens.
 `docs/superpowers/plans/2026-07-11-reasonable-3.0-p7-frontier/plan.md`.**
 
 **1. Subagent-Driven (this session)** — dispatch fresh subagent per task, review between tasks. Honor
-the **STOP** before Phase B (confirm the pivotal call). Review at every phase boundary.
+**both STOPs in Phase B**: confirm the pivotal call before T04, and confirm the ceremony-escalation
+stacking fix (correction 3 — the T04d/T04e/T04f trio) before T05a. Review at every phase boundary.
 
 **2. Parallel Session (separate)** — open new session with executing-plans, batch execution per wave.
 
 P8 (the zero-commit scout) is the last part; it depends on P6, not P7 — do not start it until P7 has
 landed and been reviewed. If the pivotal call is reversed during review, Phase B's tasks change shape
-(computation moves into `lib/frontier.mjs`); re-plan Phase B before executing it.
+(computation moves into `lib/frontier.mjs`); re-plan Phase B before executing it. If the
+ceremony-escalation namespacing shape (correction 3) is contested during review, re-plan T04d/T04e/T04f
+before executing them — T05 depends on the fixed shape landing first.

@@ -1170,18 +1170,26 @@ supervisor-resolved interpretation, not settled design prose:** `ruleDeadEnd` em
 sharing citations reprice") — the prose alone doesn't pin whether "siblings" means exact-citation-match
 (the reading implemented, locked by `test/rewrite-r2-reprice.test.mjs`) or something broader (e.g.
 lineage/co-parentage — data this part has no access to); flag it as reviewable. **The
-ceremony-escalation unwind is exact only for a single, isolated escalation per cone — not under
-stacking.** Mutation testing proves it correct for the literal scenario DESIGN-3.0 and the locked
-tests state (one escalation from a clean armed state), and proves it **incorrect** — demonstrated,
-not hypothetical — for two escalations landing on the same cone before either resolves: the `armed`
-marker set is a fixed, unnamespaced 3-item literal keyed only by check name, so unwinding the later
-escalation strips markers the earlier, still-ratified escalation also needs — a residual
-silent-ratchet failure of exactly the kind §3's policy anti-attack exists to prevent. This is a real,
-unfixed gap; fixing it needs a shape change (e.g. namespacing armed markers by escalation identity),
-which is an architecture call for whoever specs Part 7 (the part that will actually apply multiple
-verdicts across a real gate-cadence window, making stacking routine rather than theoretical) or a
-DESIGN-3.0 ratification pass. **Part 7 must not assume the unwind is exact under stacked escalations
-on one cone until this is resolved.**
+ceremony-escalation unwind was exact only for a single, isolated escalation per cone — not under
+stacking — RESOLVED in Part 7.** Mutation testing proved it correct for the literal scenario
+DESIGN-3.0 and P5's locked tests stated (one escalation from a clean armed state), and proved it
+**incorrect** — demonstrated, not hypothetical — for two escalations landing on the same cone before
+either resolves: the `armed` marker set was a fixed, unnamespaced 3-item literal keyed only by check
+name, so unwinding the later escalation stripped markers the earlier, still-ratified escalation also
+needed — a residual silent-ratchet failure of exactly the kind §3's policy anti-attack exists to
+prevent. This was named as an architecture call for whoever specs Part 7 (the part that actually
+applies multiple verdicts across a real gate-cadence window, making stacking routine rather than
+theoretical) — **Part 7 made that call**: `ceremonyEscalation`/`unwindCeremonyEscalation`
+(`lib/rewrite.mjs`) now namespace every escalation by a stable `escalationId`
+(`` `${coneId}#esc${N}` ``, `N` a pure count of `state.escalations[coneId]`) and tag every `armed`
+entry with it, so an unwind can only ever strip its own escalation's markers — closed by the
+reasonable-3.0-p7-frontier plan's T04d/T04e/T04f trio (`test/rewrite-ceremony-stacking.test.mjs`
+covers the stacked scenario directly). **What remains open afterward:** the *live* per-cone
+`state.escalations`/`state.bands` store (§16 — the same already-flagged gap that also leaves
+`bandBounds` unbuilt, so this fix is fully tested at the pure-function level but not yet observable
+through the live `append()` path until that store exists) and the band-revert value under an
+out-of-order (non-LIFO) multi-rejection sequence (a narrower residual, explicitly named, not silently
+dropped — see the P7 design doc's Decision 5).
 
 ---
 

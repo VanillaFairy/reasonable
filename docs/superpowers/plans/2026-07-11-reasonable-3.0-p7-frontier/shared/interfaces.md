@@ -7,15 +7,18 @@ was **read from the shipped code** (not assumed) — `lib/ledger.mjs`, `lib/reco
 `lib/next-action.mjs`, `lib/progress-map.mjs`, `lib/route.mjs`, `lib/graph.mjs`, `lib/rewrite.mjs`,
 `lib/ceremony.mjs`, `lib/goals.mjs`, `lib/policy.mjs`, `lib/footprint.mjs`, and
 `workflows/vertical-slice-runner.workflow.js`. Where the design doc named a surface that does **not
-exist as read** (two cases), this file pins the corrected, grounded form and flags it — those
-corrections are load-bearing, follow them over the design doc's prose.
+exist as read**, or asserted a correctness property that does not hold as shipped (three cases), this
+file pins the corrected, grounded form and flags it — those corrections are load-bearing, follow them
+over the design doc's prose.
 
 ---
 
-## 0. Two grounding corrections (read before anything else)
+## 0. Three grounding corrections (read before anything else)
 
 The design doc's self-review is right about the reconcile coupling and the free event-type names, but
-two of its "reuse this shipped thing" claims do **not** match the code as it actually ships:
+three of its claims do **not** match the code as it actually ships — two are "reuse this shipped thing"
+claims about a surface that doesn't exist as named; the third is a correctness claim ("proven in P5")
+that P5 only proved for a narrower case than P7 actually needs:
 
 1. **`footprint.groupDisjoint` does not exist — and `footprint.mjs` is not safely importable as a
    module at all, today.** `lib/footprint.mjs` is a **CLI script** that *exports nothing*; its
@@ -53,6 +56,32 @@ two of its "reuse this shipped thing" claims do **not** match the code as it act
    `architecture.md`; the design doc's "in-process caller" phrasing is the loose part, not this.)
 
 Neither correction changes P7's scope; both make it buildable as written.
+
+3. **The ceremony-escalation unwind is only exact for a single, isolated escalation per cone — a
+   demonstrated defect, not a hypothetical one, and P7 is the part the P5 retrospective explicitly
+   names as owning the fix.** `docs/artifacts.md`'s own "Scope note — the flagged gaps" for P5 records
+   that mutation testing proved `unwindCeremonyEscalation` correct for one escalation from a clean
+   state but **incorrect** for two escalations stacked on the same cone before either resolves: the
+   `armed` marker set was a fixed, unnamespaced 3-item literal keyed only by check name, so unwinding
+   the *later* escalation stripped markers the *earlier*, still-valid one also needed. Design Decision
+   5's original text ("the correctness was proven in P5... P7's job is only to *call* it") repeated this
+   mistake — P5 proved the single-escalation case only. **Resolution (§2, the `ratification` fold, and
+   the design doc's Decision 5):** namespace every escalation by a stable `escalationId` (` ${coneId}#esc${N}`,
+   `N` = a pure count of `state.escalations[coneId]`, the same counting pattern `state.priorVerdicts`
+   already uses) and tag every `armed` entry with it (`` `${check}@${escalationId}` ``), so an unwind can
+   only ever strip its own escalation's markers. **New task trio, Phase B: T04d (red) — rewrites the one
+   pre-existing hard-coded literal in `test/rewrite-ceremony.test.mjs` that pins the old bare shape (the
+   contract genuinely changed, so the locked test pinning it must be re-authored, exactly T08a's
+   precedent) and adds `test/rewrite-ceremony-stacking.test.mjs`; T04e — implements the shape change in
+   `lib/rewrite.mjs`; T04f — audits it.** Sequenced after T04c, before T05a (T05a now also depends on
+   T04f). The fix is real and fully tested at the pure-function level; what remains open afterward
+   (named, not hidden) is (a) the live per-cone `state.escalations`/`state.bands` store — the same
+   already-flagged gap this section's item 1's sibling note describes for `bandBounds` — and (b) the
+   band-revert value under an out-of-order (non-LIFO) multi-rejection sequence, a narrower residual
+   T04d's tests do not close. See the design doc's Decision 5 for the full account.
+
+Three corrections total; none change P7's scope — they make it buildable, and in this third case,
+*correct*, as written.
 
 ---
 
@@ -270,6 +299,16 @@ and `retroClassificationDegenerates(landedConeCount)`, each returning
    > (T11) to record as an open edge, exactly the P4/P5/P6 precedent for a flagged, un-owned gap. The
    > other three ceremony triggers (`ripple`, `stale-spec`, `checkpoint`) do **not** depend on
    > `bandBounds` and are unaffected.
+   > **A sibling gap, same category: `state.escalations`.** T04e's escalation-id namespacing fix (§0
+   > correction 5, below) reads `state.escalations[coneId]` — an array of prior escalation records for
+   > that cone, used only to COUNT how many came before (the next escalation's ordinal). No shipped
+   > loader produces this either (there is no live escalation-history store any more than there's a live
+   > band store). T04 passes `escalations: {}`, the same honest empty default as `bands`/`bandBounds` —
+   > every escalation computed through the real `append()` path today therefore gets ordinal 0 (as if it
+   > were the first on its cone), which is inert-but-correct exactly the way `bands: {}` makes
+   > `ceremonyEscalation` never fire at all: the FIX is real and fully tested at the pure-function level
+   > (T04d/T04e/T04f), but is only OBSERVABLE once a live per-cone store exists for both `bands` and
+   > `escalations` together — one future gap, not two.
 2. `const eff = computeVerdictEffects(event /* the verdict */, state)` — if `eff.ok === false`, the
    whole `append()` returns `{ ok:false, error: eff.error }` and writes **nothing** (§7.2 Totality,
    fail-closed) — mirrors the existing `resolveFamily1Address` early-return-inside-`withLock` pattern;
@@ -292,7 +331,9 @@ payload `ratifiesSeqs: number[]` (accept) and/or `rejectsSeqs: number[]` (reject
   "pending permanence" a **fold over the ledger** (every `atom-verdict` seq with no consuming
   `ratification` above it), never a mutable side-table.
 - **reject** of a ceremony-escalation raise: fold `unwindCeremonyEscalation(escEffect)` (from
-  `./rewrite.mjs`) into `stamped.effects` — the pure inverse P5 proved (apply-then-unwind = identity).
+  `./rewrite.mjs`) into `stamped.effects` — the pure inverse P5 proved **for a single, isolated
+  escalation per cone** (apply-then-unwind = identity) — see §0 correction 5 for why P7 does not just
+  wire this unchanged.
 
 *Pin:* the exact payload field names (`ratifiesSeqs` / `rejectsSeqs` / `pendingPermanent`) are P7-coined
 and belong to the §12 grammar; register them in `docs/artifacts.md` (T11). They are additive optional

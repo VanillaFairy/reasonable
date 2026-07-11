@@ -346,10 +346,14 @@ one of the three is probably wrong.
   band **up** (monotone, capped, never down; DESIGN-3.0 §7), deepening its audit and tightening its
   gate cadence. Its **unwind** is the exact inverse (apply-then-unwind = identity). The band
   vocabulary (`policy.json`'s `dials.bandScale`) is Part 6d; the **Complexity classifier** that emits it
-  and its thresholds are Part 6c. The unwind's apply-then-unwind = identity invariant is
-  proven only for a single, isolated escalation per cone — not yet exact under two escalations
-  stacked on the same cone before either resolves (a known, unresolved gap; see
-  `docs/artifacts.md`).
+  and its thresholds are Part 6c. The unwind's apply-then-unwind = identity invariant was proven only
+  for a single, isolated escalation per cone by P5 — **Part 7 closes the stacking gap**: every
+  escalation now carries a stable `escalationId` (`` `${coneId}#esc${N}` ``) and its `armed` markers are
+  namespaced by it, so a rejected escalation can never disarm a co-resident one's still-valid markers
+  (`lib/rewrite.mjs`'s `ceremonyEscalation`/`unwindCeremonyEscalation`, reasonable-3.0-p7-frontier
+  T04d/T04e/T04f). The live per-cone escalation-history store this reads (`state.escalations`) remains
+  a separate, already-flagged gap (see `docs/artifacts.md`), and the band-revert value under an
+  out-of-order multi-rejection sequence is a narrower, still-named residual.
 - **Failure calculus** — the total function (`lib/rewrite.mjs`, DESIGN-3.0 §7) mapping an
   already-typed, already-audited **Verdict** to a two-phase effect set. Pure: it computes effects, it
   does not apply them (the frontier loop does, Part 7).

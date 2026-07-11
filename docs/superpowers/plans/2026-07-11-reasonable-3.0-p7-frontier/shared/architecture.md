@@ -38,7 +38,9 @@ the plan. Confirm before Phase B.** (Phase A does not depend on it.)
   `footprint.mjs`'s CLI and extracting `footprintsDisjoint` — correction 1 below), `requiredRoles`
   (T03). The P5/P6 pure-lib shape.
 - **B — append-path wiring (STOP-gated):** the `atom-verdict` + `phase-degenerated` schemas and the
-  `append()` verdict branch (T04); the two-phase `ratification` fold + ceremony unwind (T05).
+  `append()` verdict branch (T04); **the ceremony-escalation stacking fix — `lib/rewrite.mjs`'s
+  escalation-id namespacing (T04d/T04e/T04f, correction 3 above), closing P5's own flagged gap**; the
+  two-phase `ratification` fold + ceremony unwind (T05, now built on the fixed unwind).
 - **C — the migration (additive→subtractive):** the goals/cones deriver (T06, additive); reconcile
   selects it + replays effect sets (T07, additive); flip the default + **delete `route.mjs`** (T08,
   subtractive last).
@@ -47,10 +49,11 @@ the plan. Confirm before Phase B.** (Phase A does not depend on it.)
 - **F — docs + final:** glossary/artifacts/skill repoint (T11); full-suite + roadmap cell, **no bump**
   (T12).
 
-## Two grounding corrections this part carries (also pinned in `interfaces.md` §0)
+## Three grounding corrections this part carries (also pinned in `interfaces.md` §0)
 
-The design doc's self-review claims both are shipped reuse; **they are not, as read** — the plan
-corrects them, and they are named here so a reviewer weighs them:
+The design doc's self-review claims two are shipped reuse and one is a settled correctness proof;
+**none of the three hold as read** — the plan corrects them, and they are named here so a reviewer
+weighs them:
 
 1. **`footprint.groupDisjoint` does not exist — and `footprint.mjs`'s CLI body is unguarded (a latent
    bug, never yet triggered).** `lib/footprint.mjs` exports nothing; the only `groupDisjoint` is inlined
@@ -66,14 +69,28 @@ corrects them, and they are named here so a reviewer weighs them:
    tested source of truth; its `lib/` consumers import it; the **workflow inlines mirrors** of
    `pack`/`gateDue` (the repo's own `groupDisjoint` precedent). The design's "in-process caller"
    phrasing is the loose part.
+3. **The ceremony-escalation unwind is exact for one escalation per cone, not under stacking — a
+   demonstrated defect (`docs/artifacts.md`'s P5 retrospective), not a hypothetical one — and "P7's job
+   is only to call it" (the design doc's original Decision 5 text) repeats P5's own overclaim.**
+   Two escalations landing on the same cone before either resolves share one unnamespaced 3-item
+   `armed` marker set keyed only by check name, so unwinding the later one strips markers the earlier,
+   still-valid one also needs. **The fix:** namespace every escalation by a stable `escalationId`
+   (`` `${coneId}#esc${N}` ``, mirroring how `state.priorVerdicts` already lets R1 count attempts purely)
+   and tag every `armed` entry with it. **New task trio, Phase B: T04d (red, including a rewrite of the
+   one pre-existing hard-coded literal in `test/rewrite-ceremony.test.mjs` the shape change breaks) /
+   T04e (green, `lib/rewrite.mjs`) / T04f (audit)**, sequenced after T04c and before T05a. See
+   `interfaces.md` §0 correction 3 and the design doc's Decision 5 for the full account, including what
+   remains open afterward (the live per-cone store, and the out-of-order multi-rejection band-revert
+   case).
 
-Neither changes scope; both make P7 buildable exactly as sequenced.
+None change P7's scope; all three make it buildable, and in the third case, *correct*, as sequenced.
 
-**A third, smaller grounding gap (§2 of `interfaces.md`):** `policy.dials` (as landed by P6d) has no
+**A fourth, smaller grounding gap (§2 of `interfaces.md`):** `policy.dials` (as landed by P6d) has no
 `bandBounds` field, while `ceremonyEscalation`'s R2 trigger reads `state.bandBounds[coneId]`. T04 passes
 `bandBounds: {}` — the honest empty default, under-firing (never over-firing) that one trigger until a
 real per-cone bound lands. Named, not invented — the same discipline P4/P5/P6 used for their own flagged
-un-owned edges.
+un-owned edges. (T04e's escalation-namespacing fix carries a sibling default, `state.escalations: {}`,
+in the same spirit — see `interfaces.md` §2.)
 
 ## Design decisions (short list — see the design doc for each in full)
 
