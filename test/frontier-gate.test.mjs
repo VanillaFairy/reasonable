@@ -165,5 +165,39 @@ check('starved is checked before the band floor — an empty frontier under a tr
   assert.strictEqual(r.kind, 'starved');
 });
 
+check('halt beats starved (co-activated, not just co-activated with blocked-human/goal-green)', () => {
+  const r = gateDue(state({ controlState: 'corrupt', frontierSize: 0, quorum: 1, gateHeldCount: 2 }), policy);
+  assert.strictEqual(r.kind, 'halt');
+});
+
+check('halt beats batch-full', () => {
+  const r = gateDue(state({
+    controlState: 'corrupt',
+    batches: { amendments: 3, deadEndPermanence: 0, extractions: 0, retopology: 0 },
+  }), policy);
+  assert.strictEqual(r.kind, 'halt');
+});
+
+check('halt beats the band-indexed heartbeat floor', () => {
+  const r = gateDue(state({ controlState: 'corrupt', mergedSinceGate: 5 }), policy);
+  assert.strictEqual(r.kind, 'halt');
+});
+
+check('the inbox-load tripwire heartbeat beats starved', () => {
+  const r = gateDue(state({
+    inboxLoad: 5, inboxTripwire: 5,
+    frontierSize: 0, quorum: 1, gateHeldCount: 2,
+  }), policy);
+  assert.deepStrictEqual(r, { kind: 'heartbeat', detail: { reason: 'inbox-load' } });
+});
+
+check('batch-full beats the band-indexed heartbeat floor', () => {
+  const r = gateDue(state({
+    batches: { amendments: 3, deadEndPermanence: 0, extractions: 0, retopology: 0 },
+    band: 'large', mergedSinceGate: 5,
+  }), policy);
+  assert.deepStrictEqual(r, { kind: 'batch-full', detail: { class: 'amendments' } });
+});
+
 if (process.exitCode) console.error(`\nfrontier-gate: FAILURES above (${passed} passed).`);
 else console.log(`\nfrontier-gate: all ${passed} checks pass. ✓`);
