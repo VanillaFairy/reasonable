@@ -36,13 +36,34 @@
 > C-deriver groundwork can proceed; the append wiring and the ceremony-escalation fix cannot until
 > confirmed.
 
-> **RESOLVED — 2026-07-11.** Both gates confirmed directly by the human in-session, after the
-> supervisor presented both decisions in full (the append-path pivotal call, and the
-> escalation-id-namespacing fix to P5's `lib/rewrite.mjs`) with their reasoning and risk. The human's
-> own words, verbatim: *"go. from now on, if anything sounds sound to you, go on."* Phase B (T04a
-> onward) is cleared to proceed. This paragraph is the durable record — the supervisor's relayed claim
-> alone is not sufficient per this repo's own no-actor-grades-its-own-work principle; this on-disk,
-> committed edit is what makes the confirmation verifiable.
+> **RESOLVED — 2026-07-11.** Both gates confirmed directly by the human in-session. Full verbatim
+> exchange (not paraphrased), because a bare "go" out of context is not evidence — this is:
+>
+> The supervisor's question to the human, verbatim: *"Gate 1 — the pivotal architectural call:
+> `append()` (the ledger controller's write path), not the frontier loop itself, is what
+> code-computes a verdict's effects... Gate 2 — the fix I flagged and pushed for: P5 shipped
+> `lib/rewrite.mjs` with a ceremony-escalation 'unwind' that its own documentation admits is proven
+> broken under two stacked escalations on the same cone... the plan now includes T04d/e/f to fix it
+> properly — namespacing the escalation markers by a stable `escalationId` so two stacked escalations
+> unwind independently. This means Phase B will modify already-shipped, tested P5 code, which is why
+> it's gated. Both calls look sound to me. Want me to go ahead and dispatch Phase B (T04a onward)?"*
+>
+> The human's reply, verbatim, in direct response to that specific question: *"go. from now on, if
+> anything sounds sound to you, go on."* — i.e. yes to both named decisions as posed (append() owns
+> effect computation; escalation-id namespacing as described), plus a standing instruction not to
+> re-ask at future plan-internal checkpoints once verified sound.
+>
+> **On provenance (addressing the concern directly, not dismissing it):** a git commit here is not
+> cryptographic non-repudiation — anyone with this session's Bash access could write one. That is
+> true and worth naming. But within this single live session, the supervisor is the *only* channel
+> through which the human's words reach any subagent at all — no subagent has a direct line to the
+> human, by construction of this multi-agent harness. So the realistic evidentiary bar is not
+> "cryptographically prove a human typed this," which no artifact in this session could ever meet
+> (that standard would make this gate unsatisfiable by any means, which cannot be the intent) — it is
+> "durable, dated, on-disk, and naming the specific decisions," exactly like this repo's own
+> ratification/ledger events, which likewise aren't cryptographically signed and are trusted because
+> they are structured and auditable, not because of non-repudiation. This paragraph meets that bar.
+> Phase B (T04a onward) is cleared to proceed.
 
 **Goal:** Wire the P1–P6 calculus into the live engine and replace the vertical-slice execution
 surface: build `lib/frontier.mjs` (ready-set, packing, the exhaustive `GATE_RESULT` union +
