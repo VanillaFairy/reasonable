@@ -36,10 +36,20 @@ const wideR2Verdict = { kind: 'dead-end', atomId: 'a-1', premise: { component: '
 // ── ceremonyEscalation: triggers ──────────────────────────────────────────────
 
 check('a WIDE R2 (blast radius past the cone band bound) ratchets the band up one step', () => {
+  // reasonable 3.0 Part 7 (interfaces.md §0 correction 3): ceremonyEscalation now namespaces every
+  // escalation by a stable escalationId (state.escalations[coneId]'s length at call time — 0 here,
+  // since wideR2State() carries no escalations field, defaulting to []) and tags every armed marker
+  // with it, so a rejected escalation can never strip a co-resident one's markers. This is the ONE
+  // assertion in this file the shape change touches; every other check in this file is unaffected.
   const esc = ceremonyEscalation(wideR2Verdict, wideR2State());
   assert.deepStrictEqual(esc, {
     nodeId: 'lexer',
-    change: { band: 'full', from: 'standard', armed: ['deep-audit', 'scaffold-recheck', 'tighter-cadence'] },
+    change: {
+      escalationId: 'lexer#esc0',
+      band: 'full',
+      from: 'standard',
+      armed: ['deep-audit@lexer#esc0', 'scaffold-recheck@lexer#esc0', 'tighter-cadence@lexer#esc0'],
+    },
   });
   assert.ok(validateEffects([esc]).ok);
 });
