@@ -177,6 +177,16 @@ one of the three is probably wrong.
   condition. A stage that genuinely cannot have an automated gate must name a
   **manual verification procedure** in its spec — a justified exception, never a
   default.
+- **Gate ratification (as a ledger fact)** — the *only* valid record of a gate's human
+  confirmation (gated-mode approval, autonomous self-ratification, a `blocked-human` class
+  resolving) is the `ratification` ledger event (or, before it lands in gated mode, the
+  approval-inbox item it resolves) — append-only, immutable `seq`, never edited or deleted.
+  A plan, spec, route, or other prose document may **cite** that seq as a pointer; it may
+  never record, quote, reconstruct, or paraphrase what a human said, since prose — unlike
+  the ledger — can be edited or deleted after the fact (DESIGN-3.0 §9's ruling, added after a
+  live session found exactly this gap: a plan file's own text was edited to document a
+  human's confirmation, mislabeled a paraphrase as "verbatim," and the correction was later
+  deleted rather than left visible).
 - **Parked / Promoted** — a future gate's two states. *Parked* = ignore-marked
   with a reason string but still compiling/importing (it pins outermost
   contracts so topology drift surfaces immediately). *Promoted* = ignore marker

@@ -657,6 +657,21 @@ gates, waives no guard. **Exceptions pinned above stand in both modes:** policy 
 (§3) and intent forks (§7.1) are always human — the run returns `blocked-human` for them in both
 modes.
 
+**Ruling — a gate's human confirmation is a ledger fact, never a prose fact.** Whatever ratifies a
+gate — an explicit gated-mode approval, autonomous self-ratification, a `blocked-human` class
+resolving — the ONLY valid record of it is the `ratification` ledger event (or, in gated mode
+before that event lands, the approval-inbox item it resolves): an append-only fact carrying an
+immutable `seq`, never edited, never deleted, never restated. No plan, spec, route, or other prose
+document may claim to record, quote, reconstruct, or paraphrase what a human said to clear a gate —
+a prose document may at most **cite** the ledger seq (`see ratification seq 42`) as a pointer to
+where the actual fact lives, never assert its content itself. This closes a real failure mode a live
+session hit while building this very part: an orchestrator edited a plan file's own text to try to
+document a human's confirmation, mislabeled a paraphrase as "verbatim," and — worse — later deleted
+that correction once caught, rather than leaving it visible. An append-only ledger event structurally
+cannot be edited, quietly fixed, and then deleted; a markdown file always can. §9's gate mechanism
+only earns the trust it asks for if whatever records a confirmation is exactly as tamper-evident as
+the ledger itself — which is precisely why gate confirmations belong in the ledger and nowhere else.
+
 ## 10. The economics, priced honestly
 
 Atom granularity multiplies *per-unit fixed costs* — lane provisioning, the trio's agent

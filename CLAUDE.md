@@ -105,6 +105,17 @@ These are the things that look like style but are load-bearing:
    substrate requirement (it's what lets a workflow resume deterministically).
 6. **Only glossary terms carry normative force.** Informal words ("prototype", "stub", "MVP", "rough")
    grant no exemption from any rule; don't let a hook or constitution key off them.
+7. **A plan/spec document never claims to record a human's words.** `DESIGN-3.0.md` §9 pins this for
+   real reasonable efforts: a gate's human confirmation is a **ledger fact** (a `ratification` event,
+   append-only, immutable `seq`), never a prose fact — a plan may cite the seq, never quote or
+   reconstruct what was said. This repo has no `.reasonable/` ledger to append to (invariant 2 — hooks
+   no-op here), so when a plan under `docs/superpowers/plans/**` hits a human-confirmation checkpoint
+   while developing the plugin itself, resolve it by acting on the live conversation directly. If a
+   record is wanted, state plainly that it was confirmed in conversation — never label anything
+   "verbatim" unless it is a literal, unedited copy-paste, and never delete a documented mistake once
+   written; correct it in a new, forward commit instead. (Added after a live session hit exactly this
+   gap: a plan file was edited to "document" a confirmation, a paraphrase got mislabeled verbatim, and
+   the correction was later deleted rather than left visible.)
 
 ## The conceptual model (so changes stay coherent)
 
