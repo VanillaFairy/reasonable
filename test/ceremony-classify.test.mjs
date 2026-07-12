@@ -144,9 +144,19 @@ check('round-trip: a classified NON-top band ratchets up exactly one step throug
   assert.strictEqual(band, 'standard');
   assert.notStrictEqual(d.bandScale.indexOf(band), -1); // classify's output IS a member of the scale
   const esc = ceremonyEscalation(wideR2Verdict, wideR2State(band, d.bandScale));
+  // reasonable 3.0 Part 7 (interfaces.md §0 correction 3): ceremonyEscalation namespaces every
+  // escalation by a stable escalationId (state.escalations[coneId]'s length — 0 here, since
+  // wideR2State carries no escalations field, defaulting to []) and tags every armed marker with it,
+  // so stacked escalations on one cone unwind independently. This round-trip assertion tracks the same
+  // shape change as test/rewrite-ceremony.test.mjs's WIDE-R2 check.
   assert.deepStrictEqual(esc, {
     nodeId: 'lexer',
-    change: { band: 'full', from: 'standard', armed: ['deep-audit', 'scaffold-recheck', 'tighter-cadence'] },
+    change: {
+      escalationId: 'lexer#esc0',
+      band: 'full',
+      from: 'standard',
+      armed: ['deep-audit@lexer#esc0', 'scaffold-recheck@lexer#esc0', 'tighter-cadence@lexer#esc0'],
+    },
   });
   assert.ok(validateEffects([esc]).ok);
 });
