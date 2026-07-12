@@ -104,34 +104,21 @@ check('append: a caller-supplied `effects` on an atom-verdict is OVERWRITTEN, ne
 
 check('append: a verdict with a non-empty permanent set records it as pendingPermanent, NOT folded into effects', () => {
   const root = newEffort();
-  seedLedger(root, [
-    { seq: 1, type: 'atom-chartered', component: 'lexer', premises: [], purpose: 'x', locus: [], order: 0 },
-    {
-      seq: 2, type: 'atom-delta-authored', atomId: 'a-1',
-      clauses: [
-        { clauseId: 'lexer#c1', citations: [], demandedBy: null, locus: [] },
-        { clauseId: 'lexer#c2', citations: [], demandedBy: 'goal:g1', locus: [] },
-      ],
-    },
-  ]);
+  seedLedger(root, [{ seq: 1, type: 'atom-chartered', component: 'lexer', premises: [], purpose: 'x', locus: [], order: 0 }]);
 
-  const verdict = {
-    atomId: 'a-1', kind: 'oversized',
-    partition: [['lexer#c1'], ['lexer#c2']], componentRoot: '',
-  };
+  // R3 ripple is the honest fixture for this invariant: unlike oversized (whose retirement is
+  // PROVISIONAL — `retired-pending` — so its permanent set is empty by design, per shipped
+  // lib/rewrite.mjs ruleOversized), ruleRipple genuinely returns BOTH a non-empty provisional (the
+  // atom's dispatch-barred SET) and a non-empty permanent (the dispatch-barred CLEAR, ratified at a
+  // gate). An empty manifest keeps the fixture minimal — no owner/foreign clauses to seed.
+  const verdict = { atomId: 'a-1', kind: 'ripple', manifest: [] };
   const r = append(root, { type: 'atom-verdict', ...verdict });
   assert.equal(r.ok, true, r.error);
   assert.ok(Array.isArray(r.event.pendingPermanent), 'pendingPermanent is present on the stamped event');
-  assert.ok(r.event.pendingPermanent.length > 0, 'oversized carries a non-empty permanent set (retirement stamp)');
-  // effects (provisional) must NOT include anything from the permanent set.
-  const permanentNodeIds = new Set(r.event.pendingPermanent.map((e) => e.nodeId).filter(Boolean));
-  const effectsNodeIds = new Set(r.event.effects.map((e) => e.nodeId).filter(Boolean));
-  for (const id of permanentNodeIds) {
-    // the SAME nodeId may legitimately appear in both (a-1 gets a provisional retired-pending AND a
-    // permanent retired stamp) — the real invariant is that pendingPermanent is its OWN field, not
-    // merged element-for-element into effects. Assert the arrays are NOT deepStrictEqual.
-    void id;
-  }
+  assert.ok(r.event.pendingPermanent.length > 0, 'ripple carries a non-empty permanent set (the ratified dispatch-bar clear)');
+  // effects (provisional) is the dispatch-barred SET; pendingPermanent is the dispatch-barred CLEAR —
+  // the same nodeId appears in both, but as distinct changes. The invariant: pendingPermanent is its
+  // OWN field, never merged element-for-element into effects.
   assert.notDeepStrictEqual(r.event.effects, r.event.pendingPermanent, 'effects and pendingPermanent are distinct arrays');
 });
 
