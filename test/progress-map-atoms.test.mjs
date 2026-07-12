@@ -2,6 +2,11 @@
 // progress tree (DESIGN-3.0 §8; reasonable 3.0 Part 7, interfaces.md §6). EVENT_MAP handlers stay
 // stateless (progress-map.mjs's own invariant) — every atom node is injected FLAT, keyed by atomId
 // (the interfaces.md §6 grounding correction), never at a containment-nested path. Pure fold, zero I/O.
+//
+// Grounding correction (this task's own red pass): findByPath returns the NODE directly, never a
+// {node, path} wrapper — verified against test/progress-map.test.mjs's real usage (`wo.status`,
+// `displayStatus(wo)`, never `wo.node`). The original task-file draft assumed a wrapper shape; fixed
+// here to match the real, shipped API.
 
 import assert from 'node:assert';
 import { foldEvents } from '../lib/progress-map.mjs';
@@ -21,7 +26,7 @@ check('atom-chartered injects a pending node at the FLAT atomId path', () => {
   ], 'demo');
   const found = findByPath(tree, 'a-1');
   assert.ok(found, 'a-1 exists as a direct child of root');
-  assert.strictEqual(displayStatus(found.node), 'pending');
+  assert.strictEqual(displayStatus(found), 'pending');
 });
 
 // ── atom-delta-authored / delta-enrichment ────────────────────────────────────
@@ -32,7 +37,7 @@ check('atom-delta-authored adds a note to the atom node', () => {
     { seq: 2, type: 'atom-delta-authored', atomId: 'a-1', clauses: [{ clauseId: 'lexer#c1' }], ts: '2026-07-11T00:01:00Z' },
   ], 'demo');
   const found = findByPath(tree, 'a-1');
-  assert.ok(found.node.notes.some((n) => /delta/i.test(n.text)));
+  assert.ok(found.notes.some((n) => /delta/i.test(n.text)));
 });
 
 check('delta-enrichment also adds a note to the atom node', () => {
@@ -41,7 +46,7 @@ check('delta-enrichment also adds a note to the atom node', () => {
     { seq: 2, type: 'delta-enrichment', atomId: 'a-1', clause: { clauseId: 'lexer#c2' }, ts: '2026-07-11T00:02:00Z' },
   ], 'demo');
   const found = findByPath(tree, 'a-1');
-  assert.ok(found.node.notes.some((n) => /delta/i.test(n.text)));
+  assert.ok(found.notes.some((n) => /delta/i.test(n.text)));
 });
 
 // ── atom-transitioned: the lifecycle -> tree-status map ───────────────────────
@@ -52,7 +57,7 @@ check('atom-transitioned to "chartered"-adjacent states maps to pending/active/d
       { seq: 1, type: 'atom-chartered', atomId: 'a-1', component: 'lexer', purpose: 'x', ts: '2026-07-11T00:00:00Z' },
       { seq: 2, type: 'atom-transitioned', atomId: 'a-1', from: 'chartered', to, ts: '2026-07-11T00:01:00Z' },
     ], 'demo');
-    return displayStatus(findByPath(tree, 'a-1').node);
+    return displayStatus(findByPath(tree, 'a-1'));
   }
   assert.strictEqual(transitionedStatus('chartered'), 'pending');
   assert.strictEqual(transitionedStatus("spec'd"), 'active');
@@ -68,7 +73,7 @@ check('atom-flag-set/cleared add notes naming the flag and the op', () => {
     { seq: 2, type: 'atom-flag-set', atomId: 'a-1', flag: 'frozen', reason: 'R2 blast radius', ts: '2026-07-11T00:01:00Z' },
     { seq: 3, type: 'atom-flag-cleared', atomId: 'a-1', flag: 'frozen', ts: '2026-07-11T00:02:00Z' },
   ], 'demo');
-  const notes = findByPath(tree, 'a-1').node.notes.map((n) => n.text);
+  const notes = findByPath(tree, 'a-1').notes.map((n) => n.text);
   assert.ok(notes.some((t) => /frozen/.test(t) && /set/i.test(t)));
   assert.ok(notes.some((t) => /frozen/.test(t) && /clear/i.test(t)));
 });
@@ -80,7 +85,7 @@ check('atom-verdict adds a note naming the verdict kind', () => {
     { seq: 1, type: 'atom-chartered', atomId: 'a-1', component: 'lexer', purpose: 'x', ts: '2026-07-11T00:00:00Z' },
     { seq: 2, type: 'atom-verdict', atomId: 'a-1', kind: 'checkpoint', effects: [], ts: '2026-07-11T00:01:00Z' },
   ], 'demo');
-  const notes = findByPath(tree, 'a-1').node.notes.map((n) => n.text);
+  const notes = findByPath(tree, 'a-1').notes.map((n) => n.text);
   assert.ok(notes.some((t) => /checkpoint/.test(t)));
 });
 
@@ -92,7 +97,7 @@ check('phase-degenerated injects a node showing the phase RAN and FOUND NOTHING,
   ], 'demo');
   const found = findByPath(tree, 'phase/scaffold');
   assert.ok(found, 'a node for the degenerated phase exists');
-  const text = [found.node.label, ...found.node.notes.map((n) => n.text)].filter(Boolean).join(' ');
+  const text = [found.label, ...found.notes.map((n) => n.text)].filter(Boolean).join(' ');
   assert.ok(/no new goal cone|ran|found nothing/i.test(text), 'the record shows WHY it degenerated, not a bare skip');
 });
 
