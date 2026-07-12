@@ -381,10 +381,11 @@ shape the deterministic `nextAction` projection (`lib/next-action.mjs`) needs to
 `RETRO`/`OPEN` directives. `route.md` itself is **demoted to pure human narration and is never
 parsed** — every reader that needs the order machine-readably reads `route.json` instead.
 
-> **Superseded (3.0) but not yet retired.** `route.json` is superseded by `goals.json` + `policy.json`
-> (their grammar + conservative loaders landed in **P6d**), but stays **live** until **P7's migration**
-> rebuilds the `nextAction` projection over goals + cones and retires the route path. P6 is purely
-> additive — `route.json`, `lib/route.mjs`, and `lib/reconcile.mjs` are untouched (design doc Call #1).
+> **Retired (Part 7).** `route.json` is superseded by `goals.json` + `policy.json`; `lib/route.mjs` is
+> **deleted** and `lib/reconcile.mjs` no longer reads this file at all — the `nextAction` projection is
+> rebuilt over goals + cones (`lib/next-action.mjs`'s `deriveConeOrder`, Part 7). This section is kept
+> for historical/migration context only; an effort's `route.json`, if one still exists on disk from a
+> pre-3.0 state, is simply never read.
 
 ```json
 { "slices": ["expr-eval", "confirm-delete", "…"], "ratifiedAt": "2026-07-06T10:00:00.000+02:00", "ledgerSeq": 42 }
@@ -821,7 +822,17 @@ meaning: `enrichment`, `amendment`, `characterization`, `characterization-promot
 `change-characterized`, `change-characterized-planned`, `verdict`, `verifier-verdict`,
 `scope-expansion`, `budget-extension`, `dead-end`, `ratification`, `intent-check-failure`,
 `commit` (plus the pre-existing `correction`, D21, orthogonal to this vocabulary), and — new
-in Layer 2 — `next-action` (below). They are
+in Layer 2 — `next-action` (below). **Two new 3.0 types (Part 7, DESIGN-3.0 §2.4/§7.2):**
+`atom-verdict` (`{atomId, kind, ...}` — a collision-free type keyed distinctly from the live
+2.x `verdict`; `append()` code-computes its `effects` and records its permanent set as
+`pendingPermanent`, never applied until a ratification consumes it) and `phase-degenerated`
+(`{phase, reason, inputs}` — the exact shape `lib/ceremony.mjs`'s degeneration predicates emit,
+appended verbatim). **`ratification`'s payload gains two optional fields**: `ratifiesSeqs` /
+`rejectsSeqs` (arrays of positive integers — ledger seqs of `atom-verdict` events this
+ratification accepts/rejects) — when present, `append()` folds the referenced verdict's
+`pendingPermanent` (accept) or `unwindCeremonyEscalation`'s inverse (reject, for a ceremony
+band raise) into this event's own `effects`. Absent, `ratification` behaves exactly as before
+(backward compatible). They are
 validated loosely — a known type is accepted; `enrichment`/`characterization` additionally
 require `component`. The only thing that changed is where they land: if the event carries a
 `workOrder` and no `node`, the controller stamps `node` when the id resolves (best-effort
