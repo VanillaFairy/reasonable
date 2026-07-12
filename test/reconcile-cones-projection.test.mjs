@@ -100,15 +100,18 @@ check('reconcile: with goals.json present, DISPATCH order follows the cone-deriv
   assert.deepStrictEqual(dispatchOrder(r), ['g-a', 'g-b'], 'g-a\'s bigger cone (a-5+a-7 vs a-3 alone) dispatches first — the cone-derived order WINS over route.json\'s contradicting [g-b,g-a]');
 });
 
-// ── goals.json absent: the route.json path is UNCHANGED (regression) ──────────
+// ── goals.json absent: route.json is RETIRED (T08 cutover) — no slice ordering, first-seen fallback ──
 
-check('reconcile: with NO goals.json, route.json still drives DISPATCH order exactly as before', () => {
+check('reconcile: with NO goals.json, there is no slice ordering (route.json retired) — DISPATCH falls to first-seen WO order', () => {
   const root = newEffort({
     workOrders: { 'WO-a': { role: 'implementer', verticalSlice: 'slice-a' }, 'WO-b': { role: 'implementer', verticalSlice: 'slice-b' } },
     specs: {
       'WO-a': { verticalSlice: 'slice-a', dependsOn: [] },
       'WO-b': { verticalSlice: 'slice-b', dependsOn: [] },
     },
+    // A route.json is seeded but DELIBERATELY IGNORED post-cutover (T08): route.json is retired, so its
+    // [slice-b, slice-a] order has no effect. With no goals.json, routeOrder is null and DISPATCH emits
+    // in first-seen WO order (WO-a before WO-b → slice-a before slice-b).
     route: { slices: ['slice-b', 'slice-a'], ratifiedAt: null, ledgerSeq: null },
     ledger: [
       { seq: 1, type: 'node-planned', node: 'WO-a', kind: 'work-order', title: 'a' },
@@ -116,21 +119,24 @@ check('reconcile: with NO goals.json, route.json still drives DISPATCH order exa
     ],
   });
   const r = reconcile(root);
-  assert.deepStrictEqual(dispatchOrder(r), ['slice-b', 'slice-a'], 'route.json order preserved exactly, unchanged by this task');
+  assert.deepStrictEqual(dispatchOrder(r), ['slice-a', 'slice-b'], 'route.json is retired — first-seen WO order governs, NOT route.json\'s [slice-b, slice-a]');
 });
 
-// ── malformed goals.json: graceful fallback to route.json, never a crash ─────
+// ── malformed goals.json: no route fallback anymore (T08 cutover) — degrades, never crashes ─────
 
-check('reconcile: a malformed goals.json falls back to route.json gracefully (no crash)', () => {
+check('reconcile: a malformed goals.json degrades gracefully (no slice ordering, no crash) — route.json is retired', () => {
   const root = newEffort({
     workOrders: { 'WO-a': { role: 'implementer', verticalSlice: 'slice-a' } },
     specs: { 'WO-a': { verticalSlice: 'slice-a', dependsOn: [] } },
+    // route.json seeded but ignored (retired). A malformed goals.json → routeOrder null + a diagnostic
+    // note; the single ready WO still DISPATCHes in first-seen order. The point is graceful degradation,
+    // not a fallback to route.json (there is none anymore).
     route: { slices: ['slice-a'], ratifiedAt: null, ledgerSeq: null },
     goals: 'not valid json {{{',
     ledger: [{ seq: 1, type: 'node-planned', node: 'WO-a', kind: 'work-order', title: 'a' }],
   });
   const r = reconcile(root);
-  assert.deepStrictEqual(dispatchOrder(r), ['slice-a'], 'falls back to the route path; no throw');
+  assert.deepStrictEqual(dispatchOrder(r), ['slice-a'], 'degrades to first-seen order; no throw, no route fallback');
 });
 
 // ── notes is always an array (the divergence-surfacing contract, shape-only) ──
