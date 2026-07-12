@@ -95,13 +95,18 @@ check('an empty goals array returns empty routeOrder and slices', () => {
 // ── woIds is deterministically sorted ─────────────────────────────────────────
 
 check('slices[].woIds is sorted, regardless of the atoms array order', () => {
-  const goals = [goal('g1', 'lexer#c1')];
+  // A genuine 2-atom cone is provider-DOWNWARD (servesEdges' reverse-reachability): g1 cites parser#c1,
+  // provided by a-2, which itself cites parser#c2 provided by a-1 — so a-1 is in a-2's dependency
+  // closure and thus in g1's cone. (A consumer that merely CITES the goal's clause is NOT in the cone —
+  // that is the semantics this fixture was corrected to respect.) The atoms array lists a-2 before a-1,
+  // so a naive walk would yield [a-2, a-1]; deriveConeOrder must return them SORTED as [a-1, a-2].
+  const goals = [goal('g1', 'parser#c1')];
   const atoms = [
-    { id: 'a-9', component: 'lexer', state: 'merged', deltaClauses: [{ clauseId: 'lexer#c9', citations: [{ component: 'lexer', clause: 'lexer#c1' }] }] },
-    atom('a-1', 'lexer', 'lexer#c1'),
+    { id: 'a-2', component: 'parser', state: 'merged', deltaClauses: [{ clauseId: 'parser#c1', citations: [{ component: 'parser', clause: 'parser#c2' }] }] },
+    atom('a-1', 'parser', 'parser#c2'),
   ];
   const { slices } = deriveConeOrder({ goals, atoms, weights: {} });
-  assert.deepStrictEqual(slices[0].woIds, ['a-1', 'a-9']);
+  assert.deepStrictEqual(slices[0].woIds, ['a-1', 'a-2']);
 });
 
 if (process.exitCode) console.error(`\nnext-action-cones: FAILURES above (${passed} passed).`);
