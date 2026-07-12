@@ -41,7 +41,7 @@ suite) between parts, rather than sitting broken through one giant rewrite.
 | P5 | The rewrite engine — the failure calculus, verdict types R1–R9, two-phase (provisional/permanent) effect application, **and the ceremony-escalation effect** (a verdict may ratchet a cone's complexity band up — grow-ceremony-on-evidence) | `lib/rewrite.mjs` (new) | §7, §7.1, §7.2, §17 | P4 (rewrites the graph), P3 (transitions atom states) | Landed — merged (no bump, 3.2.0) |
 | P6 | The topology stage (heart № 2) — **split into P6a–P6e** (see Part 6): planned edges, the legibility law, the ceremony dial (complexity classifier + phase degeneration), `goals.json`/`policy.json` (**additive**, carrying the ceremony-sizing dials), the topologist role, `topology.html` | `lib/graph.mjs` (extend), `lib/legibility.mjs`, `lib/ceremony.mjs`, `lib/goals.mjs`, `lib/policy.mjs`, `lib/topology-view.mjs`, `agents/topologist.md` (all new/additive); `route.json` superseded but **retired in P7's migration**, not here | §3, §5, §5.1–§5.4, §9, §17 | P4 (measures the graph), P3 (charters atoms) | Split → P6a–P6e — all landed (merged, no bump, 3.2.0) |
 | P7 | The frontier loop + gates — `lib/frontier.mjs`, the frontier-wave workflow, `GATE_RESULT`, **band-indexed** gate cadence, live progress view, 2.x→3.0 migration, **plus lazy role-minimal provisioning (the micro-effort fast path)** | `lib/frontier.mjs` (new), `workflows/frontier-wave.workflow.js` (new); `lib/ledger.mjs`/`lib/reconcile.mjs`/`lib/next-action.mjs`/`lib/progress-map.mjs`/`lib/footprint.mjs` (extend); `lib/route.mjs` (deleted, last) | §6, §9, §12, §17 | P5 (dispatches on verdicts), P6 (reads goals/policy) | Landed — merged (no bump, 3.2.0) |
-| P8 | The zero-commit **scout** — standalone pre-effort exploration reusing the spike quarantine, writing no `.reasonable/` state, seeding the genesis graph | `skills/scout/` (new); reuses the `spike-runner` agent + quarantine fence | §17 | P6 (its output seeds the topologist's genesis graph) | Not started |
+| P8 | The zero-commit **scout** — standalone pre-effort exploration reusing the spike quarantine, writing no `.reasonable/` state, seeding the genesis graph | `skills/scout/`, `workflows/scout.workflow.js`, `lib/scout-seed.mjs` (new); `lib/atom.mjs`/`agents/topologist.md` (extend, additive); reuses the `spike-runner` agent **unchanged** | §17 | P6 (its output seeds the topologist's genesis graph) | Planned |
 
 Rough shape of the dependency chain: **P1 → P2 → P3 → P4 → P5 → (P6, P7)**, with **P8** sitting on
 P6 (the scout seeds the topologist's genesis graph, so it needs P6's chartering shape). P6 and P7
@@ -270,9 +270,29 @@ untouched; and the **band-indexed heartbeat floor** (§9), where the gate cadenc
 cone's complexity band so a micro-effort isn't dragged through a full retro cadence, with the
 starvation valve and always-human classes unconditional.
 
-## Part 8 — not yet planned (new in draft five)
+## Part 8 — planned (new in draft five)
 
-**Design:** DESIGN-3.0 §17 (the zero-commit scout ruling).
+**Design doc:**
+[`2026-07-12-reasonable-3.0-p8-scout-design.md`](../specs/2026-07-12-reasonable-3.0-p8-scout-design.md)
+
+**Plan:** [`2026-07-12-reasonable-3.0-p8-scout/plan.md`](2026-07-12-reasonable-3.0-p8-scout/plan.md)
+
+**Design:** DESIGN-3.0 §17 (the zero-commit scout ruling), §15 open edge (d) (the seed-must-be-
+structure-only edge P8 closes), §13 (structure-only law), §5.1 (the topologist's genesis inputs).
+
+The design doc names **four flagged scoping calls** — **none STOP-gated**, because §17 pre-settled the
+one that could have been pivotal (the scout is law-free *by construction*, not by exemption): (1) the
+scout's quarantine is a **workspace convention, not a hook fence** — P8 adds **no** `lib/fence.mjs` logic
+(a "scout mode" branch would violate `CLAUDE.md` invariant #2 and contradict §17); (2) **reuse
+`agents/spike-runner.md` verbatim**, scoped by the scout dispatch prompt (its ledger-reporting section is
+*vacuous* for a scout — zero ledger facts, no `effortRoot` — so verbatim reuse asserts nothing false, and
+not editing the file preserves the audited allowlist byte-for-byte); (3) the **genesis seed** is a strict
+subset of the charter schema, **shape-validated structure-only** by `lib/scout-seed.mjs` (the mechanical
+answer to open edge (d), reusing `atom.mjs`'s charter grammar so the seed is charter-shaped by
+construction) — the one residual (a behavioral must in the non-normative `purpose` prose) is inherited
+from §13, no wider than the real charter grammar, backstopped by the topologist membrane + the human
+genesis gate; (4) the **disposable workspace lives outside any repo** (a fresh temp dir — unconditionally
+law-free, unlike an in-repo subdir whose law-free-ness would depend on directory placement).
 
 Builds the **scout**: the spike-runner's quarantine machinery made launchable standalone, before
 any `.reasonable/` state exists, as the sanctioned pre-effort exploration surface the methodology
