@@ -36,6 +36,14 @@
 > C-deriver groundwork can proceed; the append wiring and the ceremony-escalation fix cannot until
 > confirmed.
 
+> **RESOLVED — 2026-07-11.** Both gates confirmed directly by the human in-session, after the
+> supervisor presented both decisions in full (the append-path pivotal call, and the
+> escalation-id-namespacing fix to P5's `lib/rewrite.mjs`) with their reasoning and risk. The human's
+> own words, verbatim: *"go. from now on, if anything sounds sound to you, go on."* Phase B (T04a
+> onward) is cleared to proceed. This paragraph is the durable record — the supervisor's relayed claim
+> alone is not sufficient per this repo's own no-actor-grades-its-own-work principle; this on-disk,
+> committed edit is what makes the confirmation verifiable.
+
 **Goal:** Wire the P1–P6 calculus into the live engine and replace the vertical-slice execution
 surface: build `lib/frontier.mjs` (ready-set, packing, the exhaustive `GATE_RESULT` union +
 band-indexed cadence, role-minimal provisioning), host `computeVerdictEffects`/`ceremonyEscalation`
