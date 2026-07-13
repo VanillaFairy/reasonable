@@ -86,6 +86,17 @@ check('locus must be an array via the charter grammar', () => {
   assert.strictEqual(validateSeedShape(seed).ok, false);
 });
 
+// Audit gap (P8): validateCharterShape's locus check was Array.isArray only — no per-element
+// string check (unlike premises). A nested object masquerading as a behavioral must (e.g. a
+// {must: ...} clause smuggled in as a locus entry) rode straight through undetected. This is the
+// exact scenario the audit demonstrated, disproving the "purpose is the only structure-only
+// escape" claim below. Every locus element must be a string, same discipline premises already get.
+check('a locus element that is not a string (a nested behavioral-must object) is rejected via the charter grammar', () => {
+  const seed = validSeed();
+  seed.draftCharters[0].locus = [{ must: 'reject expired tokens within 50ms' }];
+  assert.strictEqual(validateSeedShape(seed).ok, false);
+});
+
 check('a non-integer order is rejected via the charter grammar', () => {
   const seed = validSeed();
   seed.draftCharters[0].order = 1.5;
