@@ -328,6 +328,24 @@ phase('Run scout') → reasonable:spike-runner (cwd = workspaceRoot; NO effortRo
 
 Following the P3–P7 precedent of naming un-owned edges rather than papering over them:
 
+- **Found and closed during T01's adversarial audit: `locus` accepted non-string elements.**
+  `validateCharterShape`'s `premises` check validated per-element type; its `locus` check validated
+  only `Array.isArray`, letting a non-string element (e.g. a nested object shaped like a behavioral
+  must) smuggle through undetected — falsifying this doc's own claim that `purpose` is the *only*
+  structure-only escape. The gap predates P8 (it was already present in P3's `charterAtom`, so it
+  affected real charters too, not just scout seeds) but was surfaced by P8's audit because it broke a
+  P8 design claim. Closed by a minimal fix mirroring the existing `premises` pattern
+  (`lib/atom.mjs`'s `locus` check now also rejects non-string elements) — landed via its own
+  red/green pair (T01d/T01e) and independently re-audited (T01f) before T01 was accepted. `purpose`
+  is confirmed, by adversarial re-probe, to be the sole remaining escape.
+- **Deferred, minor, non-blocking: two untested defensive branches in `workflows/scout.workflow.js`**
+  (T02c audit, PASS verdict — not sycophantic, not a correctness gap). (1) `args.workspaceRoot`
+  absent → `blocked` is implemented (line ~117) but has no dedicated test — T02a's stated contract
+  only named null-return and missing-question as `blocked` triggers, so this isn't a RED miss, just
+  additive robustness beyond the pinned contract. (2) `scout.timebox` absent → the `'as briefed'`
+  fallback string is exercised but not asserted. Both are one-line, low-risk test additions;
+  deferred rather than spun into a full red/green triad for two already-correct defensive branches.
+  Pick up opportunistically if `workflows/scout.workflow.js` is touched again.
 - **The non-normative-`purpose` residual of open edge (d)** (above) — inherited from §13, not opened by
   P8; backstopped by the topologist membrane + the human genesis gate, not by a mechanical predicate.
 - **The seed → vision-grill wiring is a documented handoff, not a mechanized pipeline.** P8 shape-validates
