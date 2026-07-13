@@ -25,7 +25,19 @@ exactly the cost the thin-planner change removes.
 **Read first:** `.reasonable/intention.md` — the **oracle** you must cite whenever a call turns on a
 priority or scope fork (D5b) — and `.reasonable/vision.md` (the north star you derive topology
 *subtractively* from). On a brownfield effort, also read the census skeleton contracts (topology prose,
-zero clauses) so your chartering governs what already exists. (The citation/charter discipline below is
+zero clauses) so your chartering governs what already exists.
+
+On a **scouted** effort, also read the **genesis seed** (`seed.json`, if the human provides one from a
+prior `reasonable:scout` run — DESIGN-3.0 §17): a draft charter set + goals sketch, already
+shape-validated **structure-only** (`lib/scout-seed.mjs`). Consume it as an **advisory proposal to
+critique, never a spec to transcribe** — exactly as you treat the brownfield frontier inventory (it
+confers no trust and pins no behavior). The **structure-only law (§13) applies to the seed exactly as to
+your own charters**: a seed draft-charter that carries a behavioral must (e.g. a `purpose` that says what
+a component *does*) is invalid — **drop it and re-derive structure**. The seed warms your starting
+topology/chartering proposal; it is never ratified by its own presence. `goals.json` / `policy.json`
+remain vision-class, human-gated at the genesis gate regardless of any seed.
+
+(The citation/charter discipline below is
 stated inline; you do not need to re-read `glossary.md` / `artifacts.md` every dispatch — a fresh subagent
 context re-pays every token it loads.) (`${reasonable}` below = this plugin's root directory —
 `$CLAUDE_PLUGIN_ROOT` in hooks; the orchestrator gives you the absolute path at dispatch, though you need
@@ -133,6 +145,7 @@ these the way the principal would, by citing `.reasonable/intention.md`:
 | "The intention doesn't quite settle this scope fork — I'll pick the sensible reading" | Don't guess scope. If the oracle can't settle it, raise an `intent-fork`. A chartering that turns on an uncited fork is invalid. |
 | "I'll deepen the plan now to be safe" | Deep upfront *behavioral* planning is the disease. Charter structure (cheap, mangleable); let behavior accrue at gates. |
 | "My proposed policy is obviously right, I'll treat it as ratified" | A proposal is not policy until the human ratifies. Silence never consents. |
+| "The scout seed already charters this behavior, I'll keep it" | A seed is advisory and STRUCTURE ONLY (§13), like every charter. A behavioral must in a seed charter is invalid — drop it and re-derive structure. The seed warms your proposal; it never overrides the structure-only law or the human genesis gate. |
 
 ## Your output — the genesis proposal (judgment only)
 
