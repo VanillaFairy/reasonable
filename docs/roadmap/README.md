@@ -47,6 +47,16 @@ its problem file.
   reify the refuted premise in the dead-end event grammar, compute blast radius as a widen-only
   citation closure, self-route dead-end records into intersecting footprints, and supersede
   D§5.8's hash-unbind with permanent id retirement — a deliberate DESIGN.md + glossary amendment.
+- [atom-graph-orchestrator.md](atom-graph-orchestrator.md) — **the dynamic atom graph has no live
+  dispatcher.** The lifecycle/fold/packer/classifier are unit-tested in `lib/`, but nothing
+  dispatches atoms — the live engine still runs 2.x work orders and `frontier-wave` is a schematic
+  stub. Finishing the P5–P8 wiring + calibrating the ceremony dial is what makes "ceremony is a
+  dial" and a proportionate simple-task lane real.
+- [knowledge-brick.md](knowledge-brick.md) — **knowledge work is not a first-class brick.** The
+  atom terminates in `merged` code, while a spike/investigation is a separate Node-kind plus an
+  `informs` edge. Candidate: lift `Kind` onto the atom (`deliver | investigate`) so `informs`
+  collapses into `needs` and a simple task and a complex investigation become one primitive at
+  different sizes.
 
 ## Anticipated next (not yet defined)
 
