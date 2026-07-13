@@ -5,11 +5,15 @@
 > `lib/` and `hooks/`), and this document cites them as `D2 §…`. Until ratification, the shipped
 > plugin remains 2.x; nothing in this file has normative force yet.
 >
-> This is the **fourth draft**. Three independent adversarial critics have attacked the preceding
+> This is the **fifth draft**. Three independent adversarial critics attacked the first three
 > drafts (round 1: 4 fatal / 9 major / 6 minor; round 2: 2 fatal / 4 major / 3 minor plus 4
-> disposition regressions; round 3: 2 fatal / 4 major / 6 minor, no regressions). §15 records all
-> three rounds and every disposition. **Draft four repairs round three but has not yet faced its
-> own independent attack** — a ratifier should know that.
+> disposition regressions; round 3: 2 fatal / 4 major / 6 minor, no regressions); draft four
+> repaired round three. §15 records all three rounds and every disposition. **Draft five adds the
+> *pay-as-you-go ceremony* amendment** — the ceremony dial (§5.4, §7, §9), the sizing classifier
+> (§3), and the zero-commit scout (§17), folded into the parts still unbuilt (P5–P8) so 3.0 does
+> not ship a fixed-gear entry and re-open it later. **Neither draft four nor the draft-five
+> amendment has yet faced an independent attack** — the ceremony-dial and scout rulings are the
+> youngest material here, and a ratifier should know that.
 
 ## 0. Summary
 
@@ -49,6 +53,16 @@ modes, always**. The frontier loop runs as workflow runs that **end at gates wit
 parity, fences, budgets, worktrees, the lane-per-work-unit accounting, the scaffold phase, and the
 human control plane survive unchanged; the escalation ladder survives as the routing function of
 the failure calculus.
+
+**Ceremony is a dial, not a constant.** The protocol's cost scales to the work: an effort is
+*sized* at genesis from t0-observable risk — blast radius, suite coverage, criticality, supervision
+posture, horizon — and *grows its own ceremony from feedback*, the same failure calculus that
+restructures the graph ratcheting a cone's audit, scaffold, and gate depth up when a verdict
+discovers risk genesis under-read. A phase whose measured input is empty is a proven no-op, not a
+waived guard; machinery is provisioned lazily, per wave, never all-at-once; and a pre-effort
+**scout** gives shape-discovery a zero-commit home. This is the swiss-army-knife discipline (§5.4,
+§7, §17): one protocol, blades unfolded only as the work earns them — reduction always by quantity
+and timing, never by kind.
 
 ## 1. Why 3.0
 
@@ -168,7 +182,19 @@ everybody replays it.
   D2 §5.5), each with its scenario test. Goal amendments stay human-gated, always.
 - **`policy.json`** is the ratified priority policy: weights over integration-risk retirement,
   expected information gain, unlocks-count, goal proximity, staleness pressure, and cost — plus
-  the pinned thresholds the legibility law and gate cadence use (§5.2, §9).
+  the pinned thresholds the legibility law and gate cadence use (§5.2, §9), **and the
+  ceremony-sizing dials** (below).
+
+**Ruling — policy carries the ceremony-sizing dials.** Beyond priority weights, `policy.json` pins
+the **complexity classifier**: the t0-observable inputs it reads (blast-radius bound, whether a
+trusted suite already covers the locus, correctness-criticality of the domain, supervision posture,
+and horizon *judged under a minimal driver*) and the **complexity bands** they map to — each band
+carrying its phase-materialization cutoffs (§5.4), its default audit tier, and its gate-cadence
+indices (§9). These dials are what let ceremony graduate with the work instead of sitting fixed at
+entry (§17). Because they can *down-scope* ceremony, they are **vision-class exactly as the priority
+weights are** — human-ratified in both modes, on the enforcement-paths list, unwritable by any agent
+role — so a struggling autonomous run can never quietly size its own rigor down (the §3 anti-attack,
+extended to the sizing knob). The failure calculus may only ever ratchet a band *up* (§7).
 
 **Ruling — the slice is a degenerate case.** A "vertical slice" is the `serves`-cone of one goal
 under a risk-first policy — a computed view, not a scheduling unit. Horizontal passes (a
@@ -305,6 +331,9 @@ skeleton, and produces:
    goals, including the intra-component ordering (§2.2).
 3. **The containment tree** — the subeffort hierarchy and the component→subeffort ownership map.
 4. **The priority policy proposal** (ratified by the human, §3).
+5. **The complexity classification** — per effort and per subeffort, the t0-observable sizing
+   (§5.4) that sets how much of the pipeline materializes. Cheap and mechanical, ratified with the
+   policy; it predicts *how much ceremony*, never *what behavior*.
 
 **Why deep upfront chartering is not the disease.** 2.x keeps the route thin because plans rot and
 re-planning is an expensive judgment ceremony. 3.0 charters carry *structure only* — the thing
@@ -360,6 +389,40 @@ next gate; in-flight atoms are untouched.
 - `topology.html` is a derived, disposable view of the graph — regenerated, never edited, never
   parsed back.
 
+### 5.4 Graduated ceremony — sizing and phase degeneration
+
+The 2.x protocol pays a fixed entry cost — grill, walking-skeleton scaffold, per-slice trio —
+whatever the work's size; the tier axis thins only *audit depth*, never the pipeline itself. 3.0
+makes that cost a function of the genesis graph the topologist actually produced, so a small change
+is cheap *by construction* rather than by a shortcut a hook could be talked out of.
+
+**Ruling — ceremony materializes against measured input, never against the category label.** The
+classifier's job is to *size*, not to *decide behavior*; two mechanisms carry the sizing:
+
+- **Sizing (genesis).** The classifier reads the t0-observable, loss-setting variables — blast
+  radius (citation-closure width of the touched clauses), whether a *trusted* suite already covers
+  the locus, correctness-criticality of the domain, the run's supervision posture (present-human vs
+  autonomous), and the horizon *under a minimal driver* (so the protocol can never qualify itself
+  by inflating its own footprint) — and emits a per-node **complexity band**, written to the
+  `policy.json` dials (§3). The band sets phase-materialization cutoffs; it never waives a guard.
+- **Phase degeneration.** A phase whose **measured input is empty is a no-op, not a skipped step.**
+  The scaffold's parked-suite authorship has nothing to author when the genesis graph introduces no
+  new top-level scenario; the walking skeleton already stands when the effort lives wholly inside an
+  already-skeletonized cone; a re-chartering batch is empty when no amendment has accumulated. Each
+  is gated on a mechanical predicate over the genesis graph — *does this introduce a new goal-cone
+  or touch the outer shell?* — and the degeneration is **recorded as a ledger event like any
+  other**, so a reviewer sees a phase that ran-and-found-nothing, never a phase silently cut.
+- **The line — reduce by quantity and timing, never by kind.** Off the dial entirely, at full
+  strength whenever their input is *non-empty*: the categorical fences, the blind-test membrane, the
+  discriminator, the floor-touch trip-wire, parity, and the coherence-grill and walking skeleton.
+  This generalizes the 2.x tier rule (under-rigor is the disease) from an audit-depth knob to the
+  whole protocol. A single-atom effort is cheap because most phases are *provably* empty — not
+  because any check was turned off.
+
+Genesis sizing is only a first estimate; the failure calculus corrects it upward from lived
+evidence (the ceremony-escalation effect, §7), and the whole dial is stated once as a principle in
+§17.
+
 ## 6. The frontier loop
 
 Replaces the vertical-slice-execution phase. **Spec first, pack second, dispatch third** — the 2.x
@@ -411,6 +474,16 @@ run. One orchestration path, deterministic, exactly as 2.x's runner returns its 
   the last merged tip — one dependency install serving several atoms without ever putting two
   atoms on one lane branch. A spec'd-but-undispatched atom whose base moved re-enters spec (R9's
   re-spec fold-in) rather than rebasing a stale delta.
+- **Provisioning is lazy and role-minimal (the micro-effort path).** A wave stands up only the
+  roles its atoms actually need. A single-atom, single-component effort runs the implementer, the
+  blind-test-writer, the per-atom auditor, and the fences — and nothing else: the census and
+  characterizer (brownfield only), the topologist's re-chartering (only when amendments have
+  accumulated), and the retro-synthesizer's cross-cone classification (only at a goal gate spanning
+  >1 landed cone) are dispatched **only when their input is non-empty** — the same phase-degeneration
+  predicate as §5.4, applied to role dispatch. The lane/journal/ledger accounting is **unchanged**
+  (lane = atom); what defers is its *infrastructure* — one lane needs no cross-lane custody
+  machinery until a second lane exists, so it is stood up on first need, not at entry. This is DRY
+  provisioning, not a second pipeline: same roles, same fences, dispatched against real input.
 
 ## 7. The failure calculus (heart № 1)
 
@@ -438,6 +511,25 @@ event whose mechanical re-checks can *trigger* R4 or R9.
 | R7 | `parity-breach` — an audit refutes a claim | breach evidence | if unmerged: revert lane-local to last green, re-enter as R1 with adversary escalation. If merged: **freeze the dependent cone** (only) | merged-case remediation ratified: revert when no dependent merged on top, else charter forward-fix atoms |
 | R8 | `illegible` — a legibility invariant fires | regrouping / re-cut proposal | **genesis-R8**: blocks the topology stage (bounded retries → human re-cut fork, §5.2). **live-R8**: no provisional effect; batched retopology pressure | regrouping applied only if it reduces measured density (§5.2); containment reshapes are gate-only by §2.1 |
 | R9 | `stale-spec` — a spec'd delta's actual closure collides with in-flight or newly-landed work, or its base moved (mechanical, at refine/repack/enrichment) | — (no judgment) | the atom leaves `spec'd` → back to `ready`, delta marked stale; the colliding pair serializes; re-spec at the next spec stage folds in what landed | — |
+
+**Ruling — a verdict can ratchet ceremony up, never down (the ceremony-escalation effect).**
+Genesis *sizes* an effort from what it could predict (§5.4); the calculus *corrects* that estimate
+from what development discovers. Alongside its structural payload, a verdict may carry a
+**ceremony-escalation effect** on the affected cone — a first-class effect (§8) the rewrite engine
+computes and records like any other, never a fresh human prediction. Its triggers are the
+calculus's own discoveries: an **R2** whose widen-only blast radius returns wider than the cone's
+band assumed; an **R3** reaching foreign contracts a low band never anticipated; an **R9** whose
+collision exposes real cross-boundary integration; a **second R1** exhaustion (the auto-promotion
+the R1 row already names). Each may **raise** the cone's complexity band (§5.4), and a raised band
+deepens its audit tier (full over lite), **re-arms a scaffold or legibility check the low band had
+found vacuous**, and tightens its gate cadence (§9). The escalation is **monotone and two-phase
+like every other effect**: the deeper checks arm *provisionally* at verdict time; the *permanent*
+band change ratifies at the gate — and a permanent raise the gate rejects unwinds exactly as R7's
+provisional cone freeze does, since the deeper checks were only ever armed, never disarming
+anything. It ratchets **up only** — no verdict, and no agent, ever lowers a band, mirroring the
+tier one-way ratchet (D2) and the policy anti-attack (§3). This is *start light, deepen on
+evidence* made mechanical: under-sizing is self-correcting and cheap, and the graph's own feedback
+— not a human's re-prediction — pays for the correction.
 
 ### 7.1 Routing — the escalation ladder, restored as a function
 
@@ -545,6 +637,13 @@ human.
 directions: long quiet stretches still produce gates, and blocked stretches cannot postpone them.
 The 2.x guarantee — the system always stops at a gate — survives.
 
+**Ruling — the floor scales with the complexity band (§5.4).** N and M are **band-indexed** in
+`policy.json`: a high-band cone (wide blast, correctness-critical, or autonomous) gates more often;
+a low-band micro-effort gates rarely, so a one-atom change is not dragged through a retro cadence it
+has no material for. A ceremony-escalation (§7) that raises a cone's band tightens its cadence from
+that point on. The scaling only ever moves the *floor*; it never disables the two backstops — the
+starvation valve and the always-human classes (§3, §7.1) fire regardless of band.
+
 **The retro's full duty roster, re-homed** (nothing silently dropped): the three-way divergence
 classification (D2 §5.5) runs at goal gates and heartbeat gates; trust-staleness consumption at
 every gate; budget tuning and the **supervision dial** at heartbeat gates — the dial survives and
@@ -557,6 +656,21 @@ autonomous self-ratifies and logs, skips nothing; lite trims the deep-tier audit
 gates, waives no guard. **Exceptions pinned above stand in both modes:** policy and goal changes
 (§3) and intent forks (§7.1) are always human — the run returns `blocked-human` for them in both
 modes.
+
+**Ruling — a gate's human confirmation is a ledger fact, never a prose fact.** Whatever ratifies a
+gate — an explicit gated-mode approval, autonomous self-ratification, a `blocked-human` class
+resolving — the ONLY valid record of it is the `ratification` ledger event (or, in gated mode
+before that event lands, the approval-inbox item it resolves): an append-only fact carrying an
+immutable `seq`, never edited, never deleted, never restated. No plan, spec, route, or other prose
+document may claim to record, quote, reconstruct, or paraphrase what a human said to clear a gate —
+a prose document may at most **cite** the ledger seq (`see ratification seq 42`) as a pointer to
+where the actual fact lives, never assert its content itself. This closes a real failure mode a live
+session hit while building this very part: an orchestrator edited a plan file's own text to try to
+document a human's confirmation, mislabeled a paraphrase as "verbatim," and — worse — later deleted
+that correction once caught, rather than leaving it visible. An append-only ledger event structurally
+cannot be edited, quietly fixed, and then deleted; a markdown file always can. §9's gate mechanism
+only earns the trust it asks for if whatever records a confirmation is exactly as tamper-evident as
+the ledger itself — which is precisely why gate confirmations belong in the ledger and nowhere else.
 
 ## 10. The economics, priced honestly
 
@@ -640,12 +754,20 @@ dispatches, discriminator worktrees, merges, ledger folds. The honest accounting
   modules are **not** redesigned (§6).
 - **Companion deltas to `glossary.md` and `artifacts.md` are a ratification precondition**: every
   new normative term (atom, charter, delta, delta-enrichment, verdict, rewrite, frontier, cone,
-  stratum, premise, wave, cohesion, blast radius, legibility law, spec queue, starvation quorum)
-  and every machine-parsed shape (atom spec, goals.json, policy.json, the event grammar) enters
-  the normative vocabulary and the `*` registry before any engine work.
+  stratum, premise, wave, cohesion, blast radius, legibility law, spec queue, starvation quorum,
+  **complexity band, complexity classifier, ceremony-escalation, phase degeneration, scout**)
+  and every machine-parsed shape (atom spec, goals.json, policy.json — **including its
+  ceremony-sizing dials** — the event grammar) enters the normative vocabulary and the `*` registry
+  before any engine work.
 - **No in-place migration of live 2.x efforts** — and honestly scoped: a restart under 3.0 keeps
   contracts and ledger history (read through the compatibility fold), but re-runs analysis
   addenda (intention clause ids) and a full topology stage. This is a re-genesis, not a rename.
+- **The 3.0 buildout ships as one release, not a train.** Parts P1–P4 landed as incremental library
+  releases (`2.8.0` → `3.2.0`), but the remaining parts (P5–P8) land **without per-part version
+  bumps**: the plugin stays at **`3.2.0`** through the rest of the refactoring — one continuous
+  change with no consumable intermediate builds — and takes a **single terminal (major) bump** when
+  the whole generation goes live. The authoritative policy and status rules live in the
+  implementation roadmap's *Versioning* note.
 
 ## 13. What this deliberately does not change
 
@@ -732,6 +854,33 @@ report only findings that survived its own refutation attempts.
 | R3-11 | minor | The scaffold was half-dissolved: parked-suite authorship, skeleton invariants, and the sign-off had no 3.0 home | **Scaffold kept as a phase** with its 2.x duties; sign-off = the first goal gate, §5/§9/§11 |
 | R3-12 | minor | The economics' prerequisite is an external, unbuilt engine primitive with no fallback | External ownership stated; **degraded mode defined** (policy-coarsened atom sizing until the primitive lands), §10 |
 
+### Draft five (amendment) — the ceremony dial — NOT YET ATTACKED
+
+Draft five folds the *pay-as-you-go ceremony* findings into the parts still unbuilt at the time
+(P5–P8), so 3.0 does not ship a fixed-gear entry and pay to re-open it later. **No independent
+critic has attacked it.** It is recorded here as *pending*, not as *survived* — the honesty the
+whole section exists to keep.
+
+| Area | Change | Where |
+|---|---|---|
+| Graduated ceremony | ceremony materializes against measured input; sizing classifier at genesis; phase degeneration is a *proven-vacuous* no-op, never a waived guard | §5.4, §3 |
+| Grow-on-evidence | the ceremony-escalation effect: a verdict may ratchet a cone's band **up** (monotone, two-phase), deepening audit / re-arming scaffold+legibility / tightening cadence | §7 |
+| Lazy provisioning | role-minimal per-wave dispatch; ledger/lane *infrastructure* stood up on first need; lane = atom unchanged | §6 |
+| Gate cadence | heartbeat floor **band-indexed**; escalation tightens it; the two backstops stay unconditional | §9 |
+| Zero-commit scout | standalone pre-effort exploration, no `.reasonable/` state, seeds the genesis graph | §17, P8 |
+
+**Open edges the next attack should aim at** (named, not hidden — the same discipline every prior
+round used): (a) the sizing classifier's *inputs* are t0-observable, but its *thresholds* and
+band → cutoff maps are **uncalibrated** (a sibling of §16's α / wave-size list); (b)
+phase-degeneration's *"introduces a new goal-cone / touches the outer shell?"* predicate needs a
+**precise mechanical definition** against the genesis graph, or it becomes a prose loophole exactly
+where under-rigor is most tempting; (c) the ceremony-escalation effect's interaction with the
+two-phase gate model — a provisional band raise whose *permanent* ratification the gate later
+**rejects** — needs the same explicit unwind rigor R7 got, and §7 asserts the R7-shaped unwind but
+has not been adversarially tested on it; (d) whether the scout's *seed* into the genesis graph can
+smuggle behavioral prediction past the "structure only" law (§13) — the seed must be charter-shaped,
+and nothing yet mechanically enforces that.
+
 ## 16. Open questions
 
 - **Budget denomination** per atom class; the R1 repricing factor α; wave-size, spec-queue, and
@@ -746,3 +895,53 @@ report only findings that survived its own refutation attempts.
 - **Brownfield genesis** — how the census skeleton and characterized clauses seed the containment
   tree and charters (the ownership map exists; the chartering of *unknown* legacy behavior does
   not).
+- **Ceremony-dial calibration** — the complexity classifier's input thresholds, the band →
+  phase-materialization cutoffs, the band → gate-cadence indices, and a precise mechanical spec for
+  the phase-degeneration predicate (*introduces a new goal-cone / touches the outer shell?*)
+  (§5.4/§7/§9/§17) — all to be settled with ledger data alongside the denominations above, not
+  asserted.
+
+## 17. The ceremony dial and the scout (the adaptive on-ramp)
+
+> Added in the **fifth draft**, folding the *pay-as-you-go ceremony* findings into the parts still
+> unbuilt at the time (P5–P8) rather than shipping a fixed-gear entry into 3.0 and re-opening it
+> later. **This material has not yet faced an independent adversarial attack** (§15) — the rulings
+> here are the youngest in the document; a ratifier should weight them accordingly.
+
+Everything above scales the *graph* to the work. This section names the single principle that
+scales the *protocol* to the work, and adds the one surface the methodology still lacked: a
+zero-commit place to explore before committing to an effort at all.
+
+**Ruling — pay-as-you-go ceremony.** Ceremony is a monotone function of *measured* complexity, set
+three ways and never trading rigor for lightness:
+
+- **sized at genesis** from t0-observable risk (§5.4), written to the `policy.json` dials (§3);
+- **grown in flight** by the failure calculus's ceremony-escalation effect — a verdict may ratchet a
+  cone's band *up*, never down (§7);
+- **materialized against real input** — an empty-input phase or role is a *proven* no-op, recorded
+  like any event, not a waived guard (§5.4, §6).
+
+Reduction is always by **quantity and timing, never by kind**: the fences, the blind-test membrane,
+the discriminator, the floor trip-wire, parity, and the full-strength grill and walking skeleton on
+non-empty input are all off the dial. This is the 2.x tier "low floor" generalized from an
+audit-depth knob to the whole protocol — one tool whose blades unfold only as the work earns them,
+which is what makes a framework and a one-line fix the *same* methodology at different sizes rather
+than two philosophies.
+
+**Ruling — the zero-commit scout (the pre-effort front-end).** Shape-discovery — *what is the right
+decomposition / API / target?* — is the one regime the committed spine serves badly: today the only
+exploration surface, the spike, is a *route item inside a committed effort* (D2), so a run must pay
+analysis-entry before it can explore at all. 3.0 adds the **scout**: the spike-runner's quarantine
+machinery (law-free workspace, code discarded, knowledge-only deliverable) launchable
+**standalone, writing no `.reasonable/` state** — outside an effort the hooks already fail open
+(D2), so a scout is law-free by construction, not by exemption. Its deliverable is a knowledge
+artifact — a shape sketch, a feasibility verdict, a candidate decomposition. On convergence it
+**seeds the genesis graph**: a draft charter set and goals sketch the topologist consumes, so
+analysis starts warm instead of cold. The scout is the sanctioned home for the exploratory
+front-end — it *precedes* the sizing classifier rather than being sized by it, and it hands off to
+the spine the moment shape stabilizes (the same "explore light, commit when the shape is real"
+handoff the brownfield census already supports from the other direction: reasonable can adopt code
+the scout — or any external front-end — produced). The quarantine membrane is unchanged: scout code
+never reaches mainline; re-entry is always **rewrite-from-knowledge, never refactor-from-scout**
+(D2). It is a first-class capability, not a phase inside an effort, which is why it lands as its own
+part (P8) rather than folding into P5–P7.

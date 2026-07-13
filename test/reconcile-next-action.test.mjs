@@ -38,7 +38,7 @@ function check(name, fn) {
 // Build a born, active effort. `workOrders` is the journal LANE REGISTRY (no verticalSlice/dependsOn —
 // those live only on the specs); `specs` writes each .reasonable/work-orders/<id>.json; `ledger` is the
 // raw event array; `route` is route.json's slice order.
-function newEffort({ workOrders, specs, ledger, route, currentVerticalSlice = 'slice-1' }) {
+function newEffort({ workOrders, specs, ledger, route, goals, currentVerticalSlice = 'slice-1' }) {
   const root = mkdtempSync(join(tmpdir(), 'rna-')); tmps.push(root);
   git(root, 'init', '-q');
   const hooks = join(root, '.nohooks'); mkdirSync(hooks, { recursive: true });
@@ -60,6 +60,9 @@ function newEffort({ workOrders, specs, ledger, route, currentVerticalSlice = 's
     write(root, `.reasonable/work-orders/${id}.json`, JSON.stringify(spec, null, 2) + '\n');
   }
   if (route) write(root, '.reasonable/route.json', JSON.stringify(route, null, 2) + '\n');
+  // reasonable 3.0 Part 7 (§12 cutover): fixtures seed goals.json now — route.json is retired. The
+  // route-write line above is dead (no fixture passes `route` anymore) but kept harmless.
+  if (goals !== undefined) write(root, '.reasonable/goals.json', JSON.stringify(goals, null, 2) + '\n');
   write(root, '.reasonable/ledger.jsonl', ledger.map((e) => JSON.stringify(e)).join('\n') + (ledger.length ? '\n' : ''));
   return root;
 }
@@ -82,7 +85,7 @@ check('reconcile().nextAction: ledger-only WO DISPATCHes; a canceled WO and an u
       'WO-canceled': { verticalSlice: 'slice-1', dependsOn: [] },
       'WO-gated': { verticalSlice: 'slice-1', dependsOn: ['WO-known'] }, // WO-known is pending, not done
     },
-    route: { slices: ['slice-1'], ratifiedAt: null, ledgerSeq: null },
+    goals: [{ id: 'slice-1', scenario: 'slice-1 scenario', scenarioCitations: [] }],
     ledger: [
       { seq: 1, type: 'node-planned', node: 'WO-known', kind: 'work-order', title: 'known' },
       { seq: 2, type: 'node-planned', node: 'WO-ledger-only', kind: 'work-order', title: 'ledger only' },
@@ -123,7 +126,7 @@ check('reconcile().nextAction: a gated WO DISPATCHes once its dependency folds t
       'WO-known': { verticalSlice: 'slice-1', dependsOn: [] },
       'WO-gated': { verticalSlice: 'slice-1', dependsOn: ['WO-known'] },
     },
-    route: { slices: ['slice-1'] },
+    goals: [{ id: 'slice-1', scenario: 'slice-1 scenario', scenarioCitations: [] }],
     ledger: [
       { seq: 1, type: 'node-planned', node: 'WO-known', kind: 'work-order', title: 'known' },
       { seq: 2, type: 'node-dispatched', node: 'WO-known', kind: 'work-order', attempt: 1 },
@@ -143,7 +146,7 @@ check('reconcile().nextAction: pre-route, pre-dependsOn effort still projects WO
   const root = newEffort({
     workOrders: { 'WO-1': { role: 'implementer', verticalSlice: 'slice-1' } },
     specs: { 'WO-1': { verticalSlice: 'slice-1' } }, // legacy spec: no dependsOn field
-    route: null,                                     // pre-route.json effort
+    // no goals.json and no route.json — a pre-planning-object effort (forward-compat)
     ledger: [{ seq: 1, type: 'node-planned', node: 'WO-1', kind: 'work-order', title: 'lone' }],
   });
 
@@ -158,7 +161,7 @@ check('reconcile() appends a next-action event carrying result.nextAction + comp
   const root = newEffort({
     workOrders: { 'WO-1': { role: 'implementer', verticalSlice: 'slice-1' } },
     specs: { 'WO-1': { verticalSlice: 'slice-1', dependsOn: [] } },
-    route: { slices: ['slice-1'] },
+    goals: [{ id: 'slice-1', scenario: 'slice-1 scenario', scenarioCitations: [] }],
     ledger: [{ seq: 1, type: 'node-planned', node: 'WO-1', kind: 'work-order', title: 'lone' }],
   });
   const beforeLatestSeq = readLedger(root).reduce((m, e) => Math.max(m, Number(e.seq) || 0), 0); // 1
@@ -190,7 +193,7 @@ check('briefing() renders a NEXT line from result.nextAction', () => {
   const root = newEffort({
     workOrders: { 'WO-1': { role: 'implementer', verticalSlice: 'slice-1' } },
     specs: { 'WO-1': { verticalSlice: 'slice-1', dependsOn: [] } },
-    route: { slices: ['slice-1'] },
+    goals: [{ id: 'slice-1', scenario: 'slice-1 scenario', scenarioCitations: [] }],
     ledger: [{ seq: 1, type: 'node-planned', node: 'WO-1', kind: 'work-order', title: 'lone' }],
   });
   const text = briefing(reconcile(root));
@@ -208,7 +211,7 @@ check('reconcile().nextAction: a hash-matched dead-ended WO is refused (DECIDE),
   const root = newEffort({
     workOrders: { 'WO-dead': { role: 'implementer', verticalSlice: 'slice-1' } },
     specs: { 'WO-dead': spec },
-    route: { slices: ['slice-1'] },
+    goals: [{ id: 'slice-1', scenario: 'slice-1 scenario', scenarioCitations: [] }],
     ledger: [{ seq: 1, type: 'node-planned', node: 'WO-dead', kind: 'work-order', title: 'infeasible' }],
   });
   // The verdict's `hash` must equal the WO's CURRENT input hash for the guard to bind (Defect B) — compute
@@ -244,7 +247,7 @@ check('reconcile().nextAction: a dropped WO re-dispatched with NO spec file is S
   const root = newEffort({
     workOrders: { 'WO-orphan': { role: 'implementer', verticalSlice: 'slice-1' } },
     specs: {}, // NO spec file for WO-orphan — the deleted-spec seam
-    route: { slices: ['slice-1'] },
+    goals: [{ id: 'slice-1', scenario: 'slice-1 scenario', scenarioCitations: [] }],
     ledger: [
       { seq: 1, type: 'node-planned', node: 'WO-orphan', kind: 'work-order', title: 'to drop' },
       { seq: 2, type: 'amendment', drops: [{ workOrder: 'WO-orphan' }], approvedBy: 'human', reason: 'retired' },

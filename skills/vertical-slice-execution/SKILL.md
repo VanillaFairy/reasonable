@@ -1,15 +1,25 @@
 ---
 name: vertical-slice-execution
-description: Use to drive one vertical slice of a reasonable effort to GREEN — the orchestrator checklist for launching the vertical-slice-runner workflow and routing its typed GATE_RESULT (green→retro, budget-exhausted→extend/re-plan, blocked→decide, halt→human), plus the membrane crossings the runner returns to you (spikes, dead-end ceremonies, ripple escalations, the approval inbox, lane merges, journal reconciliation). Rigid orchestration checklist — follow exactly.
+description: Use to drive one vertical slice of a reasonable effort to GREEN — the orchestrator checklist for launching the frontier-wave workflow and routing its exhaustive seven-variant GATE_RESULT (goal-green/heartbeat→retro, batch-full→drain, starved→ratify+unfreeze, blocked-human→decide in both modes, halt→human, budget-exhausted→extend/re-plan), plus the membrane crossings the runner returns to you (spikes, dead-end ceremonies, ripple escalations, the approval inbox, lane merges, journal reconciliation). Rigid orchestration checklist — follow exactly.
 ---
 
 # Vertical Slice Execution Phase
+
+> **Scope note (Part 7 repoint, not a full rewrite).** This skill's launch target and `GATE_RESULT`
+> union (§3) are repointed at `workflows/frontier-wave.workflow.js` and its exhaustive seven-variant
+> result — that repoint is complete and accurate below. What is **not** yet done: §1–§2 and §4–§7a
+> still describe the 2.x work-order/lane/vertical-slice execution model verbatim (route-planner,
+> `groupDisjoint`, per-work-order lane provisioning) — mechanics `frontier-wave.workflow.js` does not
+> use (it dispatches per **atom**, in a **wave**, over the **goals/cones** frontier, not per work order
+> over a route). Rewriting those sections to the atom-native model is real, separate follow-up work,
+> out of this docs task's scope (mirrors the same scoping boundary `interfaces.md` §4 named for
+> `projectDirectives`'s WO/slice grouping) — flagged here rather than silently left to mislead a reader.
 
 ## Overview
 
 This is the main-session decision plane, run **in the main session** (the runner can't block on a
 human or launch another workflow). It drives one vertical slice — a user-visible scenario — to GREEN
-end-to-end by **launching `workflows/vertical-slice-runner.workflow.js`** and **routing the typed
+end-to-end by **launching `workflows/frontier-wave.workflow.js`** and **routing the typed
 `GATE_RESULT`** it returns. You no longer hand-interpret the dispatch loop: the runner is the pure
 in-run plane (reconcile → route-planner → `groupDisjoint` → per-wave enrichment `pipeline()` → trap
 `switch` → scribe), and the control flow there is a **script, never improvised** (§7, §8). Your job is
@@ -68,12 +78,12 @@ ledger.
   investigate before proceeding.
 - Record the slice opening in the journal (the last write you own before the run takes over the index).
 
-## 1. Launch the vertical-slice-runner workflow
+## 1. Launch the frontier-wave workflow
 - **Mark the slice dispatched before the launch call.** The slice node was planted `pending` at
   ratification (analysis step 10a, or a retro route re-sort) — flip it active now, so the tree shows
   work in flight the instant the run starts, not after it returns:
   `node ${reasonable}/lib/ledger.mjs append --root <effortRoot> --type node-dispatched --node <S> --kind slice`
-- Launch it **by name** — `Workflow({ name: 'vertical-slice-runner', args: {...} })` — not by
+- Launch it **by name** — `Workflow({ name: 'frontier-wave', args: {...} })` — not by
   `scriptPath`. The registered-name path passes `args` reliably; **`scriptPath` drops `args`** (the
   run then sees an empty `args` global). Pass `args`: `effortRoot` (the main checkout, native path),
   `verticalSliceId`, the `route` snapshot, the contract paths, the per-slice `budget.total`, the
@@ -152,20 +162,25 @@ The pipeline uses `pipeline()` (**no barrier**): a fast-trapping lane is triaged
 returns, not after the slowest lane.
 
 ## 3. Routing the typed GATE_RESULT (your core job)
-When the run completes it returns exactly one tagged `GATE_RESULT` (§7). Switch on `kind` and run the
-matching arm — **this replaces hand-interpreting the loop**:
+When the run completes it returns exactly one tagged `GATE_RESULT` — the exhaustive seven-variant
+union (DESIGN-3.0 §6/§9, `lib/frontier.mjs`'s `gateDue`). Switch on `kind` and run the matching arm —
+**this replaces hand-interpreting the loop**:
 
-```
-GATE_RESULT =
-  | { kind:'green',            evidence }               // → §7: close the slice, invoke the retro
-  | { kind:'budget-exhausted', progress, lastOutcome }  // → §3a: extend budget / re-plan
-  | { kind:'blocked',          outcome }                // → §3b: a trap needs a human decision
-  | { kind:'halt',             reason }                 // → §3c: durability/reconcile halt → human
-```
+| variant | routing |
+|---|---|
+| `goal-green` | close the goal; run the goal-gate retro roster |
+| `heartbeat` | run the heartbeat retro roster |
+| `batch-full` | drain the batch at a retro gate |
+| `starved` | ratify pending permanence, clear the freezes |
+| `blocked-human` | block for the human, in BOTH modes |
+| `halt` | human durability halt |
+| `budget-exhausted` | extend budget / re-plan |
 
-`green`, `budget-exhausted`, `blocked`, and `halt` are genuinely **different human decisions** with
-different shapes — "returned green" and "ran out of budget mid-slice" must not masquerade as each
-other. Do not collapse the arms.
+`goal-green`, `heartbeat`, `batch-full`, `starved`, `blocked-human`, `halt`, and `budget-exhausted` are
+genuinely **different human decisions** with different shapes — a goal completing and a starved
+frontier must not masquerade as each other. Do not collapse the arms. (`blocked-human` is the
+successor to the retired `blocked` variant, and fires in **both** run modes — an intent fork or a
+policy/goal change is always human, never autonomous-self-ratified.)
 
 ### 3a. `budget-exhausted` — extend or re-plan
 The budget-guarded loop ran out before GREEN (the common hard-slice exit, first-class on purpose).
@@ -177,8 +192,8 @@ the progress verdict, never the failed transcript. **Two independent budget exha
 the dead-end ceremony** (cross-context attempts are nearly independent — stronger evidence than one
 agent's ten tries).
 
-### 3b. `blocked` — a trap needs a human decision (the runner's BREAKING crossings)
-The runner returns `blocked` when a trap arm hit a wall it cannot cross from inside a single run.
+### 3b. `blocked-human` — a trap needs a human decision (the runner's BREAKING crossings)
+The runner returns `blocked-human` when a trap arm hit a wall it cannot cross from inside a single run.
 **Record the wall against the slice node before you triage it** — whatever `outcome.kind` turns out to
 be, the slice stopped short of green, so mark that first with the wall as the reason:
 `node ${reasonable}/lib/ledger.mjs append --root <effortRoot> --type node-failed --node <S> --reason '<the wall/blocker>'`.
@@ -230,7 +245,7 @@ briefing for the present human. Annotate-not-disarm holds throughout: the human 
 explained or not; an `accept` only ever causes **more** surfacing, never less.
 
 ## 4. Spikes & dead ends (information vs. walls)
-- **Mid-slice spike** (surfaced as a `blocked` / `spike-needed` `GATE_RESULT`): **you** launch
+- **Mid-slice spike** (surfaced as a `blocked-human` / `spike-needed` `GATE_RESULT`): **you** launch
   `workflows/spike.workflow.js` (a `spike-runner` in a quarantine workspace) — never explore in-slice,
   and the runner cannot launch it (nesting limit). Harvest its knowledge artifact through the retro; the
   slice implementer later does **rewrite-from-knowledge**, never reads the spike code.
@@ -258,22 +273,22 @@ runs**, not one transaction (parity holds at every commit):
 
 What returns to **you**: a **ripple cycle (A needs B needs A) is a topology smell** — a hidden shared
 concept wants extraction. The runner cannot grow new control flow to chase it, so it surfaces as a
-`blocked` crossing (or an inbox item). Escalate to the retro; do not force it.
+`blocked-human` crossing (or an inbox item). Escalate to the retro; do not force it.
 
 ## 6. The approval inbox & freezes
 - The runner's scribe queues interrupts (vision-amendment requests, skeptic-confirmed dead ends,
   topology smells, second budget extensions, provenance drift) into `.reasonable/inbox.json` with a
   **BREAKING / ADVISORY** class. A freeze is **footprint-scoped**: only lanes whose footprints
   intersect the affected contracts freeze; disjoint lanes run on.
-- **When the run returns `blocked` (or every lane is frozen), stop fully and present the inbox to the
+- **When the run returns `blocked-human` (or every lane is frozen), stop fully and present the inbox to the
   human — BREAKING first, ADVISORY merely counted.** **No human gate is ever passed by timeout or
   absence — silence means frozen, never approved.**
 - **Cross-vertical-slice parallelism** (opt-in) means more than one runner in flight. Disjoint
   footprints make it safe; an overlap is serialized. Keep one slice in flight by default — five slices
   at once spends feedback.
 
-## 7. Close the vertical slice → retro (the `green` arm)
-On a `green` `GATE_RESULT`, the runner has already verified the gate math internally — but you confirm
+## 7. Close the vertical slice → retro (the `goal-green`/`heartbeat` arms)
+On a `goal-green` or `heartbeat` `GATE_RESULT`, the runner has already verified the gate math internally — but you confirm
 it at the membrane before merging and closing:
 - **Confirm the work product is committed — land residual, then verify clean.** The runner's in-run
   `commitBlindTests` stage already lands each lane's blind-test-writer tests in a trailered commit (the
@@ -373,9 +388,9 @@ on. Changing mode or profile mid-effort requires an explicit human instruction, 
 - **Co-writing the journal during the run.** The runner's lone scribe owns the derived index in flight;
   you write it only at the membrane (slice opening, merges, slice closing).
 - **Treating `budget-exhausted` as a gate** (or as a failure). It is a first-class, distinct human
-  decision: extend once / re-plan / spike / dead-end. Don't conflate it with `green` or `blocked`.
+  decision: extend once / re-plan / spike / dead-end. Don't conflate it with `goal-green`/`heartbeat` or `blocked-human`.
 - **Trying to launch a spike or scaffold from inside the runner.** One-level `workflow()` nesting
-  forbids it — the runner returns `spike-needed`/`blocked` and *you* launch the nested workflow.
+  forbids it — the runner returns `spike-needed`/`blocked-human` and *you* launch the nested workflow.
 - **Letting the implementer write tests, or the test-writer see code.** Both break the verification
   chain. The runner enforces fresh blind subagents, capability-enforced.
 - **Iterating tests to green.** The runner's adjudication fork rules; most reds are impl-bugs.

@@ -107,12 +107,23 @@ one of the three is probably wrong.
 - **Dependency graph** — the restructure structure (DESIGN-3.0 §2.2): the four edges between atoms
   (**Needs**, **Excludes**, **Serves**, **Informs**), computed by a fold from deltas, citations, and
   recorded rewrite events — never hand-stored or hand-repaired. Two fidelities exist in the design:
-  **planned** (component-level, genesis-time) and **actual** (clause-level, post-spec); only actual
-  edges are built (`lib/graph.mjs`) — planned edges need the topologist's ratified ordering data
-  (Part 6) and are deferred whole.
+  **planned** (component-level, genesis-time) and **actual** (clause-level, post-spec) — see
+  **Planned fidelity / planned edge**. Only **Needs** has a planned form built so far
+  (`plannedNeedsEdges`, Part 6a); **Excludes**/**Serves**/**Informs** remain actual-only.
 - **Needs** — readiness edge: atom A cannot start before atom B lands, because A's delta cites a
   clause B's delta introduces. Clause-id matched, entirely ledger-derivable — `lib/graph.mjs`'s
   `needsEdges` never touches a live contract file.
+- **Planned fidelity / planned edge** — a dependency edge computed from **charters** before any
+  **delta** exists (genesis time), as opposed to **actual** fidelity (computed from spec-time
+  clause citations). Only **Needs** has a planned form today (`plannedNeedsEdges`, Part 6a): the
+  cross-component quotient from a charter's `cite:` premises plus the intra-component `order`
+  ordering (DESIGN-3.0 §2.2). Planned edges order the frontier and feed the legibility law (Part 6b);
+  once a delta is authored, edges refine to **actual**, which alone govern packing, dispatch, and
+  merges.
+- **Stratum** — one rank of a total order: within a component, the atoms sharing an `order` value (a
+  **Planned fidelity** intra-component **Needs** edge runs from each stratum to the immediately-preceding
+  one); in a containment view, one grouping level. Inserting an *empty* stratum to cosmetically reduce a
+  node's width is what the **Legibility law**'s density-reduction guard exists to reject.
 - **Excludes** — conflict edge: two atoms cannot run concurrently (serializes, never orders)
   because their footprints (locus ∪ citation closure ∪ resource claims) intersect at the contract
   level. **Symmetric**, unlike the other three edge kinds; same-**Contract** atoms always exclude.
@@ -122,12 +133,28 @@ one of the three is probably wrong.
   clauses over the **Needs** graph. No `goals.json` exists yet (Part 6) — `lib/graph.mjs`'s
   `servesEdges` is a real, tested rule with nothing real to call it with, today; it returns `[]` on
   every live effort.
+- **Cone** — the set of atoms that advance one goal: the **Serves** reverse-reachability from that goal's
+  scenario-cited clauses over the **Needs** graph. Cones can overlap (a shared provider serves several
+  goals). The **Legibility law**'s coupling smell flags two goals whose *exclusive* cones are densely
+  interlinked (goals that should be independent but are not).
 - **Informs** — a spike gates an atom's feasibility: the direct effect of a spike-insert rewrite
   event (rule R5, Part 5, not built yet). Likewise a real, tested rule with no real producer yet.
 - **Edge lifting** — the per-view quotient (DESIGN-3.0 §2.3) that keeps a containment view readable:
   a dependency edge between atoms deep in different subtrees lifts to one edge between their common
   ancestors at the viewed level. Deterministic, computed per view (`lib/graph.mjs`'s `liftEdges`),
   never stored.
+- **Legibility law** — the pure calculus (`lib/legibility.mjs`, Part 6b, DESIGN-3.0 §5.2) that measures
+  the *shape* of the dependency graph against the thresholds in **policy.json**'s `legibility` block and
+  emits **Legibility finding**s: bounded width (a containment node's child count), bounded tangle
+  (cross-sibling **Edge lifting** density), coupling smells (cross-**Cone** density + god-component
+  fan-in), and the longest **Needs**-chain. It runs over **Planned fidelity** edges at genesis and
+  **actual** edges as deltas refine — edge-source-agnostic. It also hosts `regroupingReducesTangle`, the
+  density-reduction guard that accepts a regrouping only if it strictly reduces cross-group edge count
+  (so inserting empty grouping **Stratum**s to fake-restore width is rejected) — the guard R8 leaves open.
+- **Legibility finding** — one violation the **Legibility law** emits: `{ kind, metric, threshold, ‹locator› }`,
+  where `kind` is `over-wide` / `over-tangled` / `cross-cone-coupling` / `god-component` / `over-serialized`.
+  A finding is drop-in usable as the `proposal` of an R8 `illegible` verdict (which threads it through
+  opaquely), so the law and the rewrite calculus compose without either inventing a shape.
 - **As-lived graph** — the graph as it existed at a given ledger seq (DESIGN-3.0 §2.4): folded
   purely from recorded ledger events — never a live contract file. Self-sufficient by construction.
 - **Current graph** — the graph re-derived fresh from today's ledger plus today's live, on-disk
@@ -150,6 +177,16 @@ one of the three is probably wrong.
   condition. A stage that genuinely cannot have an automated gate must name a
   **manual verification procedure** in its spec — a justified exception, never a
   default.
+- **Gate ratification (as a ledger fact)** — the *only* valid record of a gate's human
+  confirmation (gated-mode approval, autonomous self-ratification, a `blocked-human` class
+  resolving) is the `ratification` ledger event (or, before it lands in gated mode, the
+  approval-inbox item it resolves) — append-only, immutable `seq`, never edited or deleted.
+  A plan, spec, route, or other prose document may **cite** that seq as a pointer; it may
+  never record, quote, reconstruct, or paraphrase what a human said, since prose — unlike
+  the ledger — can be edited or deleted after the fact (DESIGN-3.0 §9's ruling, added after a
+  live session found exactly this gap: a plan file's own text was edited to document a
+  human's confirmation, mislabeled a paraphrase as "verbatim," and the correction was later
+  deleted rather than left visible).
 - **Parked / Promoted** — a future gate's two states. *Parked* = ignore-marked
   with a reason string but still compiling/importing (it pins outermost
   contracts so topology drift surfaces immediately). *Promoted* = ignore marker
@@ -241,6 +278,80 @@ one of the three is probably wrong.
   Its **machine twin**, `route.json` (Layer 2), carries only the ratified slice **order** — written by
   the orchestrator after ratification and kept in sync at every retro re-sort; `route.md` itself is
   never parsed.
+- **goals.json** — the machine-parsed twin of the ratified top-level scenario set: an array of goal
+  entries `{ id, scenario, scenarioCitations, ratifiedAt?, ledgerSeq? }`, each goal's
+  `scenarioCitations` the per-clause refs **Serves** consumes to compute which atoms serve it. Read by
+  `lib/goals.mjs` (Part 6d); with **policy.json** it supersedes **Route**'s `route.json` at 3.0 (wired
+  in Part 7). Vision-class, human-gated in both run modes.
+- **policy.json** — the machine-parsed twin of the ratified priority policy: `{ weights, legibility,
+  cadence, dials }` — the priority weights, the legibility thresholds, the band-indexed gate-cadence
+  floor, and the **ceremony-sizing dial** set. Read by `lib/policy.mjs` (Part 6d), which validates its
+  *shape*, never its *value* (defaults ship uncalibrated). Vision-class, human-gated, agent-unwritable.
+- **Ceremony-sizing dial** — a tunable in **policy.json**'s `dials` mapping a node's risk band to how
+  much ceremony it earns: the ordered `bandScale`, the band→phase-materialization cutoffs, and the
+  band→gate-cadence index. Because it can size ceremony *down*, it is vision-class — human-gated in both
+  modes, agent-unwritable by capability. The classifier (Part 6c) *reads* dials; it never writes them.
+- **Complexity band** — a node's risk tier, drawn from `policy.json`'s ordered `dials.bandScale`. The
+  **Complexity classifier** emits it; the **Ceremony-escalation effect** ratchets it up on evidence; the
+  **Ceremony-sizing dial**'s band→cutoff and band→cadence maps translate it into how much ceremony the
+  node earns. Classifier and escalation share one ordered scale, so a classified band is a valid input to
+  escalation (Part 6c, DESIGN-3.0 §5.4).
+- **Complexity classifier** — the pure `classify(inputs, dials)` (`lib/ceremony.mjs`, Part 6c,
+  DESIGN-3.0 §5.4): a **monotone** map from five t0-observable risk inputs — **Blast radius** width,
+  whether a trusted suite already covers the locus, domain criticality, the run's supervision, and the
+  horizon *under a minimal driver* — to a **Complexity band**. Monotone means higher risk on any axis
+  never lowers the band, which is also the anti-gaming guarantee: an inflated footprint can only *raise*
+  ceremony, never buy it down. It *reads* the **Ceremony-sizing dial**; it never writes it.
+- **Phase degeneration** — a phase proven, mechanically, to have nothing to do — recorded as a
+  `phase-degenerated` result (never a silent skip), so a reviewer sees *ran-and-found-nothing*. Pinned as
+  three pure predicates (`lib/ceremony.mjs`, Part 6c, DESIGN-3.0 §5.4): the **Walking skeleton** scaffold
+  degenerates only when no new goal **Cone** appears and no newly-chartered atom touches the outer shell
+  (a depth-0 **Serves** provider, or a not-yet-skeletonized component); re-chartering degenerates on an
+  empty amendment batch; retro cross-cone classification degenerates when the fired goal gate spans ≤ 1
+  landed cone. Conservative — when in doubt it materializes. Who dispatches or skips a role on the result
+  is Part 7's.
+- **Topologist** — the genesis planner (`agents/topologist.md`, Part 6e, DESIGN-3.0 §5.1), the
+  **Route**-planner reborn: a thin, mostly-read-only role that **proposes** the five §5.1 outputs — the
+  **Topology**, the full initial **Charter**ing (structure only, §13 — never a **Delta**, never a
+  behavioral must), the **Containment tree** + component→subeffort ownership map, the **policy.json**
+  priority-policy proposal, and the **Complexity classifier**'s t0 classification — and, post-genesis,
+  supplies rewrite payloads on demand and proposes re-chartering batches at gates (both riding the
+  mechanical `retopologize`). It **proposes** **goals.json** / **policy.json** but **cannot write** them
+  (vision-class, human-gated §3): its read-only tool allowlist (`Read, Grep, Glob`, mirroring the
+  route-planner) grants no file-writing tool — capability, not promise. It consumes the **Legibility
+  law**'s findings to re-cut; it never re-measures the graph itself. An `opus` judgment role that cites
+  the **intention** oracle on every priority/scope fork; the orchestrator (and a human-gated narrow
+  writer) persist what it proposes. The stage that *dispatches* it into the phase flow is Part 7's.
+- **Frontier** — the ready-set of atoms whose planned/actual `needs` are all satisfied, minus **frozen**
+  / **guard-halted** / **dispatch-barred** atoms (`lib/frontier.mjs`'s `ready`, Part 7, DESIGN-3.0 §6).
+  Reuses **Dependency graph** edges; adds no new algorithm.
+- **Wave** — the maximal subset of spec'd atoms **pairwise disjoint by actual footprint**
+  (`lib/frontier.mjs`'s `pack`, Part 7, DESIGN-3.0 §6) — packing happens only on actual footprints, never
+  charter-coarse loci. A collision between two packed atoms is an R9 (see **Verdict (R1–R9)**), never a
+  silent merge conflict.
+- **GATE_RESULT** — the exhaustive seven-variant typed union a frontier-wave run returns
+  (`goal-green | heartbeat | batch-full | starved | blocked-human | halt | budget-exhausted`,
+  `lib/frontier.mjs`'s `gateDue`, Part 7, DESIGN-3.0 §6/§9). Total: an unrecognized control state HALTs,
+  never a silent fall-through. `blocked-human` fires in **both** run modes for a policy/goal change or an
+  intent fork.
+- **Band-indexed gate cadence** — the heartbeat floor's N (merged atoms) / M (ledger events) thresholds
+  are indexed by a cone's **Complexity band** (`policy.json`'s `cadence` map, read by `gateDue`, Part 7,
+  DESIGN-3.0 §9) — a high-band cone gates more often, a low-band micro-effort rarely. The **Starvation
+  valve** and the always-human classes fire regardless of band; only the floor itself scales.
+- **Starvation valve** — the liveness backstop: the frontier is empty or below quorum while gate-held
+  material (frozen atoms, pending permanence, barred births) exists — fires a `starved` gate rather than
+  letting a wide provisional freeze silently stall progress (DESIGN-3.0 §9).
+- **`atom-verdict`** — the collision-free 3.0 ledger event type (`lib/ledger.mjs`, Part 7, DESIGN-3.0
+  §2.4/§7.2), keyed on `atomId`+`kind`, distinct from the live 2.x work-order-keyed `verdict`. `append()`
+  — never an agent, never the frontier workflow — code-computes its provisional **Effect** set and records
+  its permanent set as `pendingPermanent`, folded in only at a **`ratification`** gate (`ratifiesSeqs`/
+  `rejectsSeqs`), exactly as `seq` is code-computed (D19).
+- **Lazy, role-minimal provisioning** — a wave stands up only the roles its atoms actually need
+  (`lib/frontier.mjs`'s `requiredRoles`, Part 7, DESIGN-3.0 §6 draft-five): the categorical core
+  (implementer, blind-test-writer, auditor, the fences) always; census/characterizer/topologist/
+  retro-synthesizer only on non-empty brownfield input / amendment batch / multi-cone gate — the same
+  **Phase degeneration** discipline applied to role dispatch, not just phase materialization. The
+  lane=atom accounting is unchanged; only its infrastructure timing defers to first need.
 - **Retro** — the mandatory blocking heartbeat at every vertical slice gate. Runs a
   **three-way divergence classification**: every divergence between built and
   vision gets exactly one of (a) **fix the code**, (b) **amend the vision**
@@ -269,6 +380,33 @@ one of the three is probably wrong.
   engine writes it (must be an actual JSON value — `change: undefined` is rejected).
 - **Edge effect** — an effect entry `{from, to, edge, op}`: a dependency edge added or removed
   between two node ids. `edge` ∈ `needs | excludes | serves | informs`; `op` ∈ `add | remove`.
+- **Blast radius** — the widen-only citation closure of a refuted premise recorded by an R2
+  **Verdict**; every atom whose footprint intersects it freezes.
+- **Ceremony-escalation effect** — an effect a verdict may carry that ratchets a cone's complexity
+  band **up** (monotone, capped, never down; DESIGN-3.0 §7), deepening its audit and tightening its
+  gate cadence. Its **unwind** is the exact inverse (apply-then-unwind = identity). The band
+  vocabulary (`policy.json`'s `dials.bandScale`) is Part 6d; the **Complexity classifier** that emits it
+  and its thresholds are Part 6c. The unwind's apply-then-unwind = identity invariant was proven only
+  for a single, isolated escalation per cone by P5 — **Part 7 closes the stacking gap**: every
+  escalation now carries a stable `escalationId` (`` `${coneId}#esc${N}` ``) and its `armed` markers are
+  namespaced by it, so a rejected escalation can never disarm a co-resident one's still-valid markers
+  (`lib/rewrite.mjs`'s `ceremonyEscalation`/`unwindCeremonyEscalation`, reasonable-3.0-p7-frontier
+  T04d/T04e/T04f). The live per-cone escalation-history store this reads (`state.escalations`) remains
+  a separate, already-flagged gap (see `docs/artifacts.md`), and the band-revert value under an
+  out-of-order multi-rejection sequence is a narrower, still-named residual.
+- **Failure calculus** — the total function (`lib/rewrite.mjs`, DESIGN-3.0 §7) mapping an
+  already-typed, already-audited **Verdict** to a two-phase effect set. Pure: it computes effects, it
+  does not apply them (the frontier loop does, Part 7).
+- **Provisional / permanent effect** — the two phases of a verdict's effect set: provisional
+  (reversible graph-state changes) lands at verdict time; permanent (retirement permanence, ratified
+  births, any shared-branch mutation) lands only at a **gate**.
+- **Routing ladder** — the §7.1 classifier (`routeRefutedPremise`) mapping where a refuted premise
+  lives to its escalation route; an intention-layer premise always routes to the human-only intent
+  fork.
+- **Verdict (R1–R9)** — a typed outcome of an attempt (`checkpoint`, `dead-end`, `ripple`,
+  `oversized`, `unknown-blocking`, `cycle-detected`, `parity-breach`, `illegible`, `stale-spec`).
+  Its type and payload are audited model judgment; its effect set is code-computed by the **Failure
+  calculus**.
 - **Node** — a dispatchable unit of the execution tree (a work order, a slice, a spike, a
   scaffold, a worker's own reported span of work, …), addressed by a `/`-joined path from
   the tree root. A node carries a STORED status, an optional free-text detail, and a list
@@ -324,6 +462,25 @@ one of the three is probably wrong.
 - **Knowledge artifact** — the mandatory spike/dead-end output:
   question / method / evidence / verdict / confidence / **expiry note** (what
   versions/conditions it tested against — spike conclusions rot).
+- **Scout** — the zero-commit **pre-effort** exploration surface (`skills/scout`, `workflows/scout.workflow.js`,
+  Part 8, DESIGN-3.0 §17): the **Spike**-runner's quarantine machinery launched **standalone**, before any
+  `.reasonable/` state exists, for shape-discovery (*what decomposition / API / target?*). **Law-free by
+  construction, not by exemption** — outside an effort the hooks fail open (`CLAUDE.md` invariant #2), so no
+  hook fence applies and none may be added; its "quarantine" is a disposable workspace **outside any repo**
+  plus the runner's dispatch-scoped discipline. Deliverable: a **Knowledge artifact** (the scout report) plus,
+  on convergence, a **Genesis seed**. Code is discarded; re-entry is **rewrite-from-knowledge, never
+  refactor-from-scout**. Writes **no** `.reasonable/` state and is **not** an effort entry point — it
+  *precedes* analysis and hands off (only `reasonable:develop` enters an effort).
+- **Genesis seed** — the **Scout**'s convergence deliverable (`seed.json`, machine-parsed by
+  `lib/scout-seed.mjs`, Part 8): a **draft charter set** (STRUCTURE ONLY — the exact **Charter** fields
+  `component / premises / purpose / locus / order`, no **Delta**, no behavioral must, §13) plus a **goals
+  sketch** (candidate top-level scenarios — raw material for the vision grill, weaker than **goals.json**: no
+  `scenarioCitations`, since there are no clauses pre-effort). Shape-validated structure-only by
+  `validateSeedShape` (the mechanical answer to §15 open edge (d)); the one residual — a behavioral must in
+  the non-normative `purpose` prose — is identical to §13's own boundary for real charters, backstopped by
+  the **Topologist**'s structure-only membrane (it critiques the seed, never transcribes it) and the
+  human-gated genesis gate. **Advisory and NOT `.reasonable/` state**: a pre-effort input the human carries
+  into `reasonable:develop`; it becomes ratified goals/policy only through the human gate, never automatically.
 - **Dead end** — a refutation-surviving infeasibility verdict; a retroactive
   spike. Code dies on its branch; knowledge is harvested; verdict enters the
   ledger.

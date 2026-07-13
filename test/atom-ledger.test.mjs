@@ -72,6 +72,16 @@ check('charterAtom rejects an empty purpose', () => {
   assert.strictEqual(r.ok, false);
 });
 
+// Audit gap (P8): premises already gets a per-item well-formedness check (see above); locus only
+// ever checked Array.isArray, so a non-string element (e.g. a nested behavioral-must object) rode
+// straight through undetected. Pins the same discipline premises already gets.
+check('charterAtom rejects a locus element that is not a string and writes NOTHING', () => {
+  const root = newEffort();
+  const r = charterAtom(root, { ...CHARTER, locus: [{ must: 'reject expired tokens within 50ms' }] });
+  assert.strictEqual(r.ok, false);
+  assert.strictEqual(readLedgerLines(root).length, 0);
+});
+
 check("two charters for the SAME component never collide (each gets a distinct global id)", () => {
   const root = newEffort();
   const a = charterAtom(root, CHARTER);

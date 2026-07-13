@@ -38,13 +38,30 @@ suite) between parts, rather than sitting broken through one giant rewrite.
 | P2 | Contract grammar v3 — durable per-contract clause ids, per-clause citations, `demanded-by` provenance | `lib/contract.mjs` (breaking rewrite) | §4.2, §12 | P1 (clause-id allocation is a ledger event) | Landed — v3.0.0 |
 | P3 | The atom — charter/delta split, the full lifecycle state machine, the minimality/cohesion law | `lib/atom.mjs` (new) | §4, §4.1, §4.3 | P2 (atoms cite clause ids) | Landed — v3.1.0 |
 | P4 | The graph engine — containment-tree fold, dependency-edge computation (`needs`/`excludes`/`serves`/`informs`), edge lifting, as-lived vs. current projections | `lib/graph.mjs` (new) | §2, §2.1–§2.4 | P1 (folds effects), P3 (folds atoms) | Landed — v3.2.0 |
-| P5 | The rewrite engine — the failure calculus, verdict types R1–R9, two-phase (provisional/permanent) effect application | `lib/rewrite.mjs` (new) | §7, §7.1, §7.2 | P4 (rewrites the graph), P3 (transitions atom states) | Not started |
-| P6 | The topology stage — `lib/legibility.mjs`, the topologist role, `goals.json`/`policy.json` replacing `route.json`, `topology.html` | `lib/legibility.mjs` (new), `lib/route.mjs` (retire), `agents/topologist.md` (new) | §3, §5, §5.1–§5.3 | P4 (measures the graph), P3 (charters atoms) | Not started |
-| P7 | The frontier loop + gates — `lib/frontier.mjs`, the frontier-wave workflow, `GATE_RESULT`, gate cadence, live progress view, 2.x→3.0 migration | `lib/frontier.mjs` (new), `workflows/frontier-wave.workflow.js` (new) | §6, §9, §12 | P5 (dispatches on verdicts), P6 (reads goals/policy) | Not started |
+| P5 | The rewrite engine — the failure calculus, verdict types R1–R9, two-phase (provisional/permanent) effect application, **and the ceremony-escalation effect** (a verdict may ratchet a cone's complexity band up — grow-ceremony-on-evidence) | `lib/rewrite.mjs` (new) | §7, §7.1, §7.2, §17 | P4 (rewrites the graph), P3 (transitions atom states) | Landed — merged (no bump, 3.2.0) |
+| P6 | The topology stage (heart № 2) — **split into P6a–P6e** (see Part 6): planned edges, the legibility law, the ceremony dial (complexity classifier + phase degeneration), `goals.json`/`policy.json` (**additive**, carrying the ceremony-sizing dials), the topologist role, `topology.html` | `lib/graph.mjs` (extend), `lib/legibility.mjs`, `lib/ceremony.mjs`, `lib/goals.mjs`, `lib/policy.mjs`, `lib/topology-view.mjs`, `agents/topologist.md` (all new/additive); `route.json` superseded but **retired in P7's migration**, not here | §3, §5, §5.1–§5.4, §9, §17 | P4 (measures the graph), P3 (charters atoms) | Split → P6a–P6e — all landed (merged, no bump, 3.2.0) |
+| P7 | The frontier loop + gates — `lib/frontier.mjs`, the frontier-wave workflow, `GATE_RESULT`, **band-indexed** gate cadence, live progress view, 2.x→3.0 migration, **plus lazy role-minimal provisioning (the micro-effort fast path)** | `lib/frontier.mjs` (new), `workflows/frontier-wave.workflow.js` (new); `lib/ledger.mjs`/`lib/reconcile.mjs`/`lib/next-action.mjs`/`lib/progress-map.mjs`/`lib/footprint.mjs` (extend); `lib/route.mjs` (deleted, last) | §6, §9, §12, §17 | P5 (dispatches on verdicts), P6 (reads goals/policy) | Landed — merged (no bump, 3.2.0) |
+| P8 | The zero-commit **scout** — standalone pre-effort exploration reusing the spike quarantine, writing no `.reasonable/` state, seeding the genesis graph | `skills/scout/`, `workflows/scout.workflow.js`, `lib/scout-seed.mjs` (new); `lib/atom.mjs`/`agents/topologist.md` (extend, additive); reuses the `spike-runner` agent **unchanged** | §17 | P6 (its output seeds the topologist's genesis graph) | Landed — merged (no bump, 3.2.0) |
 
-Rough shape of the dependency chain: **P1 → P2 → P3 → P4 → P5 → (P6, P7)**. P6 and P7 both sit
-on top of P5 but don't depend on each other — once P5 lands they could run as two independent
-plans rather than strictly sequential.
+Rough shape of the dependency chain: **P1 → P2 → P3 → P4 → P5 → (P6, P7)**, with **P8** sitting on
+P6 (the scout seeds the topologist's genesis graph, so it needs P6's chartering shape). P6 and P7
+sit on top of P5 but don't depend on each other; P8 can follow P6 independently of P7. So once P5
+lands, P6 / P7 / P8 are three loosely-coupled plans, not a strict chain.
+
+### Versioning — the remaining parts do not bump
+
+**Decision (2026-07-09): the plugin version stays at `3.2.0` through the rest of the series, and
+bumps exactly once, at the very end.** P5–P8 are one continuous refactoring toward the live 3.0
+methodology; there are no consumable intermediate builds between here and the terminal release, so
+per-part bumps would only mint versions nobody installs. Each remaining part lands its code and
+tests on the shared refactoring line **without a `chore(release)` bump** — `plugin.json`, the README
+install snippet, and the README footer all stay `3.2.0` until the whole generation is done. The
+single terminal bump then ships the completed 3.0 in one release; its number is a human call at that
+point, and a **major** one, since the methodology going live is a breaking behavior change.
+
+This overrides, **for P5–P8 only**, both this repo's standing "every change gets a version bump"
+rule (`CLAUDE.md`) and the per-part `version-bump-final-check` task the earlier parts carried —
+those applied because P1–P4 were each independently shippable, which P5–P8 are not.
 
 ### Keeping the status column current
 
@@ -56,9 +73,12 @@ a changelog someone remembers to update later:
   `docs/superpowers/specs/`, its row's status changes in that same commit.
 - **Design drafted → Planned**: the moment the part's `plan.md` lands under
   `docs/superpowers/plans/`, its row's status changes in that same commit.
-- **Planned → Landed — vX.Y.Z**: only in the same commit as the part's own `chore(release)`
-  version bump — never mark a part Landed ahead of its release commit. Cite the version that
-  shipped it, not "done" or "merged".
+- **Planned → Landed** — two regimes:
+  - **P1–P4 (already shipped):** in the same commit as the part's own `chore(release)` bump, citing
+    the version that shipped it — `Landed — v3.0.0` etc. Never marked Landed ahead of its release.
+  - **P5–P8 (no per-part bump, see *Versioning* above):** mark the row **`Landed — merged (no bump,
+    3.2.0)`** when the part's code + tests merge to the refactoring line. The version stays `3.2.0`;
+    only the single terminal, whole-generation release carries the (major) bump.
 
 If a part's status and its actual files on disk ever disagree, trust the files — `git log` and
 `ls` on the relevant `specs/`/`plans/` paths are authoritative, this table is derived from them.
@@ -67,9 +87,13 @@ If a part's status and its actual files on disk ever disagree, trust the files �
 
 It is not itself an implementation plan — no task list, no code, nothing to execute. Parts 1–4
 (below) are the plans in the series written to that level of detail so far, each one written only
-after the part before landed. **Parts 5–7 are not written yet.** Write them one at a time, after
-the part before has landed, so each one reflects what the previous part's implementation actually
-taught (exactly the feedback-over-prediction principle the design argues for).
+after the part before landed. **Parts 5–8 are not written yet as plans.** Their *design* is now
+specified in `DESIGN-3.0.md` — including the draft-five *pay-as-you-go ceremony* amendment folded
+across §5.4 / §7 / §9 / §17 and summarised per part below — but the per-part `plan.md` files are
+not written. Write them one at a time, after the part before has landed, so each reflects what the
+previous part's implementation actually taught (exactly the feedback-over-prediction principle the
+design argues for). The draft-five amendment is why the count grew from seven parts to eight: the
+scout (P8) is a genuinely new pre-effort capability that doesn't fold into any in-effort part.
 
 ## Part 1
 
@@ -139,3 +163,158 @@ error; and planned-fidelity edges are deferred whole rather than half-built agai
 ordering scheme Part 6 hasn't specified yet), plus one contestable proportionality call (no
 `graph.json` disk mirror yet — nothing reads it today, so wiring it into `lib/ledger.mjs`'s `append()`
 is deferred to whichever part first needs to read it outside a test).
+
+## Part 5 — landed (merged, no bump, 3.2.0)
+
+**Design doc:** [`2026-07-09-reasonable-3.0-p5-rewrite-design.md`](../specs/2026-07-09-reasonable-3.0-p5-rewrite-design.md)
+
+**Plan:** [`2026-07-09-reasonable-3.0-p5-rewrite/plan.md`](2026-07-09-reasonable-3.0-p5-rewrite/plan.md)
+
+**Design:** DESIGN-3.0 §7, §7.1, §7.2 — **including the draft-five ceremony-escalation effect**
+(the ruling before §7.1).
+
+The design doc turns on one pivotal, flagged scoping call: **Part 5 builds `lib/rewrite.mjs` as a
+pure calculus library** — a total function from `(verdict, graphState)` to a two-phase
+`{provisional, permanent}` effect set (in `lib/effects.mjs`'s validated shape), reusing Parts 1/3/4's
+pure surfaces — and **defers the append-path wiring, the collision-free 3.0-verdict event type, and
+the effects-overlay fold to Part 7** (the part that first produces and collects a verdict). The
+reason is decisive, not a proportionality guess: the shipped `verdict` event type is already live for
+2.x skeptic/auditor judgments, so keying effect-computation off `type:'verdict'` inside `append()`
+today would misfire on real data. The ceremony-escalation **unwind** — DESIGN-3.0's own
+still-untested assertion (draft-five open edge (c)) — is built and tested here with an explicit
+apply-then-unwind = identity invariant, in its own triad.
+
+Builds `lib/rewrite.mjs`: the failure calculus, the R1–R9 verdict types, and two-phase
+(provisional-at-verdict / permanent-at-gate) effect application, hosted inside the ledger
+controller's append path so the effect sets are code-computed, never model-authored (§2.4). The
+draft-five addition this part now owns: the **ceremony-escalation effect** — a verdict (a wide R2, a
+foreign-reaching R3, an integration-exposing R9, a second R1) may attach an effect that ratchets the
+affected cone's complexity band *up*, deepening its audit tier, re-arming a scaffold/legibility check
+the low band had found vacuous, and tightening its gate cadence. Monotone (up only), two-phase like
+every other effect, and — the open edge the design flags for attack — its permanent-raise rejection
+must unwind exactly as R7's provisional cone freeze does; P5 is where that unwind gets built and
+tested, not just asserted.
+
+## Part 6 — split into P6a–P6e; all landed (merged, no bump, 3.2.0)
+
+**Design doc (whole stage):**
+[`2026-07-10-reasonable-3.0-p6-topology-design.md`](../specs/2026-07-10-reasonable-3.0-p6-topology-design.md)
+
+**Design:** DESIGN-3.0 §3, §5, §5.1–**§5.4**, §9, §17 — **including the draft-five sizing classifier
+and phase-degeneration ruling (§5.4)**.
+
+Builds the topology stage: planned edges, the legibility law (`lib/legibility.mjs`), the ceremony dial
+(the **complexity classifier** §5.1 + the **phase-degeneration** predicate §5.4), the `goals.json` /
+`policy.json` pair (carrying the **ceremony-sizing dials**), the topologist role, and `topology.html`.
+The design doc **pins the phase-degeneration predicate mechanically** (the open edge the roadmap
+required P6 to close, not leave as prose) and flags the calibration residues (the classifier's
+thresholds and band→cutoff maps stay uncalibrated `policy.json` defaults, §16).
+
+Two scoping calls were confirmed with the human before any plan was written (the discipline P5's doc
+used for its pivotal call):
+
+- **P6 is additive.** The roadmap's `route.mjs (retire)` cannot mean "delete it this part":
+  `route.mjs` is imported by `reconcile.mjs`, the recovery prologue that runs every session, so
+  deleting it breaks the live 2.x engine between parts (the roadmap's own "keeps working between
+  parts" invariant). §12 puts the `nextAction` rebuild-over-goals/cones inside the **migration**,
+  which is **P7's**. So P6 builds the new engine/grammar/role/viewer as new files *alongside* the live
+  route path; **P7's migration retires `route.mjs` and rebuilds the projection.** This mirrors P5's
+  "build the calculus, defer the wiring to P7" exactly.
+- **P6 splits into a sub-series** — it is ~2–3× P5 and spans five subsystems (one of which, planned
+  edges, is work P4 deferred). Each sub-part is planned and landed **one at a time**, so each reflects
+  what the previous taught (the design's own feedback-beats-prediction thesis). Execution model
+  (human-set): plans authored in Opus, implemented by a series of fresh **Sonnet subagents** under
+  subagent-driven-development (one per red/green/audit role, Opus supervising).
+
+| Sub-part | Builds | New/changed files | Depends on | Status |
+|---|---|---|---|---|
+| **P6a** | The **planned-edge fold** — component-quotient `needs` (from `cite:` premises) + intra-component ordering (from `order`). Finishes P4's deferral. | `lib/graph.mjs` (extend, additive) | P3, P4 | Landed — merged (no bump, 3.2.0) |
+| **P6b** | The **legibility law** — bounded width, tangle density, coupling & chain smells, and R8's density-reduction guard. Pure over planned+actual edges. | `lib/legibility.mjs` (new) | P6a | Landed — merged (no bump, 3.2.0) |
+| **P6c** | The **ceremony dial** — the complexity classifier (t0 risk → band) + the **phase-degeneration predicate** (mechanically pinned) + band-scale mechanics. | `lib/ceremony.mjs` (new) | P6a, P6d | Landed — merged (no bump, 3.2.0) |
+| **P6d** | **`goals.json` + `policy.json`** grammar + conservative loaders (weights, legibility/cadence thresholds, ceremony-sizing dials). Additive; `route.mjs` untouched. | `lib/goals.mjs`, `lib/policy.mjs` (new) | — | Landed — merged (no bump, 3.2.0) |
+| **P6e** | The **topologist role** + **`topology.html`** viewer (self-contained layered-DAG renderer; component / cone / diff views). | `agents/topologist.md`, `lib/topology-view.mjs` (new) | P6a–P6d | Landed — merged (no bump, 3.2.0) |
+
+**Sub-series dependency order:** P6a → P6d → { P6b, P6c } → P6e. P6a is the foundation (genesis
+legibility is vacuous without planned edges — a charter has no deltas, so `needsEdges` returns `[]`).
+The P6b–P6e plans are written just-in-time, each after its predecessor lands.
+
+## Part 7 — landed (merged, no bump, 3.2.0)
+
+**Design doc:**
+[`2026-07-11-reasonable-3.0-p7-frontier-design.md`](../specs/2026-07-11-reasonable-3.0-p7-frontier-design.md)
+
+**Plan:** [`2026-07-11-reasonable-3.0-p7-frontier/plan.md`](2026-07-11-reasonable-3.0-p7-frontier/plan.md)
+
+**Design:** DESIGN-3.0 §6, §9, §12, §17 — **including the draft-five lazy-provisioning bullet (§6)
+and band-indexed heartbeat-floor ruling (§9)**.
+
+The design doc turns on one pivotal, flagged scoping call — the **inverse** of P5's and P6's: where
+those two were *additive* parts that deferred their wiring to "whoever first has a live consumer"
+(named as P7), **P7 is the terminus** — the deferrals come due and there is nowhere left to defer to.
+So its central decision is a *sequencing* one: **the append path computes the effect set** (taking
+§2.4 literally — `computeVerdictEffects` hosted inside `append()`, the no-model position that stamps
+`seq`), and the **2.x→3.0 migration runs additive-then-subtractive** so the plugin's own suite is green
+after every task (the reconcile coupling is narrow — one ≈200-line block and two imports, because
+downstream consumers read the directive grammar, not `route.json`, so `route.mjs` is deleted only once
+nothing imports it). The doc also confirms, loudly, that **P7 is P6-split-sized** (five subsystems,
+highest risk in the generation) and is written as one plan *only by human instruction* — sequenced into
+six internal phases, each landing green.
+
+Builds `lib/frontier.mjs`, the frontier-wave workflow, the exhaustive `GATE_RESULT` union, gate
+cadence, the live progress view, and the 2.x→3.0 migration. The draft-five additions this part now
+owns: **lazy, role-minimal provisioning** — a wave stands up only the roles its atoms need
+(implementer + blind-test-writer + per-atom auditor + fences for a single-atom effort; census /
+characterizer / re-chartering / retro-synthesizer only on non-empty input), with the lane
+infrastructure stood up on first need rather than at entry, while the lane = atom accounting stays
+untouched; and the **band-indexed heartbeat floor** (§9), where the gate cadence N/M scale with the
+cone's complexity band so a micro-effort isn't dragged through a full retro cadence, with the
+starvation valve and always-human classes unconditional.
+
+## Part 8 — landed (merged, no bump, 3.2.0)
+
+**Design doc:**
+[`2026-07-12-reasonable-3.0-p8-scout-design.md`](../specs/2026-07-12-reasonable-3.0-p8-scout-design.md)
+
+**Plan:** [`2026-07-12-reasonable-3.0-p8-scout/plan.md`](2026-07-12-reasonable-3.0-p8-scout/plan.md)
+
+**Design:** DESIGN-3.0 §17 (the zero-commit scout ruling), §15 open edge (d) (the seed-must-be-
+structure-only edge P8 closes), §13 (structure-only law), §5.1 (the topologist's genesis inputs).
+
+The design doc names **four flagged scoping calls** — **none STOP-gated**, because §17 pre-settled the
+one that could have been pivotal (the scout is law-free *by construction*, not by exemption): (1) the
+scout's quarantine is a **workspace convention, not a hook fence** — P8 adds **no** `lib/fence.mjs` logic
+(a "scout mode" branch would violate `CLAUDE.md` invariant #2 and contradict §17); (2) **reuse
+`agents/spike-runner.md` verbatim**, scoped by the scout dispatch prompt (its ledger-reporting section is
+*vacuous* for a scout — zero ledger facts, no `effortRoot` — so verbatim reuse asserts nothing false, and
+not editing the file preserves the audited allowlist byte-for-byte); (3) the **genesis seed** is a strict
+subset of the charter schema, **shape-validated structure-only** by `lib/scout-seed.mjs` (the mechanical
+answer to open edge (d), reusing `atom.mjs`'s charter grammar so the seed is charter-shaped by
+construction) — the one residual (a behavioral must in the non-normative `purpose` prose) is inherited
+from §13, no wider than the real charter grammar, backstopped by the topologist membrane + the human
+genesis gate; (4) the **disposable workspace lives outside any repo** (a fresh temp dir — unconditionally
+law-free, unlike an in-repo subdir whose law-free-ness would depend on directory placement).
+
+Builds the **scout**: the spike-runner's quarantine machinery made launchable standalone, before
+any `.reasonable/` state exists, as the sanctioned pre-effort exploration surface the methodology
+previously lacked (before P8, a spike was a route item *inside* a committed effort). Its deliverable
+is a knowledge artifact — a shape sketch, a feasibility verdict, a candidate decomposition — and on
+convergence it **seeds the genesis graph** so analysis starts warm. Depended on P6 because the seed
+must be charter-shaped — the open edge flagged for attack (§15 open edge (d)) is now **closed
+mechanically**: `lib/scout-seed.mjs`'s `validateSeedShape` rejects any draft charter carrying a field
+outside the five real charter fields, so the seed cannot smuggle behavioral prediction past the §13
+structure-only law. Reuses the existing spike-runner agent unchanged; the quarantine itself is a
+workspace convention (a disposable temp dir outside any repo), not a hook fence — see the design doc's
+Call 1 for why no `lib/fence.mjs` change was added. Scout code never reaches mainline; re-entry is
+always rewrite-from-knowledge.
+
+**Adversarial audit found and closed one real, pre-existing gap during implementation:** `lib/atom.mjs`'s
+`validateCharterShape` validated `premises` per-element but only checked `locus`'s array-ness, not its
+element types — letting a non-string `locus` element (a nested object shaped like a behavioral must)
+through undetected, which falsified the design doc's claim that `purpose` is the only structure-only
+escape. The gap predated P8 (present in P3's `charterAtom` too) but was surfaced by P8's audit. Closed
+via a dedicated red/green pair and confirmed by an independent re-audit; see the design doc's "Flagged
+gaps" section for the full trail. Two minor, non-blocking test-coverage gaps in
+`workflows/scout.workflow.js` (already-correct defensive branches) were deliberately deferred rather
+than spun into full triads — also recorded there.
+
+A genuinely new capability, which is why it is its own part rather than a fold into P5–P7.
