@@ -462,6 +462,25 @@ one of the three is probably wrong.
 - **Knowledge artifact** — the mandatory spike/dead-end output:
   question / method / evidence / verdict / confidence / **expiry note** (what
   versions/conditions it tested against — spike conclusions rot).
+- **Scout** — the zero-commit **pre-effort** exploration surface (`skills/scout`, `workflows/scout.workflow.js`,
+  Part 8, DESIGN-3.0 §17): the **Spike**-runner's quarantine machinery launched **standalone**, before any
+  `.reasonable/` state exists, for shape-discovery (*what decomposition / API / target?*). **Law-free by
+  construction, not by exemption** — outside an effort the hooks fail open (`CLAUDE.md` invariant #2), so no
+  hook fence applies and none may be added; its "quarantine" is a disposable workspace **outside any repo**
+  plus the runner's dispatch-scoped discipline. Deliverable: a **Knowledge artifact** (the scout report) plus,
+  on convergence, a **Genesis seed**. Code is discarded; re-entry is **rewrite-from-knowledge, never
+  refactor-from-scout**. Writes **no** `.reasonable/` state and is **not** an effort entry point — it
+  *precedes* analysis and hands off (only `reasonable:develop` enters an effort).
+- **Genesis seed** — the **Scout**'s convergence deliverable (`seed.json`, machine-parsed by
+  `lib/scout-seed.mjs`, Part 8): a **draft charter set** (STRUCTURE ONLY — the exact **Charter** fields
+  `component / premises / purpose / locus / order`, no **Delta**, no behavioral must, §13) plus a **goals
+  sketch** (candidate top-level scenarios — raw material for the vision grill, weaker than **goals.json**: no
+  `scenarioCitations`, since there are no clauses pre-effort). Shape-validated structure-only by
+  `validateSeedShape` (the mechanical answer to §15 open edge (d)); the one residual — a behavioral must in
+  the non-normative `purpose` prose — is identical to §13's own boundary for real charters, backstopped by
+  the **Topologist**'s structure-only membrane (it critiques the seed, never transcribes it) and the
+  human-gated genesis gate. **Advisory and NOT `.reasonable/` state**: a pre-effort input the human carries
+  into `reasonable:develop`; it becomes ratified goals/policy only through the human gate, never automatically.
 - **Dead end** — a refutation-surviving infeasibility verdict; a retroactive
   spike. Code dies on its branch; knowledge is harvested; verdict enters the
   ledger.

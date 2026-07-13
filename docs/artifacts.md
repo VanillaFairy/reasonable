@@ -1805,6 +1805,42 @@ The vertical-slice implementer reads this artifact and may quote curated excerpt
 
 ---
 
+## Pre-effort scout artifacts (NOT `.reasonable/` state)
+
+The **Scout** (Part 8, DESIGN-3.0 §17) runs before any effort exists and writes **no** `.reasonable/`
+state. Its deliverables live in the scout's **disposable workspace** (a temp directory outside any repo)
+and are handed to the human as pre-effort inputs — they are archived/discarded with the workspace, never
+part of an effort's artifact set.
+
+### scout report (prose — not machine-parsed)
+
+The scout's **Knowledge artifact**: the mandatory `question / method / evidence / verdict / confidence /
+expiry` format (as `knowledge/<id>.md`), plus a human-readable narrative of the candidate shape. Read by
+the human and the vision grill; **never parsed** — not a `*` artifact.
+
+### seed.json *  (machine-parsed by `lib/scout-seed.mjs`)
+
+Present **only** on a `converged` scout. The **Genesis seed** — shape-validated STRUCTURE ONLY (§13):
+
+```json
+{
+  "goalsSketch":  [ { "id": "gs-1", "scenario": "a user can sign in with a session token", "notes": "optional prose" } ],
+  "draftCharters": [
+    { "component": "auth", "premises": ["goal:gs-1"], "purpose": "issues + checks session tokens",
+      "locus": ["src/auth/**"], "order": 0 }
+  ]
+}
+```
+
+`draftCharters` carry **exactly** the **Charter** fields — `component / premises / purpose / locus /
+order` — and **no** Delta/clause/behavioral slot; `lib/scout-seed.mjs`'s `validateSeedShape` rejects any
+draft charter with a field outside the five (the mechanical structure-only fence, DESIGN-3.0 §15 open edge
+(d)). `goalsSketch` is a **sketch**, weaker than `goals.json` (no `scenarioCitations` — no clauses exist
+pre-effort). The **Topologist** consumes it as an advisory proposal to critique at genesis; the human
+ratifies `goals.json`/`policy.json` regardless. **Not `.reasonable/` state.**
+
+---
+
 ## progress-verdicts/&lt;wo-id&gt;.md
 
 The checkpoint artifact (budget exhaustion). Fed to a *fresh* implementer on
