@@ -174,6 +174,9 @@ export default async function run() {
   // as the report file (and, on convergence, seed.json) the scout-runner wrote in the workspace. The
   // scout CODE is discarded; re-entry is rewrite-from-knowledge, never refactor-from-scout.
   log(`Scout ${scout.id || '(unnamed)'} complete: ${verdict.verdict} (confidence ${verdict.confidence}). Report at ${verdict.reportPath || '(unspecified)'}${verdict.seedPath ? `, seed at ${verdict.seedPath}` : ' (no seed — did not converge)'}.`)
+  // kind:'result', not spike.workflow.js's kind:'verdict' — the design doc's own return-union names it
+  // this deliberately, to read as "the scout produced a result bundle" (verdict + report + seed), not
+  // just a bare verdict. Same successful-outcome slot as the spike's, different label by design.
   return done({
     kind: 'result',
     scoutId: scout.id || null,

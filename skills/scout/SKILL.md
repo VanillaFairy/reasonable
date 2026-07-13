@@ -50,7 +50,7 @@ Launch **by name**, not by `scriptPath` (the name path passes `args` reliably). 
 completion. Do not re-implement the scout-runner — the workflow owns it (it reuses `reasonable:spike-runner`).
 
 ## 4. Harvest — and shape-validate the seed (the trusted control plane, not the producer)
-On the `{ kind: 'result', verdict, report, seed }` return:
+On the `{ kind: 'result', scoutId, verdict, report, seed, workspace }` return:
 - Present the **scout report** (`verdict.reportPath`) — the knowledge artifact: question / method /
   evidence / verdict / confidence / **expiry**.
 - If `verdict.verdict === 'converged'` and a `seed` path is present, run the **structure-only fence**
