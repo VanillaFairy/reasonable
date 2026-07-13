@@ -41,7 +41,7 @@ suite) between parts, rather than sitting broken through one giant rewrite.
 | P5 | The rewrite engine — the failure calculus, verdict types R1–R9, two-phase (provisional/permanent) effect application, **and the ceremony-escalation effect** (a verdict may ratchet a cone's complexity band up — grow-ceremony-on-evidence) | `lib/rewrite.mjs` (new) | §7, §7.1, §7.2, §17 | P4 (rewrites the graph), P3 (transitions atom states) | Landed — merged (no bump, 3.2.0) |
 | P6 | The topology stage (heart № 2) — **split into P6a–P6e** (see Part 6): planned edges, the legibility law, the ceremony dial (complexity classifier + phase degeneration), `goals.json`/`policy.json` (**additive**, carrying the ceremony-sizing dials), the topologist role, `topology.html` | `lib/graph.mjs` (extend), `lib/legibility.mjs`, `lib/ceremony.mjs`, `lib/goals.mjs`, `lib/policy.mjs`, `lib/topology-view.mjs`, `agents/topologist.md` (all new/additive); `route.json` superseded but **retired in P7's migration**, not here | §3, §5, §5.1–§5.4, §9, §17 | P4 (measures the graph), P3 (charters atoms) | Split → P6a–P6e — all landed (merged, no bump, 3.2.0) |
 | P7 | The frontier loop + gates — `lib/frontier.mjs`, the frontier-wave workflow, `GATE_RESULT`, **band-indexed** gate cadence, live progress view, 2.x→3.0 migration, **plus lazy role-minimal provisioning (the micro-effort fast path)** | `lib/frontier.mjs` (new), `workflows/frontier-wave.workflow.js` (new); `lib/ledger.mjs`/`lib/reconcile.mjs`/`lib/next-action.mjs`/`lib/progress-map.mjs`/`lib/footprint.mjs` (extend); `lib/route.mjs` (deleted, last) | §6, §9, §12, §17 | P5 (dispatches on verdicts), P6 (reads goals/policy) | Landed — merged (no bump, 3.2.0) |
-| P8 | The zero-commit **scout** — standalone pre-effort exploration reusing the spike quarantine, writing no `.reasonable/` state, seeding the genesis graph | `skills/scout/`, `workflows/scout.workflow.js`, `lib/scout-seed.mjs` (new); `lib/atom.mjs`/`agents/topologist.md` (extend, additive); reuses the `spike-runner` agent **unchanged** | §17 | P6 (its output seeds the topologist's genesis graph) | Planned |
+| P8 | The zero-commit **scout** — standalone pre-effort exploration reusing the spike quarantine, writing no `.reasonable/` state, seeding the genesis graph | `skills/scout/`, `workflows/scout.workflow.js`, `lib/scout-seed.mjs` (new); `lib/atom.mjs`/`agents/topologist.md` (extend, additive); reuses the `spike-runner` agent **unchanged** | §17 | P6 (its output seeds the topologist's genesis graph) | Landed — merged (no bump, 3.2.0) |
 
 Rough shape of the dependency chain: **P1 → P2 → P3 → P4 → P5 → (P6, P7)**, with **P8** sitting on
 P6 (the scout seeds the topologist's genesis graph, so it needs P6's chartering shape). P6 and P7
@@ -270,7 +270,7 @@ untouched; and the **band-indexed heartbeat floor** (§9), where the gate cadenc
 cone's complexity band so a micro-effort isn't dragged through a full retro cadence, with the
 starvation valve and always-human classes unconditional.
 
-## Part 8 — planned (new in draft five)
+## Part 8 — landed (merged, no bump, 3.2.0)
 
 **Design doc:**
 [`2026-07-12-reasonable-3.0-p8-scout-design.md`](../specs/2026-07-12-reasonable-3.0-p8-scout-design.md)
@@ -296,11 +296,25 @@ law-free, unlike an in-repo subdir whose law-free-ness would depend on directory
 
 Builds the **scout**: the spike-runner's quarantine machinery made launchable standalone, before
 any `.reasonable/` state exists, as the sanctioned pre-effort exploration surface the methodology
-currently lacks (today a spike is a route item *inside* a committed effort). Its deliverable is a
-knowledge artifact — a shape sketch, a feasibility verdict, a candidate decomposition — and on
-convergence it **seeds the genesis graph** so analysis starts warm. Depends on P6 because the seed
-must be charter-shaped (the open edge flagged for attack: nothing yet mechanically enforces that the
-seed carries *structure only*, so the scout could otherwise smuggle behavioral prediction past the
-§13 law). Reuses the existing quarantine fence unchanged — scout code never reaches mainline;
-re-entry is always rewrite-from-knowledge. A genuinely new capability, which is why it is its own
-part rather than a fold into P5–P7.
+previously lacked (before P8, a spike was a route item *inside* a committed effort). Its deliverable
+is a knowledge artifact — a shape sketch, a feasibility verdict, a candidate decomposition — and on
+convergence it **seeds the genesis graph** so analysis starts warm. Depended on P6 because the seed
+must be charter-shaped — the open edge flagged for attack (§15 open edge (d)) is now **closed
+mechanically**: `lib/scout-seed.mjs`'s `validateSeedShape` rejects any draft charter carrying a field
+outside the five real charter fields, so the seed cannot smuggle behavioral prediction past the §13
+structure-only law. Reuses the existing spike-runner agent unchanged; the quarantine itself is a
+workspace convention (a disposable temp dir outside any repo), not a hook fence — see the design doc's
+Call 1 for why no `lib/fence.mjs` change was added. Scout code never reaches mainline; re-entry is
+always rewrite-from-knowledge.
+
+**Adversarial audit found and closed one real, pre-existing gap during implementation:** `lib/atom.mjs`'s
+`validateCharterShape` validated `premises` per-element but only checked `locus`'s array-ness, not its
+element types — letting a non-string `locus` element (a nested object shaped like a behavioral must)
+through undetected, which falsified the design doc's claim that `purpose` is the only structure-only
+escape. The gap predated P8 (present in P3's `charterAtom` too) but was surfaced by P8's audit. Closed
+via a dedicated red/green pair and confirmed by an independent re-audit; see the design doc's "Flagged
+gaps" section for the full trail. Two minor, non-blocking test-coverage gaps in
+`workflows/scout.workflow.js` (already-correct defensive branches) were deliberately deferred rather
+than spun into full triads — also recorded there.
+
+A genuinely new capability, which is why it is its own part rather than a fold into P5–P7.
