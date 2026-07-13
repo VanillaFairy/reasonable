@@ -400,12 +400,11 @@ parsed** — every reader that needs the order machine-readably reads `route.jso
   empty) read at the **moment of ratification** — a back-pointer into the ledger, not a live pointer
   (rewriting `route.json` at a later re-sort stamps a fresh pair, it never edits history).
 
-**Written by the orchestrator only** — `route.json` sits in the same bucket as `route.md` in the
-role×artifact fence matrix (`SEALED`: config/supervision/vision/route/verdicts/knowledge/… — no role
-gets it, only the main session), so this artifact needed **no fence change**. Two write points, kept in
-sync **by construction**: `analysis` step 10a persists it right after the human ratifies the initial
-route (before the route's nodes are planted in the ledger); `retro` step 5 rewrites it whenever a
-vertical-slice gate re-sorts `route.md`. Never hand-patched out of sync with the human-narrated file.
+**Writes RETIRED (roadmap A1).** Both former write points are removed: `analysis` step 10a now persists
+the ratified **genesis graph** (`goals.json` + `policy.json` + `ownership.json`) via the `genesis-writer`
+instead, and `retro` step 5 no longer rewrites a machine twin (the re-sort lives in `route.md` + the
+goals/cones `reconcile` reads). `route.md` — the human narration — is untouched and still never parsed.
+A `route.json` left on disk from a pre-A1 state is simply never read.
 
 **Read by `lib/route.mjs`'s `readRoute(effortRoot)`** → `{ route: {slices, ratifiedAt, ledgerSeq} |
 null, diagnostic: string | null }` — conservative by construction, exactly like `effortBirthState`'s
@@ -450,8 +449,8 @@ per-clause references `lib/graph.mjs`'s `servesEdges` consumes to compute which 
 conservative three-state contract as `readRoute` (absent → `null`, no diagnostic; present-but-malformed
 → `null` + a surfaced diagnostic, one bad entry failing the whole load; never a repair). **Vision-class
 enforcement path** (§3): human-gated in both run modes, agent-unwritable (the topologist *proposes* it;
-a narrow writer persists it after human ratification). **P6d builds the loader + grammar; nothing reads
-`goals.json` and no writer exists until P7's frontier loop + migration.**
+the **`genesis-writer`** persists it after human ratification — roadmap A1). **`reconcile` reads it for
+the cone order (`lib/next-action.mjs`'s `deriveConeOrder`); the `genesis-writer` is its sole writer.**
 
 ---
 
@@ -505,8 +504,34 @@ conservative three-state contract (absent → `null`, no diagnostic; malformed �
 diagnostic; never a repair). On success the parsed object is returned **verbatim** (open grammar —
 unknown keys and any ratification metadata survive), a deliberate divergence from `route.mjs`'s
 closed-grammar projection. **Vision-class enforcement path** (§3): human-gated in both modes,
-agent-unwritable by capability, so a struggling autonomous run can never size its own rigor down. **P6d
-builds the loader + grammar; the write path is P7's.**
+agent-unwritable by capability, so a struggling autonomous run can never size its own rigor down.
+**`lib/ceremony.mjs`'s `classify` reads `dials` to set the initial band; the `genesis-writer` is its sole
+writer, persisting the ratified policy verbatim after human ratification (roadmap A1).**
+
+---
+
+## ownership.json *
+
+The **ratified component → subeffort ownership map** (`docs/DESIGN-3.0.md` §2.1, §5.1) — the topologist's
+genesis output #3, the map `lib/graph.mjs`'s `containmentTree` reads to nest each atom under its
+`component → subeffort` containment path (the Gap-D id-duality collapse) instead of rendering flat beside
+the 2.x Node tree. An **object** mapping each component name → its slash-delimited subeffort path string.
+
+```json
+{ "lexer": "frontend/parsing", "parser": "frontend/parsing", "emitter": "backend/codegen" }
+```
+
+- Each **key** is a component name; each **value** is a **non-empty** slash-delimited subeffort path. A
+  component **absent** from the map is placed flat (its bare component name), so a partial map degrades
+  gracefully to the one-level tree. An empty object `{}` is shape-valid (all-flat placement).
+
+**Read by `lib/ownership.mjs`'s `readOwnership(effortRoot)`** → `{ ownership: object | null, diagnostic }`
+— the same conservative three-state contract as `readGoals`/`readPolicy` (absent → `null`, no diagnostic;
+malformed → `null` + a surfaced diagnostic, one bad entry failing the whole load; never a repair). On
+success the map is returned **verbatim**. **Vision-class enforcement path** (§3): human-gated in both run
+modes, agent-unwritable by capability — the topologist *proposes* it; the **`genesis-writer`** persists it
+after human ratification (roadmap A1). Consumed by `deriveCurrent` (the live view nests under it);
+`foldAsLived` stays ledger-only and renders flat.
 
 ---
 
