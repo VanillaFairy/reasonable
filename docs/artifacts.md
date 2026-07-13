@@ -1030,8 +1030,8 @@ ledger and live contracts — but it does not read or interpret this `effects` f
 in the codebase has ever written a real `effects` array (no event type populates one), so there is
 still nothing for the graph engine to fold from it. Its edges are 100% derived, every time —
 deliberately, since a recorded `effects` override would need precedence rules against derivation
-this design hasn't worked out yet (see `docs/superpowers/specs/2026-07-09-reasonable-3.0-p4-graph-design.md`'s
-"no effects-array overlay layer" note). Computing these effect sets is now the rewrite engine's job (Part 5,
+this design hasn't worked out yet (there is deliberately no effects-array overlay layer). Computing
+these effect sets is now the rewrite engine's job (Part 5,
 `lib/rewrite.mjs`, below) — a pure function from a verdict to a two-phase effect set. But nothing
 yet *appends* a verdict carrying them, and nothing *folds* them with precedence: that is the
 frontier loop's job (Part 7). So today an `effects` array is still never present on a real event,
