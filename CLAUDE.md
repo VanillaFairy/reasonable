@@ -140,7 +140,7 @@ only that entry does.
 
 ## Where the canonical design lives
 
-`reasonable` is at **v1.0**. The full design corpus lives in `docs/`: `DESIGN.md` (methodology source of
+`reasonable` is at **v3.2.0**. The full design corpus lives in `docs/`: `DESIGN.md` (methodology source of
 truth), `principles.md` (the foundation — the *why*), `architecture.md` (how the methodology sits on the
 Dynamic Workflows engine — the *how*), `glossary.md` (normative vocabulary), `artifacts.md` (on-disk artifact
 formats), and `roadmap/` (post-1.0 problem definitions). **Brownfield retrofit is first-class** — you'll see
