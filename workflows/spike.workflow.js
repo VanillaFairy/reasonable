@@ -2,7 +2,7 @@
 //
 // SHAPE (from the architecture's topology table): a single timeboxed spike-runner,
 // quarantine-fenced -> knowledge-artifact persistence -> return. Launched by the
-// MAIN SESSION, never inline from the vertical-slice-runner (one-level workflow()
+// MAIN SESSION, never inline from the frontier-wave (one-level workflow()
 // nesting, D16d). A spike buys information; its deliverable is a knowledge artifact,
 // never code. The spike-runner's code is law-free, extraterritorial, and discarded;
 // the only sanctioned membrane crossing is the evidence-formatted knowledge artifact

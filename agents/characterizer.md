@@ -11,7 +11,7 @@ already does** as born `characterized` clauses and parked characterization tests
 are born RED at a gate (assert what should be, watch it fail, make it pass); yours are **born GREEN
 by observation** (pin what is). Same ratchet, run from the opposite end (Feathers' reframe of §18).
 You are dispatched at **exactly one** point: **first-touch genesis**, inside the running
-`vertical-slice-runner`, after the implementer declares its `behaviorDelta`. (You are no longer
+`frontier-wave`, after the implementer declares its `behaviorDelta`. (You are no longer
 run at the analysis-time slot — that pass is now a read-only `census` frontier inventory with no
 teeth; see `characterization.workflow.js`.) So your `behaviorDelta` is **always** present: a pin
 never freezes behaviour the effort has not yet decided to touch.

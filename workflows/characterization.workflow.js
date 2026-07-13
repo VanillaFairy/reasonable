@@ -7,7 +7,7 @@
 // This workflow now OBEYS that split: it is a READ-ONLY, FRONTIER-SCOPED observation that records a
 // thin prose `## Scenarios` inventory, and DEFERS every tooth (born `characterized` clause + parked
 // test + BF2 reverse discriminator + intent-verifier) to first-touch genesis inside the
-// vertical-slice-runner, which already runs them in full and is now the SOLE birthplace of a
+// frontier-wave, which already runs them in full and is now the SOLE birthplace of a
 // `characterized` clause. (architecture S18; spec docs/superpowers/specs/2026-06-26-...)
 //
 // WHY THE OLD APPARATUS IS GONE. Lane provisioning, the two-root fenced-mutator dance, the
@@ -34,7 +34,7 @@
 export const meta = {
   name: 'characterization',
   description: 'Brownfield analysis-time FRONTIER pass: enumerate ONLY the frontier observable scenarios (route-intended / integration-risk) and record a thin prose `## Scenarios` inventory in census\'s skeleton contracts; defer every tooth-bearing pin to first-touch genesis. Read-only on code. Returns a typed result to the human birth-ratification gate.',
-  whenToUse: 'Launched from the main session at the brownfield scaffolding slot (config.brownfield true), AFTER census has written baseline.json + skeleton contracts and analysis has drafted the route + change-intention. NOT the tooth-bearing pin path - that is first-touch genesis inside vertical-slice-runner.',
+  whenToUse: 'Launched from the main session at the brownfield scaffolding slot (config.brownfield true), AFTER census has written baseline.json + skeleton contracts and analysis has drafted the route + change-intention. NOT the tooth-bearing pin path - that is first-touch genesis inside frontier-wave.',
   phases: [
     { title: 'Reconcile', detail: 'Unconditional recovery prologue: re-derive truth from git+ledger+contracts; read runMode; halt on AMBIGUOUS / runmode-absent. A floor-integrity diff is a non-blocking ADVISORY notice here (this pass mutates no floor state).' },
     { title: 'Inventory', detail: 'One read-only census agent: read the drafted route + change-intention + baseline.json; enumerate ONLY frontier scenarios; append a prose `## Scenarios` section (zero clauses, zero citations) to each frontier component\'s skeleton contract at the canonical root.' },
@@ -156,7 +156,7 @@ function inventoryPrompt(a) {
     'You are the census (brownfield, READ-ONLY on production code) building the FRONTIER scenario inventory.',
     `Effort root (canonical .reasonable/ - read AND write here, by absolute path): ${root(a)}. Plugin root: ${plugin(a)}.`,
     'This is the analysis-time FRONTIER pass. You do NOT pin behaviour with teeth: no born `characterized`',
-    'clause, no parked test, no reverse discriminator. Those are first-touch genesis (vertical-slice-runner),',
+    'clause, no parked test, no reverse discriminator. Those are first-touch genesis (frontier-wave),',
     'demand-driven, after an implementer declares a behaviorDelta. Here you record a THIN, observational map.',
     '',
     'STEP 1 - scope to the FRONTIER. Read the drafted route and the change-intention from `' + root(a) + '/.reasonable/`',
@@ -283,6 +283,6 @@ return {
   inventoryWritten: inv.inventoryWritten === true,
   componentsTouched: inv.componentsTouched || [],
   floorNotice,
-  note: 'Frontier scenario inventory built and recorded: ' + scenarios.length + ' route-intended / integration-risk scenario(s) mapped as a thin prose `## Scenarios` baseline (zero clauses, zero citations - parser-invisible, footprint-zero). NO tooth-bearing pins were created; every born `characterized` clause + parked test + reverse discriminator + intent-verifier is deferred to first-touch genesis (vertical-slice-runner), with the FLOOR (baseline.json) unchanged as the regression containment fence. Present to the human birth-ratification gate; silence never ratifies.'
+  note: 'Frontier scenario inventory built and recorded: ' + scenarios.length + ' route-intended / integration-risk scenario(s) mapped as a thin prose `## Scenarios` baseline (zero clauses, zero citations - parser-invisible, footprint-zero). NO tooth-bearing pins were created; every born `characterized` clause + parked test + reverse discriminator + intent-verifier is deferred to first-touch genesis (frontier-wave), with the FLOOR (baseline.json) unchanged as the regression containment fence. Present to the human birth-ratification gate; silence never ratifies.'
     + (floorNotice ? ' A floor-integrity diff was surfaced as an advisory notice (does not block).' : ''),
 };

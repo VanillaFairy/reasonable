@@ -120,7 +120,7 @@ work orders. Trust is earned, persistent, and **event-invalidated**; no re-check
 | "I'll quietly downgrade this floor change and move on" | The floor pass always *surfaces* a diff, never silences it — an explaining verdict annotates `explainedByVerdict` (advisory only). An unaccounted/unexplained breaking floor mismatch in autonomous mode is the fifth always-escalate class: STOP, queue BREAKING. Do not absorb a regression. |
 
 ## Your output (the BRIEFING)
-Return the typed `BRIEFING` the `vertical-slice-runner` prologue consumes (it dispatches you with
+Return the typed `BRIEFING` the `frontier-wave` prologue consumes (it dispatches you with
 `schema: BRIEFING`). It carries:
 
 - **The recovery verdict.** If any configuration was AMBIGUOUS, set `halt: true` with `haltReason` and

@@ -119,10 +119,10 @@ node ${reasonable}/lib/ledger.mjs append --root <effortRoot> --type node-dispatc
    `scaffold.workflow.js`; one-level `workflow()` nesting forbids launching it from a runner). It is the
    analysis-time **frontier inventory** pass — read-only; records a thin prose `## Scenarios` map of the
    route-intended / integration-risk scenarios and scribes it; **defers every tooth-bearing pin to
-   first-touch genesis** inside the vertical-slice-runner. It returns a typed `CHARACTERIZATION_RESULT`
+   first-touch genesis** inside the frontier-wave. It returns a typed `CHARACTERIZATION_RESULT`
    (it cannot block on a human — that is the sign-off gate below). This is the **analysis-time frontier
    inventory only**; the in-run, first-touch genesis (the `characterization-needed` arm) lives inside the
-   vertical-slice-runner, not here.
+   frontier-wave, not here.
 
    The frontier pass returns a typed result; route by `kind`:
    - **`ratify`** — the frontier inventory was built (or is honestly empty) and scribed. Present
@@ -171,7 +171,7 @@ vertical-slice loop opens its own nodes:
   skeleton does not wire is a reject against topology + vision.
 - **Frontier inventory is read-only (brownfield).** The analysis-time pass records a thin scenario map;
   it never pins, never fixes, and never edits production src. Tooth-bearing pins are born lazily at
-  first touch inside the vertical-slice-runner.
+  first touch inside the frontier-wave.
 - **Green always.** Greenfield: anything red (not parked) is a regression — fix before sign-off.
   Brownfield: a broken floor test is a reconcile AMBIGUOUS → HALT — resolve before sign-off.
 
@@ -181,6 +181,6 @@ vertical-slice loop opens its own nodes:
 (adversary-reviewed against topology + vision before sign-off).
 **Brownfield:** a ratified frontier inventory (`frontierScenarios` + `inventoryWritten`), the FLOOR
 standing as the regression-containment fence. Tooth-bearing pins are deferred to first-touch genesis
-inside the vertical-slice-runner. Either way the journal is advanced to the vertical-slice loop. Then
+inside the frontier-wave. Either way the journal is advanced to the vertical-slice loop. Then
 invoke `vertical-slice-execution` for the first vertical slice (best-first item on the route — for
 greenfield, the item after the skeleton).
