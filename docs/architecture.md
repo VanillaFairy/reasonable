@@ -550,7 +550,7 @@ mode.
 - **1000-agent lifetime cap (D16c).** The route-planner sizes waves so a vertical slice can't plausibly approach
   1000; on approach the script emits a checkpoint-and-split `GATE_RESULT`.
 - **One-level `workflow()` nesting (D16d).** This is *why* spikes and the scaffold are launched by the **main
-  session**, never inline from the vertical-slice runner. `vertical-slice-runner` cannot call `workflow()` itself.
+  session**, never inline from the frontier-wave workflow. `frontier-wave` cannot call `workflow()` itself.
 
 ---
 
@@ -571,7 +571,7 @@ mechanical, not eyeballed — so this is no blanket re-check, just the specific 
 ## 17. The low floor and inbox attention
 
 **The low floor is a parameterization, not a second philosophy (D14).** A typo gets the *same*
-`vertical-slice-runner` workflow with a minimal route in args: one work order, one wave, the fence active (capability
+`frontier-wave` workflow with a minimal route in args: one work order, one wave, the fence active (capability
 is scale-free, always on), one discriminator check in the audit stage, no scaffold, no multi-vertical-slice loop.
 `reasonable:analysis` triages applicability (DESIGN §7) and emits the floor-case route. "Only machinery
 scales" = same workflow, same fence, fewer stages — and the task is still escalatable mid-flight via the
@@ -717,7 +717,7 @@ fires, `config.brownfield: true`. The phase flow is **one slot swap, not a new t
 - **vertical slices** — the **identical** runner/pipeline/trap/retro loop, plus a conditional first stage: a
   `characterization-needed` OUTCOME arm that, on first touch of ungoverned code, records the `behaviorDelta`
   and dispatches the characterizer provider-first. **This genesis runs as an in-run agent sequence inside the
-  running vertical-slice-runner — not a nested `workflow()`** (the one-level nesting limit forbids it; this
+  running frontier-wave — not a nested `workflow()`** (the one-level nesting limit forbids it; this
   parallels DESIGN §5.10's "extraction is a ripple with a birth in it"). `characterization.workflow.js` is
   used only for the analysis-time frontier inventory pass, launched from the main session — and is **the
   sole birthplace of a `characterized` clause**.
@@ -770,8 +770,8 @@ Twelve greenfield components, plus three brownfield ones (gated on `config.brown
 | **`reasonable:analysis`** | main-session skill | grill the vision → intention; pre-drain obvious forks; launch the coherence-grill; ratify `intention.md`; triage applicability; emit the initial route |
 | **`coherence-grill.workflow.js`** | workflow (adversarial loop) | `while(true){ a = agent(grill-adversary, FORKS_OR_NONE); if(no-fork) break; return forks-to-human }` (each batch = independent forks at the highest open altitude tier) then an `intention-writer` worker persists `intention.md` atomically |
 | **`scaffold.workflow.js`** | workflow (short pipeline) | walking skeleton + parked scenario suite, real wiring, thin behavior → invariant-verify (read-only) → scribe; ends at scaffold sign-off (main session takes it) |
-| **`vertical-slice-runner.workflow.js`** | workflow (one run per vertical slice) | the pure in-run plane: reconcile prologue → route-planner (footprints + resources + staleness) → `groupDisjoint` → per wave the enrichment `pipeline()` → trap `switch` → scribe the derived index → return a typed `GATE_RESULT` |
-| **enrichment pipeline** | `pipeline()` inside vertical-slice-runner | `pipeline(workOrders, provisionThenImplement, blindTest, adjudicate, audit)` — no barrier; the implementer worker writes its own ledger line in its atomic commit; the adjudicator cites the oracle; each call `guard()`-wrapped |
+| **`frontier-wave.workflow.js`** | workflow (one run per vertical slice) | the in-run plane: reconcile prologue → spec/pack atoms into footprint-disjoint **waves** → per wave the enrichment `pipeline()` → trap `switch` → scribe the derived index → return the exhaustive **seven-variant `GATE_RESULT`** (`goal-green | heartbeat | batch-full | starved | blocked-human | halt | budget-exhausted`) |
+| **enrichment pipeline** | `pipeline()` inside frontier-wave | `pipeline(workOrders, provisionThenImplement, blindTest, adjudicate, audit)` — no barrier; the implementer worker writes its own ledger line in its atomic commit; the adjudicator cites the oracle; each call `guard()`-wrapped |
 | **adversarial fan-out** | `parallel()` leaf (barrier) | the auditor's escalating checks run together (gate = AND over all): discriminator + bidirectional-mapping per enrichment, mutation sampling at the vertical-slice gate; read-only, no worktree isolation; collapses to one discriminator at the floor |
 | **trap router** | pure JS `switch` (not an agent) | maps each OUTCOME kind to its pre-written membrane crossing (§8); never throws on a trap |
 | **`lane-provisioner`** | privileged narrow agent | `git worktree add` + write `.reasonable-lane.json` + record the lane — before the worker; idempotent; ensures a checkpoint-only lane has a trailered commit |
@@ -781,9 +781,9 @@ Twelve greenfield components, plus three brownfield ones (gated on `config.brown
 | **`spike.workflow.js`** | workflow (single timeboxed agent) | quarantined falsifiable spike → knowledge artifact; spike-runner path-fenced to quarantine (the quarantine rule in `fence.mjs` `categorical()`); launched by the main session (nesting limit) |
 | **`census`** *(brownfield, §18)* | read-only agent | once at analysis: dep-graph → skeleton topology contracts (zero clauses/citations); partition the existing suite → `baseline.json` (FLOOR, untrusted) |
 | **`characterizer`** *(brownfield, §18)* | fenced mutator agent | read-only on src; pins current behaviour as `characterized` clauses + parked characterization tests, just-in-time at first touch, after the implementer's `behaviorDelta` |
-| **`characterization.workflow.js`** *(brownfield, §18)* | workflow (short pipeline) | analysis-time **frontier inventory** pass — read-only `census` records a prose `## Scenarios` map of the frontier; **no teeth** (deferred to first-touch). First-touch genesis is the in-run agent sequence in the vertical-slice-runner. |
+| **`characterization.workflow.js`** *(brownfield, §18)* | workflow (short pipeline) | analysis-time **frontier inventory** pass — read-only `census` records a prose `## Scenarios` map of the frontier; **no teeth** (deferred to first-touch). First-touch genesis is the in-run agent sequence in the frontier-wave. |
 
-`vertical-slice-runner` sketch (shape, not final code):
+`frontier-wave` sketch (shape, not final code):
 
 ```js
 export const meta = { /* pure literal */ }
@@ -803,7 +803,7 @@ while (!verticalSliceGreen && withinBudget(args, budget) && withinAgentCap()) {
   }
   verticalSliceGreen = computeGreen(state)
 }
-return toGateResult(verticalSliceGreen, state, budget)  // green | budget-exhausted | blocked
+return toGateResult(verticalSliceGreen, state, budget)  // goal-green | heartbeat | batch-full | starved | blocked-human | halt | budget-exhausted
 ```
 
 ---
@@ -841,7 +841,7 @@ Each mechanism, the gap it closes, and the decision that governs it.
 | 6 | **`intention.md`** + the coherence-grill workflow + add to `enforcementPaths` | does not exist | D15 |
 | 7 | **Fork-resolving agents cite the intention oracle**; `intent-fork` OUTCOME arm | no oracle, no arm | D5b |
 | 8 | **Intent-check-failure ledger entry** recorded at the retro | does not exist | D18 |
-| 9 | **The `vertical-slice-runner` / `coherence-grill` / `scaffold` / `spike` workflow scripts** + the OUTCOME/GATE_RESULT schemas + `guard()` wrapper | orchestration was main-session prose | D4, D5, D16b |
+| 9 | **The `frontier-wave` / `coherence-grill` / `scaffold` / `spike` workflow scripts** + the OUTCOME/GATE_RESULT schemas + `guard()` wrapper | orchestration was main-session prose | D4, D5, D16b |
 | 10 | **New agentTypes:** `grill-adversary`, `intention-writer`, `lane-provisioner`, `journal-writer`, `reconciler` | partial | §20 |
 | 11 | **Trust-staleness set** computed from ledger events by the route-planner | not computed | D13 |
 | 12 | **Inbox BREAKING/ADVISORY classes** + load tripwire | flat inbox | D17 |
