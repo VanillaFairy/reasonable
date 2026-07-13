@@ -153,28 +153,52 @@ The vision you are extracting has three parts:
      `intention-writer` has landed `.reasonable/intention.md` in one atomic commit. Add `intention.md`
      to `enforcementPaths`, and close the grill node — the oracle it existed to produce is durable:
      `node ${reasonable}/lib/ledger.mjs append --root <effortRoot> --type node-completed --node analysis/grill`
+9c. **Dispatch the topologist — propose the genesis graph (§5.1).** With the grilled goals (`vision.md`),
+   the ratified intention, and the topology sketch (`topology.md`) in hand, dispatch the read-only
+   `topologist` to **propose** the five genesis outputs: the component topology (derived *subtractively*
+   from the vision), the full **structure-only** chartering (every atom's `component`/`premises`/`purpose`/
+   `locus`/`order` — never a **Delta**, never a behavioral must, §13), the containment tree + the
+   **component → subeffort ownership map**, the `policy.json` proposal (priority weights, legibility
+   thresholds, cadence floor, ceremony-sizing **dials**), and the t0 complexity classification (it supplies
+   the inputs to `lib/ceremony.mjs`'s `classify()`, which sets the initial band). It also maps each ratified
+   scenario to its component citations — the content of the machine twin `goals.json`. **The topologist
+   PROPOSES; it persists nothing** (no write tool by allowlist); a proposed policy is not policy until the
+   human ratifies (step 10). Honor mode — **gated:** present the proposal and wait; **autonomous:**
+   self-ratify-and-log, but because `policy.json` can size ceremony *down*, log it **and** queue it to the
+   inbox to re-confirm at the first retro (never silently blessed). The genesis graph coexists with the
+   still-running 2.x route below until the atom graph becomes the live dispatcher (roadmap A3).
 10. **Human ratification (blocking).** Present vision, topology, initial route, the **ratified
-   intention** (the oracle), and the standing artifacts. The human ratifies each — these are one-time
-   ratifications (vision, topology, initial route, intention, scaffold-to-come). **Silence never
-   ratifies.** Nothing proceeds to scaffolding without it.
-10a. **Persist `route.json`, then open the route's nodes in the ledger (after ratification).** The
-   `analysis` phase node opened in `develop` step 0 is done, and the ratified route is now the tree's
-   frontier — write the machine twin, close the one, plant the other, so the mirror shows the plan
+   intention** (the oracle), **the topologist's genesis proposal (component topology, chartering,
+   ownership map, `policy.json`, classification)**, and the standing artifacts. The human ratifies each —
+   these are one-time ratifications (vision, topology, initial route, intention, genesis, scaffold-to-come).
+   **Silence never ratifies.** Nothing proceeds to scaffolding without it. The `policy.json` /
+   `goals.json` / `ownership.json` are **vision-class enforcement paths** — human-gated in both modes,
+   agent-unwritable by capability (§3).
+10a. **Persist the genesis graph, then open the route's nodes in the ledger (after ratification).** The
+   `analysis` phase node opened in `develop` step 0 is done, and the ratified genesis is now the graph's
+   frontier — persist the machine state, close the one, plant the other, so the mirror shows the plan
    before the first slice ever dispatches:
-   - **Write `.reasonable/route.json`** — the machine-parsed twin of the human-narrated `route.md` you
-     just got ratified. Before appending anything below, read the ledger's current latest `seq` (the
-     last line of `.reasonable/ledger.jsonl`; `0` if the ledger is still empty) — that snapshot, taken
-     at the moment of ratification, is the back-pointer this file carries:
-     ```json
-     { "slices": ["<sliceId>", "…"], "ratifiedAt": "<local ISO timestamp of this ratification>", "ledgerSeq": <the seq you just read> }
+   - **Persist the ratified genesis via the `genesis-writer` (route.json is RETIRED).** Dispatch the fenced
+     `genesis-writer` to write `.reasonable/goals.json` (the machine twin of the ratified top-level
+     scenarios, each cited against the ratified topology), `.reasonable/policy.json` (the ratified priority
+     policy + dials), and `.reasonable/ownership.json` (the ratified component → subeffort map) — verbatim,
+     in one atomic commit with the `ratification` ledger line. These three are **vision-class**: the
+     topologist proposed them and **cannot** write them, and the main session does **not** write them —
+     only the `genesis-writer` (capability, not prompt). **`route.json` is not written** — `reconcile`
+     reads `goals.json` for the cone order, never `route.json`. `route.md` remains the human narration
+     (never parsed).
+   - **Append each ratified charter as an `atom-chartered` ledger event.** For every ratified charter, the
+     orchestrator appends it through the ledger controller — this assigns the atom its id `a-<seq>` (the
+     id-duality collapse) and IS how the atom nodes are planted (structure only, §13):
      ```
-     `slices` is the full ordered vertical-slice frontier from the ratified route, best-first, `[0]` the
-     walking skeleton — no other fields (no per-slice tier, no DAG; those stay in `route.md`/`config.json`).
-     `route.md` remains the human narration and is **never parsed**; keep the two in sync by construction —
-     whenever `route.md` changes here or at a later re-sort (`retro` step 5), `route.json` changes with it.
+     node ${reasonable}/lib/ledger.mjs append --root <effortRoot> --json '{ "type": "atom-chartered", "component": "<c>", "premises": ["ledger:<seq>", "cite:<Y#cN>"], "purpose": "<one line>", "locus": ["<glob>"], "order": <n> }'
+     ```
    - Close the phase: `node ${reasonable}/lib/ledger.mjs append --root <effortRoot> --type node-completed --node analysis`
    - For **every vertical slice on the ratified route**, plant the slice and each of its already-known
-     work orders (repeat the second line once per known work order under that slice):
+     work orders (repeat the second line once per known work order under that slice). *(Transitional
+     coexistence: the 2.x slice/work-order nodes still drive execution until the atom graph becomes the
+     live dispatcher — roadmap A3. They sit alongside the `atom-chartered` genesis atoms, not instead of
+     them.)*
      ```
      node ${reasonable}/lib/ledger.mjs append --root <effortRoot> --type node-planned --node <sliceId> --kind slice --title '<slice title>'
      node ${reasonable}/lib/ledger.mjs append --root <effortRoot> --type node-planned --node <sliceId>/<woId> --kind work-order --title '<output>'
@@ -246,7 +270,9 @@ the census skeletons, `baseline.json`, and `intention.md` — alongside the stan
 
 The ratified `.reasonable/` standing artifacts (vision, topology, route, documentation-policy,
 resource-lexicon, sanity-invariants, config, supervision, test-conventions, empty
-journal/ledger/inbox), the **effort branch** established and checked out (`effort/<name>` off the
-recorded `baseBranch`), and a go/no-go for scaffolding. **On the brownfield branch, also:** the census skeleton topology contracts,
+journal/ledger/inbox), the **ratified genesis graph** (the `genesis-writer`-persisted `goals.json` +
+`policy.json` + `ownership.json`, plus the `atom-chartered` charters the orchestrator appended — the
+genesis graph `reconcile` now folds non-empty), the **effort branch** established and checked out
+(`effort/<name>` off the recorded `baseBranch`), and a go/no-go for scaffolding. **On the brownfield branch, also:** the census skeleton topology contracts,
 `baseline.json` (the FLOOR partition), and the ratified `intention.md` (the change-intention oracle).
 Then invoke the `scaffolding` skill (in brownfield mode it builds a thin frontier inventory of the route-intended scenarios (deferring tooth-bearing pins to first-touch genesis) rather than building a walking skeleton).
