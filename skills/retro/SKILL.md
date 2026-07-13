@@ -104,10 +104,11 @@ D12 scope-out). Everything else self-ratifies and is logged as above.
    in the next vertical slice's work orders — no blanket re-check, just the affected ones. The human
    ratifies the frontier. The **vision** never changes here — only the **route**. The route file is
    human-editable any time; you pick it up at the next dispatch wave.
-   - **Once ratified, rewrite `.reasonable/route.json`** (the machine twin of `route.md` — see `analysis`
-     skill step 10a) with the re-sorted `slices`, a fresh `ratifiedAt` (this re-sort's local ISO
-     timestamp), and `ledgerSeq` re-read from the ledger's current latest `seq` — same shape, same rule:
-     never hand-patch it out of sync with the `route.md` you just re-sorted.
+   - **`route.json` is RETIRED — do not rewrite it.** The re-sorted frontier lives in `route.md` (the
+     human narration) and, for the genesis graph, in the goals/cones `reconcile` reads (`goals.json` — see
+     `analysis` skill step 10a); there is no machine twin to keep in sync. If the re-sort re-charters
+     atoms, that rides the topologist → `genesis-writer` path (a re-ratified `goals.json`/`policy.json`/
+     `ownership.json`), never a `route.json` write.
    - **Then reconcile the ledger's node set against the new route.** For every node the
      re-sort **drops** that was previously planned, cancel it so the tree stops showing it as pending:
      `node ${reasonable}/lib/ledger.mjs append --root <effortRoot> --type node-canceled --node <path> --reason 'route re-sort <date>'`.

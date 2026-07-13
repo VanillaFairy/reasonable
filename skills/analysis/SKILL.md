@@ -60,8 +60,9 @@ The vision you are extracting has three parts:
    blocks the vision (the first of three spike spawn points).
 3. **Draft the initial route.** Produce `.reasonable/route.md`: the ordered vertical slice frontier, best-first
    by integration risk / expected information gain. The first item is always the **walking skeleton**.
-   (The machine twin `.reasonable/route.json` is persisted once this draft is **ratified** — step 10a
-   below — never at the draft stage, since it carries the ratification back-pointers.)
+   `route.md` is the human narration and is **never parsed**; its machine counterpart is the ratified
+   **genesis graph** (`goals.json` + the cones `reconcile` derives), persisted at step 10a — `route.json`
+   is retired.
 4. **Documentation-integration policy.** Survey the project's existing documentation practice (KB,
    INDEX.md, wiki — its own business) and emit `.reasonable/documentation-policy.md`: how contracts
    relate to existing docs, who cites whom, the drift rule. **Recommended default** (not a mandate):
