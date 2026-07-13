@@ -1,10 +1,16 @@
 # Problem: the atom graph has no live dispatcher
 
-**Status:** TODO — problem defined below, with a four-phase build plan (A1–A4). The underlying
-behavior is already designed in `docs/DESIGN-3.0.md` §3/§5/§6/§7; this sequences the *deferred build*
-(`frontier-wave` shipped schematic on purpose — its own comments call the real Spec/Pack/Merge "a
-later hardening pass"), not new design. The two genuinely-open pieces are flagged in each phase:
-ceremony-dial **calibration** (§16 — needs ledger data, not assertable) and **brownfield genesis**.
+**Status:** **A1 LANDED (2026-07-13); A2–A4 TODO.** A1 (genesis producer) is built — the `topologist`
+is dispatched at analysis, a fenced `genesis-writer` persists the ratified `goals.json` + `policy.json` +
+`ownership.json`, charters are appended as `atom-chartered` ledger events, the planned-needs fidelity +
+the ownership-map nesting are wired into the graph projection (`deriveCurrent`), and the `route.json`
+writes are retired. A live effort now produces a non-empty genesis graph (see the corrected A1 "Ships"
+note below for the exact scope — serves-cones are an A2 payoff). The rest of the four-phase build plan
+(A2–A4) is unchanged. The underlying behavior is already designed in `docs/DESIGN-3.0.md` §3/§5/§6/§7;
+this sequences the *deferred build* (`frontier-wave` shipped schematic on purpose — its own comments call
+the real Spec/Pack/Merge "a later hardening pass"), not new design. The two genuinely-open pieces are
+flagged in each phase: ceremony-dial **calibration** (§16 — needs ledger data, not assertable) and
+**brownfield genesis**.
 **Origin:** an architecture analysis (2026-07-13) comparing the 3.0 atom calculus against what the
 live engine actually runs.
 
@@ -63,11 +69,18 @@ vision-class, agent-unwritable — capability, not prompt); `analysis` stops wri
 `route.json`. The `goals`/`policy` loaders and `reconcile`'s preference for `goals.json` already
 exist — this is the producer they've been waiting for.
 
-**Ships:** a live effort finally has a non-empty genesis graph — `needs`/`serves` edges compute,
-cones appear, `reconcile` stops degrading to empty, and `classify()` sets the initial band. **Gap D**
-(the Node/Atom id-duality collapse — one id space, atoms nesting under their `component → subeffort`
-containment path instead of rendering flat beside the 2.x Node tree) lands here, via the ownership
-map. *Open piece: brownfield genesis — how the census skeleton and characterized clauses seed the
+**Ships (as built):** a live effort finally has a non-empty genesis graph — the **planned `needs` edges**
+compute (from charter premises, via `needsEdgesWithPlanned`), the containment tree **nests** under the
+ownership map, `reconcile` stops degrading to empty (it reads `goals.json` and derives the **goal-level**
+cone order — a non-empty `routeOrder`), and `classify()` sets the initial band. **Serves-cones stay empty
+until the first deltas land — an A2 payoff, NOT A1:** `servesEdges` keys off spec-time `deltaClauses` a
+structure-only charter does not have, so feeding `goals.json` alone cannot populate the serves-cones at
+genesis — the goal-level ordering lights up at A1, the cone *contents* fill at A2. **Gap D** (the
+Node/Atom id-duality collapse — one id space, atoms nesting under their `component → subeffort`
+containment path instead of rendering flat beside the 2.x Node tree) lands here, via the ownership map
+(in `deriveCurrent`; `foldAsLived` stays ledger-only and flat). The 2.x route/work-order path is **kept
+as transitional coexistence** until the atom graph becomes the live dispatcher (A3) — A1 is additive, not
+a rip-out. *Open piece: brownfield genesis — how the census skeleton and characterized clauses seed the
 charters (§16) — is deferred; A1 targets greenfield genesis first.*
 
 ### A2 — Real Spec + Pack *(§6 — spec first, pack second)*
