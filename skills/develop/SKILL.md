@@ -182,7 +182,7 @@ skill) does the blocking (gated) or the self-ratify-and-log (autonomous). Every 
 lives here, in the main session, not inside a workflow.
 
 Two engine limits govern what this skill launches directly (architecture §15, §16d):
-- **One-level `workflow()` nesting.** `vertical-slice-runner` cannot call `workflow()` itself, so
+- **One-level `workflow()` nesting.** `frontier-wave` cannot call `workflow()` itself, so
   **spike / scaffold / characterization workflows are launched from the main session**, never inline.
 - **The trap returns, it does not poll.** A machine-to-machine wall crosses via the `agent()` return
   value; only human / cross-session decisions cross via the on-disk inbox (architecture §8).
@@ -227,29 +227,21 @@ BREAKING even while autonomous.
    runs at full strength regardless of tier.** At the scaffold sign-off: gated → **STOP and wait**;
    autonomous → self-ratify-and-log. *(Brownfield: launch `characterization.workflow.js` here instead —
    the analysis-time frontier inventory pass.)*
-6. **Launch one vertical-slice run per vertical slice, and route its `GATE_RESULT` (D4, §7).** For the
-   best-first vertical slice on the route, launch `workflows/vertical-slice-runner.workflow.js` with
-   fresh **args** — vertical-slice id, route snapshot, contract paths, per-vertical-slice budget,
-   `mode` (from `config.runMode`), supervision profile, and the slice's **effective tier**
-   (`slice.tier ?? config.tier`). Re-assert both `runMode` and `tier` from the reconcile briefing. The
-   run drives the slice toward GREEN, persists gate evidence + a proposed route re-sort atomically, and
-   **returns a typed `GATE_RESULT`** — branch on it:
-   - **`green`** → run the **retro** (step 7). Do not open the next slice before it.
-   - **`budget-exhausted`** → a human decision (extend budget / re-plan), **not** a gate. Present
-     `progress` + `lastOutcome`; gated → **wait** (a second extension is BREAKING); autonomous → decide
-     and log (a second extension queues BREAKING).
-   - **`blocked`** → a trap needs a decision (`intent-fork` / `other` fail safe to the human; a
-     `spike-needed` arm means **you** launch `spike.workflow.js` from the main session). Resolve, then
-     re-launch the slice.
-   - **`halt`** → a durability/reconcile halt → present the evidence and **block** in both modes. Never
-     auto-resolve.
-7. **Run the retro (the blocking heartbeat).** On a `green` result, invoke `reasonable:retro`. Re-check
-   the gate evidence yourself, classify every divergence three ways, approve the amendment batch and
-   route re-sort **item by item**, clear the inbox, tune budgets / the supervision dial / **per-slice
-   tier overrides**, and record any `intent-check-failure` (D18). At the retro: gated → **STOP and wait**
-   for explicit approval of each item (silence never ratifies); autonomous → self-ratify-and-log each,
-   queuing the always-escalate classes BREAKING.
-8. **Loop or finish.** Route has more vertical slices → return to step 6 and **re-launch** a freshly
-   parameterized runner for the next best-first slice (inter-slice dynamism rides in the *args* —
-   including any changed effective tier — never in model-authored JS). Route empty → invoke
+6. **Run the vertical-slice loop from the main session.** Invoke `reasonable:vertical-slice-execution`
+   for the best-first vertical slice on the route. That skill launches `workflows/frontier-wave.workflow.js`
+   and routes the exhaustive **seven-variant `GATE_RESULT`** (`goal-green | heartbeat | batch-full |
+   starved | blocked-human | halt | budget-exhausted`, D4/§6/§7) — every gate fired from the main session,
+   in both run modes. Re-assert both `runMode` and `tier` from the reconcile briefing before each run.
+   **Do not re-describe or re-implement that routing here** — `vertical-slice-execution` owns it, so the
+   gate contract lives in exactly one place.
+7. **Run the retro (the blocking heartbeat).** On a `goal-green` or `heartbeat` gate surfaced by
+   `vertical-slice-execution`, invoke `reasonable:retro`. Re-check the gate evidence yourself, classify
+   every divergence three ways, approve the amendment batch and route re-sort **item by item**, clear
+   the inbox, tune budgets / the supervision dial / **per-slice tier overrides**, and record any
+   `intent-check-failure` (D18). At the retro: gated → **STOP and wait** for explicit approval of each
+   item (silence never ratifies); autonomous → self-ratify-and-log each, queuing the always-escalate
+   classes BREAKING.
+8. **Loop or finish.** Route has more vertical slices → return to step 6 for the next best-first slice
+   (inter-slice dynamism rides in the *args* of the next `vertical-slice-execution` run — including any
+   changed effective tier — never in model-authored JS). Route empty → invoke
    `finishing-a-development-branch` to integrate.
