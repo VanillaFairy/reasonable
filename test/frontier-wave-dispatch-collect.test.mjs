@@ -450,5 +450,83 @@ await check('a REAL non-empty ripple manifest has its contract field renamed to 
   assert.ok(!ripplePrompt.includes('"contract":"lexer"'), 'the raw un-renamed contract field must not leak into the verdict-writer prompt');
 });
 
+// ── 11. GAP 3 (A3b-i final-review gap): a retry after reprovision-to-blind-test-writer must ─────
+//    reprovision the lane BACK toward implementer role before redispatching implement:<atomId> —
+//    otherwise the redispatched implementer's very first source-file edit lands in a lane whose
+//    descriptor still says role:'blind-test-writer', and lib/fence.mjs's unconditional
+//    `lane.testEditsAllowed && lane.role === 'blind-test-writer'` check (see fence.mjs ~L425) denies
+//    it before locus is ever even checked. This affects exactly the three failure points that occur
+//    AFTER the unconditional reprovision-to-blind-test-writer has already happened earlier in the
+//    same attempt: lane-committer failure, adjudicator failure, and auditor failure. The implementer's
+//    own first-pass failure (before any reprovision happens) is unaffected and stays covered by the
+//    existing tests above (#6's "provision count stays 1" — a DIFFERENT label prefix from
+//    `reprovision:`, so it is not contradicted by any of the three cases below).
+
+await check('a lane-committer failure after a green implementer pass re-provisions the lane back to implementer role before the retried implement dispatch — proving the redispatch is never fenced out of a stale blind-test-writer-role lane', async () => {
+  const labels = [];
+  let committestsCalls = 0;
+  const agent = async (prompt, opts) => {
+    const label = opts.label || '';
+    labels.push(label);
+    if (label === 'reconcile') return baseBriefing({ mergedSinceGate: 5 });
+    if (label.startsWith('committests:')) {
+      committestsCalls += 1;
+      return committestsCalls === 1 ? { persisted: false, reason: 'commit-gate reported uncommitted work product' } : { persisted: true };
+    }
+    return defaultStub(label);
+  };
+  const result = await runWith(agent);
+  assertValidGate(result);
+  assert.deepStrictEqual(
+    dispatchOrder(labels, ATOM),
+    ['provision', 'implement', 'reprovision', 'blindtest', 'committests', 'reprovision', 'implement', 'reprovision', 'blindtest', 'committests', 'adjudicate', 'audit'],
+    'after committests fails, the very next stage for this atom must be reprovision (back toward implementer role) — not a direct redispatch of implement into a lane still narrowed to blind-test-writer',
+  );
+});
+
+await check('an adjudicator failure after a green implementer pass re-provisions the lane back to implementer role before the retried implement dispatch — proving the redispatch is never fenced out of a stale blind-test-writer-role lane', async () => {
+  const labels = [];
+  let adjudicateCalls = 0;
+  const agent = async (prompt, opts) => {
+    const label = opts.label || '';
+    labels.push(label);
+    if (label === 'reconcile') return baseBriefing({ mergedSinceGate: 5 });
+    if (label.startsWith('adjudicate:')) {
+      adjudicateCalls += 1;
+      return adjudicateCalls === 1 ? { kind: 'other', atomId: ATOM } : { kind: 'green', atomId: ATOM };
+    }
+    return defaultStub(label);
+  };
+  const result = await runWith(agent);
+  assertValidGate(result);
+  assert.deepStrictEqual(
+    dispatchOrder(labels, ATOM),
+    ['provision', 'implement', 'reprovision', 'blindtest', 'committests', 'adjudicate', 'reprovision', 'implement', 'reprovision', 'blindtest', 'committests', 'adjudicate', 'audit'],
+    'after adjudicate fails, the very next stage for this atom must be reprovision (back toward implementer role) — not a direct redispatch of implement into a lane still narrowed to blind-test-writer',
+  );
+});
+
+await check('an auditor failure after a green implementer pass re-provisions the lane back to implementer role before the retried implement dispatch — proving the redispatch is never fenced out of a stale blind-test-writer-role lane', async () => {
+  const labels = [];
+  let auditCalls = 0;
+  const agent = async (prompt, opts) => {
+    const label = opts.label || '';
+    labels.push(label);
+    if (label === 'reconcile') return baseBriefing({ mergedSinceGate: 5 });
+    if (label.startsWith('audit:')) {
+      auditCalls += 1;
+      return auditCalls === 1 ? { kind: 'other', atomId: ATOM } : { kind: 'green', atomId: ATOM };
+    }
+    return defaultStub(label);
+  };
+  const result = await runWith(agent);
+  assertValidGate(result);
+  assert.deepStrictEqual(
+    dispatchOrder(labels, ATOM),
+    ['provision', 'implement', 'reprovision', 'blindtest', 'committests', 'adjudicate', 'audit', 'reprovision', 'implement', 'reprovision', 'blindtest', 'committests', 'adjudicate', 'audit'],
+    'after audit fails, the very next stage for this atom must be reprovision (back toward implementer role) — not a direct redispatch of implement into a lane still narrowed to blind-test-writer',
+  );
+});
+
 if (process.exitCode) console.error(`\nfrontier-wave-dispatch-collect: FAILURES above (${passed} passed).`);
 else console.log(`\nfrontier-wave-dispatch-collect: all ${passed} checks passed. ✓`);
