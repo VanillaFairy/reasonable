@@ -129,6 +129,14 @@ Return the typed `BRIEFING` the `frontier-wave` prologue consumes (it dispatches
 - **The re-derived state.** Current vertical slice, lane statuses (the buckets each was resolved into,
   with the RESOLVED downgrades/re-claims named), the footprints + resource claims + `independent()`
   grouping for the next dispatch wave.
+- **`frontier: string[]`** — the **ready** atom ids (`lib/frontier.mjs`'s `ready(graph, flags)`: state
+  ∈ `{chartered, ready, spec'd}`, minus frozen/guard-halted/barred, whose planned `needs` providers
+  have already merged), ordered **best-first by policy** — argmax over `policy.weights`, ties broken
+  by charter order (the same ordering `spec(top(argmax_policy(frontier)))` consumes, DESIGN-3.0 §6).
+  This is the script's ready-set, copied over, not re-ranked by your own sense of what looks urgent —
+  report it derived, never invented, and keep it bounded to that ready-set (never padded with
+  chartered-but-not-yet-ready atoms). An empty `frontier` is not an error to paper over: it is what
+  the gate reads as starvation (`GATE_RESULT` kind `starved`).
 - **`terminalWorkOrders`** — the ids reconcile.mjs already computed as merged/done. This is a mechanical
   fact, not your judgment call: the route-planner and the script both refuse to re-dispatch anything in
   this set, no matter what a stale `.reasonable/work-orders/<id>.json` spec still says on disk.
