@@ -1,16 +1,19 @@
 # Problem: the atom graph has no live dispatcher
 
-**Status:** **A1 LANDED (2026-07-13); A2–A4 TODO.** A1 (genesis producer) is built — the `topologist`
+**Status:** **A1–A2 LANDED (2026-07-15); A3–A4 TODO.** A1 (genesis producer) is built — the `topologist`
 is dispatched at analysis, a fenced `genesis-writer` persists the ratified `goals.json` + `policy.json` +
 `ownership.json`, charters are appended as `atom-chartered` ledger events, the planned-needs fidelity +
 the ownership-map nesting are wired into the graph projection (`deriveCurrent`), and the `route.json`
-writes are retired. A live effort now produces a non-empty genesis graph (see the corrected A1 "Ships"
-note below for the exact scope — serves-cones are an A2 payoff). The rest of the four-phase build plan
-(A2–A4) is unchanged. The underlying behavior is already designed in `docs/DESIGN-3.0.md` §3/§5/§6/§7;
-this sequences the *deferred build* (`frontier-wave` shipped schematic on purpose — its own comments call
-the real Spec/Pack/Merge "a later hardening pass"), not new design. The two genuinely-open pieces are
-flagged in each phase: ceremony-dial **calibration** (§16 — needs ledger data, not assertable) and
-**brownfield genesis**.
+writes are retired. A2 (real Spec + Pack) is built on top of it — a fenced `spec-author` authors each
+frontier atom's real delta, an independent `footprinter` runs the R4 cohesion check and the checkpoint-2
+spec-time guard over what actually landed, and `frontier-wave`'s Spec+Pack legs pack on the real,
+footprint-disjoint result instead of the `specdAtoms = [{ id: 'a-1' }]` placeholder — Dispatch and Merge
+stay schematic, that's A3's. The rest of the four-phase build plan (A3–A4) is unchanged. The underlying
+behavior is already designed in `docs/DESIGN-3.0.md` §3/§5/§6/§7; this sequences the *deferred build*
+(`frontier-wave`'s Dispatch/Merge legs still shipped schematic on purpose — its own comments call the
+real Dispatch/Merge "a later hardening pass"), not new design. The two genuinely-open pieces are flagged
+in each phase: ceremony-dial **calibration** (§16 — needs ledger data, not assertable) and **brownfield
+genesis**.
 **Origin:** an architecture analysis (2026-07-13) comparing the 3.0 atom calculus against what the
 live engine actually runs.
 
@@ -83,15 +86,40 @@ as transitional coexistence** until the atom graph becomes the live dispatcher (
 a rip-out. *Open piece: brownfield genesis — how the census skeleton and characterized clauses seed the
 charters (§16) — is deferred; A1 targets greenfield genesis first.*
 
-### A2 — Real Spec + Pack *(§6 — spec first, pack second)*
+### A2 — Real Spec + Pack *(§6 — spec first, pack second)* — LANDED
 
-Replace the `specdAtoms = [{ id: 'a-1' }]` placeholder: for the top frontier atom, author its real
-delta (the blind-test-writer translates it, per clause), refine planned → actual edges, and run the
-cohesion check (R4) + the spec-time guard (checkpoint-2) — all before dispatch. Pack on **actual**
-footprints; `lib/frontier.mjs`'s `pack` is already tested and just needs real spec'd atoms to chew
-on.
+Replace the `specdAtoms = [{ id: 'a-1' }]` placeholder: for each frontier atom, author its real
+delta, refine planned → actual edges, and run the cohesion check (R4) + the spec-time guard
+(checkpoint-2) — all before dispatch. Pack on **actual** footprints; `lib/frontier.mjs`'s `pack` is
+already tested and just needed real spec'd atoms to chew on.
 
-**Ships:** `frontier-wave` packs real atoms into real, footprint-disjoint waves.
+**Ships (as built):** `frontier-wave`'s Spec+Pack legs are de-schematized. For every atom in the
+wave's frontier, the fenced `spec-author` authors the real delta — its own component's contract
+text plus the matching `atom-delta-authored` machine delta (`lib/spec.mjs --author`) — moving the
+atom `ready → spec'd`. The read-only `footprinter` then independently runs the R4 cohesion check and
+the checkpoint-2 spec-time guard over what actually *landed* (`lib/spec.mjs --guard`, never the
+author's own say-so — no worker grades its own artifact), and any oversized or guard-halted atom is
+dropped out of the wave before packing. `pack` runs on **actual** footprints (`lib/footprint.mjs`'s
+new `--atoms` mode, sourced from real ledger atoms instead of declared specs) — `frontier-wave` packs
+real atoms into real, footprint-disjoint waves. Two payoffs light up as a direct consequence of real
+deltas existing for the first time: the **serves-cone contents fill** (`servesEdges` now has
+real `deltaClauses` to fold a goal's `scenarioCitations` through, where before it always returned
+`[]`), and the **planned → actual `needs` edges refine** (`needsEdges`' clause-level citations
+replace the coarser genesis-time `plannedNeedsEdges` quotient as each delta lands). See
+`docs/artifacts.md`'s "The spec stage" section for the exact CLI/agent shapes. Dispatch and Merge are
+**untouched, still schematic** — literal prompt strings and a `log()` line — that de-schematization
+is A3's.
+
+**Deferred to A3 (named, not overlooked):** A2 **computes and routes** the two spec-time verdicts; it
+does not persist either one's *effect*. Neither an **R4 split** (chartering the sub-atoms a
+`{kind:'oversized', partition}` verdict implies) nor a **checkpoint-2 halt**'s atom-state change
+(`atom-flag-set: guard-halted`) is written to the ledger today — `frontier-wave` reads the verdict and
+holds the atom out of the wave in memory only; the write-through is the **verdict→state fold**
+(`atom-verdict` → `lib/rewrite.mjs`'s effects → `atom-transitioned`), which is still A3's to wire.
+Likewise the **blast-radius archival lifecycle** (§7.2: a radius closes when its remediation
+amendment batch lands) has no producer yet — `lib/spec.mjs`'s `liveBlastRadii` always reads the
+full, ever-growing live set, since nothing yet retires one. All three ride A3's fold, alongside the
+Dispatch/Merge de-schematization proper.
 
 ### A3 — Real Dispatch + Merge + the verdict→state fold *(§6 + §7 — the meaty phase)*
 
@@ -126,7 +154,9 @@ in code; §16 pins them to real ledger data, i.e. dogfooding reasonable on live 
   first bite: self-contained, it lights up the whole graph, and its acceptance is cleanly testable
   ("does a real effort produce a non-empty genesis graph?").
 - **Risk concentrates in A3** (the verdict→state fold) and **the A1 migration** (route.json →
-  goals.json touches the entire entry flow). A2 is mostly mechanical once A1 lands.
+  goals.json touches the entire entry flow). A2 turned out mostly mechanical once A1 landed, as
+  predicted — its only real judgment call was fencing the spec-author's contract write onto the
+  canonical (no-lane) allowlist rather than the lane-scoped one.
 - **Two things this plan cannot finalize in code:** A4's calibration (dogfooding, above) and
   brownfield genesis (A1 note) — both deliberately left open, not overlooked.
 - **What sits behind this file:** gap **B**'s buildable half is A4; **B**'s calibration is the

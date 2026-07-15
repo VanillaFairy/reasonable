@@ -108,7 +108,7 @@ descriptor), and a subagent's cwd is the effort root, the fence cannot resolve t
 for such a write by path. It governs them instead by the **harness agent-role stamp**
 (`agent_type`, present on every subagent tool call; absent for the main session). The
 role×artifact matrix (in `lib/fence.mjs`): contract-writers (implementer, characterizer,
-scaffolder, census) write `contracts/`; **no role** — not even the main session — writes the
+scaffolder, census, **spec-author** — roadmap A2) write `contracts/`; **no role** — not even the main session — writes the
 ledger directly (every append goes through the ledger controller CLI, a Bash invocation the
 fence does not classify as a file write; F1c); the journal-writer writes the `journal.json`/`inbox.json` index; census writes
 `baseline.json`; the intention-writer writes `intention.md`; the lane-provisioner writes
@@ -193,7 +193,7 @@ orchestrator's Bash:
 | work-orders/`<id>`.json | **work-order-writer** (persists the route-planner's proposed plan, before provisioning) | in-run `agent()` (no-lane path); write-if-absent (immutable) |
 | intention.md | **intention-writer** (after the coherence-grill ratifies) | its own atomic commit |
 | baseline.json + skeleton contracts | **census** (brownfield, at analysis) | Bash + `lib/baseline.mjs` (no-lane path) |
-| contracts/`<component>`.md | **implementer** (enrich grown) · **characterizer** (birth characterized) | in-lane; only the lane's own contracts (§5.10) |
+| contracts/`<component>`.md | **implementer** (enrich grown) · **characterizer** (birth characterized) · **spec-author** (authors the spec-time delta, roadmap A2) | in-lane for implementer/characterizer, only the lane's own contracts (§5.10); **spec-author writes canonically, no-lane** — it runs at the spec stage, before any lane exists, so its own-component write is governed by `REASONABLE_WRITE_PERMS.CONTRACT`, not `CONTRACT_WRITERS` |
 | ledger.jsonl | initialized empty at analysis; thereafter **each worker** appends its own line | via the **ledger controller** (`node lib/ledger.mjs append …` — the sole write path), content-referencing that worker's D3a code commit — *not* part of the git tree (D4/D5) |
 | ledger.jsonl `verifier-verdict` line | **adversary** proposes (read-only, returns it as data); the narrow **verdict-writer** appends it | via the **ledger controller CLI**, content-referencing the judged commit — **not** a git commit of state (D4/D5) |
 | journal.json · inbox.json | **journal-writer** (the single serialized scribe, D3b) | the derived index (rebuildable by reconcile) |
@@ -1089,7 +1089,10 @@ produces one.
   Family 1 node-lifecycle style.
 - **`atom-delta-authored`** — the *initial* delta. Also the event that moves the atom
   `ready -> spec'd`: DESIGN-3.0 frames authoring the delta as what causes that transition, so there
-  is no separate, redundant `atom-transitioned` event for this one hop.
+  is no separate, redundant `atom-transitioned` event for this one hop. **Landed, roadmap A2:**
+  authored by the `spec-author` role and persisted through `lib/spec.mjs --author` (`lib/atom.mjs`'s
+  `authorDelta`, which requires the atom in `ready` and appends this event whole or not at all) — see
+  "The spec stage" below for the CLI and the fences that run over what it persists.
 - **`delta-enrichment`** — the in-flight success path (DESIGN-3.0 §4.1): an implementer learning a
   new must appends one additional clause to the delta without changing lifecycle state. The event
   type name is pinned by DESIGN-3.0 itself, not invented here.
@@ -1226,6 +1229,92 @@ covers the stacked scenario directly). **What remains open afterward:** the *liv
 through the live `append()` path until that store exists) and the band-revert value under an
 out-of-order (non-LIFO) multi-rejection sequence (a narrower residual, explicitly named, not silently
 dropped — see the P7 design doc's Decision 5).
+
+### The spec stage — cohesion, checkpoint-2, the spec CLI (roadmap A2, DESIGN-3.0 §4.3/§6/§7.2)
+
+Once an atom is `ready`, the **spec stage** authors its real delta and clears the two decidable
+fences DESIGN-3.0 gates dispatch on — all of it **before any lane exists**. Three narrow actors:
+
+- **`spec-author`** — the sanctioned author of the spec-time delta (see the `atom-delta-authored`
+  bullet above). For its one dispatched atom it writes the real clause text into **its own
+  component's** contract file only, and persists the matching machine delta as the
+  `atom-delta-authored` event. It never runs the fences below on its own delta — no worker grades
+  its own artifact — and never touches a foreign contract.
+- **`lib/spec.mjs`** — the two pure fences, plus a guarded CLI (mirrors `lib/footprint.mjs`'s
+  `if (basename(process.argv[1]||'')==='…') runCli()` shape, so importing the file never runs the
+  CLI body or exits the host process):
+  - **`cohesionVerdict(atom, componentRoot)`** — DESIGN-3.0 §4.3's minimality/cohesion law: do the
+    delta's clauses form ONE connected component of the cohesion graph (`lib/atom.mjs`'s
+    `cohesionComponents`)? `{kind:'ok'}`, or `{kind:'oversized', partition}` when the delta splits
+    into more than one cluster — the payload an **R4 split** verdict acts on.
+  - **`checkpoint2(closure, radii, {lineageExempt})`** — §7.2's spec-time guard: does the delta's
+    citation closure land inside a **live** blast radius (a component a prior R2 dead-end retired
+    atoms out from under)? No overlap → `{kind:'ok'}`. An overlap HALTs — `{kind:'guard-halted',
+    hit}` — **unless** the atom is lineage-exempt (its own remediation traces back to the R2 gate
+    that opened the radius), in which case it proceeds **with** the hit injected as advisory,
+    `{kind:'ok', injected}`, never silently dropped.
+  - **`liveBlastRadii(effortRoot)`** — folds every ledger event's `effects[].change.blastRadius`
+    array into the current live radius set; empty at greenfield genesis, since no atom-verdict
+    event has ever populated one yet.
+  - **CLI**, both root-scoped (`--root <effortRoot>`, several efforts may share one repo):
+    `node lib/spec.mjs --author --root <r> --atom <id> --clauses <file.json>` — calls
+    `lib/atom.mjs`'s `authorDelta` (`spec-author`'s sole write path; requires the atom `ready`,
+    appends `atom-delta-authored` whole or not at all) — and
+    `node lib/spec.mjs --guard --root <r> [--json] [atomId …]` (default: every chartered atom),
+    whose `--json` verdict shape is machine-parsed downstream by the footprinter (below) — marked
+    `*`:
+    ```json
+    { "atoms": [
+      { "atomId": "a-40", "cohesion": { "kind": "ok" },
+        "closure": ["lexer", "ast"],
+        "checkpoint2": { "kind": "ok" } }
+    ] }
+    ```
+    `closure` (the delta's citation closure) rides along so a later footprinter reuses it instead of
+    recomputing — it is dropped, not restated, in the merged record below.
+- **`footprinter`** — runs `--guard` read-only over the **persisted** delta, so the atom's own
+  author can never self-clear its own fence (the verification-trio law, generalized: worker mutates,
+  a separate read-only role judges). It also runs `lib/footprint.mjs`'s new **`--atoms`** mode —
+  `node lib/footprint.mjs --atoms --root <r> --json [atomId …]` — which folds every **spec'd**
+  chartered atom (non-empty `deltaClauses`) through `lib/graph.mjs`'s `atomFootprint` (locus ∪
+  citation closure) against the **live** contract graph, printing the same
+  `{ footprints: [{id, locus, contracts, resources}], independence: […] }` shape the work-order
+  footprint already uses (above `work-orders/<wo-id>.json`) — just sourced from real ledger atoms
+  instead of declared work-order specs. The footprinter merges that per-`id` with the guard's
+  per-`atomId` output and returns, per atom, the merged verbatim record that `frontier-wave`'s Pack
+  step reads directly — marked `*`:
+    ```json
+    { "id": "a-40", "locus": ["lib/lexer/tokenizer/scan.mjs"],
+      "contracts": ["lexer", "ast"], "resources": [],
+      "cohesion": { "kind": "ok" }, "checkpoint2": { "kind": "ok" } }
+    ```
+
+**The A2/A3 boundary.** A2 stops at **computing and routing** the two verdicts: `frontier-wave`
+reads `cohesion`/`checkpoint2` off the merged record and drops an oversized or guard-halted atom out
+of the wave it packs on actual footprints. It does **not** persist either verdict's *effect*: an R4
+split (chartering the sub-atoms `cohesionVerdict`'s `partition` implies) and a checkpoint-2 halt's
+atom-state change (`atom-flag-set: guard-halted`) are **rewrite-engine** effects (`lib/rewrite.mjs`'s
+R3/R4 rows, "The rewrite engine" above) that only land once A3 wires the verdict→state fold
+(`docs/roadmap/atom-graph-orchestrator.md`). Likewise the blast-radius **lifecycle** — a radius
+archiving when its remediation amendment batch lands (§7.2's "radius lifecycle pinned") — is not
+built here: `liveBlastRadii` always reads the **full**, ever-growing live set; A2 has no producer
+that ever retires a radius, so archival is A3's to build alongside the fold.
+
+Two forward-notes from the A2 review, for whoever wires A3:
+
+1. `checkpoint2`'s `lineageExempt` keys on `atom.lineage.startsWith('R2')`, but `lib/rewrite.mjs`'s
+   R2 dead-end rule stamps that literal `lineage: 'R2-gate'` onto the **retired** atom itself (the
+   dead end, which is now retired — never spec'd again); the actual **remediation** node (the
+   `amend-0` sub-atom §7.2's exemption exists for) is stamped `lineage: <atomId>` instead — the
+   *parent's own id*, which does not start with `'R2'` at all. As written, `startsWith('R2')` would
+   never actually exempt the remediation atom it's meant for once `lineage` is folded onto a live
+   atom record — the match convention needs revisiting alongside that wiring, not just the wiring
+   itself. Today the gap is inert (no atom carries `lineage` yet, so every delta folds
+   `lineageExempt: false` regardless).
+2. `frontier` — the policy-ordered ready-atom-id list `agents/reconciler.md`'s briefing now carries
+   — has no `lib/` producer yet; the **reconciler** agent computes it at dispatch time
+   (`lib/frontier.mjs`'s `ready(graph, flags)`, ranked by `policy.weights`). A dedicated
+   `lib/frontier.mjs`-adjacent producer is A3-adjacent follow-up work, not an A2 gap.
 
 ---
 
@@ -1511,7 +1600,9 @@ descriptor when it dispatches.
 gate). The **redispatch guard** keys refutation-surviving verdicts on it: an
 identical work order cannot be re-dispatched unless an input changed (so the hash
 changes). `footprint` is **not stored** — it is *computed* from `locus` plus the
-citation closure of `inputs.contracts` at dispatch time (`lib/footprint.mjs`).
+citation closure of `inputs.contracts` at dispatch time (`lib/footprint.mjs`). (`lib/footprint.mjs`
+also has a second footprint *source*, `--atoms`, folding real ledger atoms instead of work-order
+specs — see "The spec stage" above, roadmap A2.)
 
 `dependsOn` (Layer 2) — the **readiness/ordering edge**: the ids of work orders whose *output* this
 one needs to already exist before it can start. `[]` (or omitted) means "depends on nothing already in
