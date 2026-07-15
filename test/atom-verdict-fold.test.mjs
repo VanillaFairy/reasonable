@@ -24,7 +24,7 @@ import { mkdtempSync, mkdirSync, writeFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
-import { foldAtomFromEvents, charterAtom, loadAtom } from '../lib/atom.mjs';
+import { foldAtomFromEvents, charterAtom, loadAtom, FLAG_NAMES } from '../lib/atom.mjs';
 import { append } from '../lib/ledger.mjs';
 import { foldAsLived, deriveCurrent } from '../lib/graph.mjs';
 
@@ -447,6 +447,59 @@ check("foldAtomFromEvents: two same-event effect entries targeting the same atom
     + 'that special-cased same-event conflicts (e.g. first-write-wins, or "highest-severity entry '
     + 'wins") would land on "ready" instead of the actual last entry, "packed"',
   );
+});
+
+// ── (j) flag-name validation (final-review gap): the write side (setFlag/clearFlag) already ─────
+// rejects any flag outside FLAG_NAMES via isValidFlag before appending an atom-flag-set/-cleared
+// event — the overlay must hold the READ/fold side to that same discipline instead of trusting
+// whatever string sits in change.flag. The original audit charge named this scenario explicitly
+// ("try {flag:'bogus', op:'set'} and confirm the fold neither throws nor sets a non-FLAG_NAMES
+// flag") but nothing above actually asserts it; this closes that gap.
+
+const bogusFlagEvents = [
+  { seq: 1, type: 'atom-chartered', component: 'lexer', premises: [], purpose: 'x', locus: [], order: 0 },
+  {
+    seq: 2, type: 'atom-verdict', atomId: 'a-1', kind: 'checkpoint',
+    effects: [
+      { nodeId: 'a-1', change: { flag: 'bogus-flag-name', op: 'set' } },
+      { nodeId: 'a-1', change: { flag: 'frozen', op: 'set' } },
+    ],
+  },
+];
+
+check("foldAtomFromEvents: a node effect naming a flag outside FLAG_NAMES ('bogus-flag-name') never lands in .flags, while a legitimate flag in the SAME effects array still sets normally", () => {
+  assert.doesNotThrow(() => foldAtomFromEvents(bogusFlagEvents, 'a-1'));
+  const a1 = foldAtomFromEvents(bogusFlagEvents, 'a-1');
+  assert.ok(
+    !a1.flags.has('bogus-flag-name'),
+    "op:'set' on a flag name outside FLAG_NAMES must degrade to a no-op — setFlag/clearFlag already "
+    + 'reject this on the write side via isValidFlag; the fold-side overlay must hold the same line, '
+    + 'not trust whatever string sits in change.flag',
+  );
+  assert.ok(
+    a1.flags.has('frozen'),
+    'sanity: a genuine FLAG_NAMES member in the same effects array must still set correctly — the fix '
+    + 'must reject only names outside FLAG_NAMES, not flag-setting in general',
+  );
+  assert.deepStrictEqual(
+    [...a1.flags].sort(), ['frozen'],
+    'the final flag set must contain exactly the legitimate flag, nothing named by the bogus entry',
+  );
+});
+
+check('foldAtomFromEvents: a node effect clearing a flag outside FLAG_NAMES is also a no-op (mirrors the set-side check, per isValidFlag being used identically in setFlag AND clearFlag)', () => {
+  const preSet = [
+    { seq: 1, type: 'atom-chartered', component: 'lexer', premises: [], purpose: 'x', locus: [], order: 0 },
+    { seq: 2, type: 'atom-verdict', atomId: 'a-1', kind: 'checkpoint', effects: [{ nodeId: 'a-1', change: { flag: 'frozen', op: 'set' } }] },
+    { seq: 3, type: 'atom-verdict', atomId: 'a-1', kind: 'checkpoint', effects: [{ nodeId: 'a-1', change: { flag: 'bogus-flag-name', op: 'clear' } }] },
+  ];
+  const a1 = foldAtomFromEvents(preSet, 'a-1');
+  assert.ok(
+    a1.flags.has('frozen'),
+    "a clear op targeting a name outside FLAG_NAMES must not touch .flags at all — 'frozen' (set two "
+    + "events earlier, unrelated to the bogus clear) must still be present",
+  );
+  assert.equal(FLAG_NAMES.includes('bogus-flag-name'), false, 'sanity: the probe name really is outside FLAG_NAMES');
 });
 
 for (const t of tmps) { try { rmSync(t, { recursive: true, force: true }); } catch { /* best effort */ } }
