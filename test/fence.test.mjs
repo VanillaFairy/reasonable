@@ -233,6 +233,13 @@ check('two-root: canonical contract write by implementer → allow', () => {
     false,
   );
 });
+check('two-root: canonical contract write by spec-author → allow (A2 spec-time delta)', () => {
+  const { root } = newTwoRoot();
+  assert.equal(
+    runFence(root, as(edit(root, '.reasonable/contracts/graph-canvas.md'), 'reasonable:spec-author')).denied,
+    false,
+  );
+});
 check('two-root: canonical contract write by a read-only role → deny', () => {
   const { root } = newTwoRoot();
   assert.ok(runFence(root, as(edit(root, '.reasonable/contracts/graph-canvas.md'), 'reasonable:auditor')).denied);

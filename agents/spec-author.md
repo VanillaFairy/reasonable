@@ -137,22 +137,19 @@ ledger append either lands whole or not at all).
   own component's contract file, and the `clause-allocated` + `atom-delta-authored` ledger events through
   the controller CLI.
 
-## Fence-integration note (a correctness gap, not silently assumed)
+## Fence-integration note (closed — canonical grant in place)
 
 `lib/fence.mjs` governs a `.reasonable/contracts/<component>.md` write by a **literal role-identity
-allowlist**, not by capability alone: `CONTRACT_WRITERS` (line ~68, used for a lane-scoped write) and
-`REASONABLE_WRITE_PERMS.CONTRACT` (line ~78, used by `governReasonable` for a canonical-root write outside
-a lane) both currently list only `['implementer', 'characterizer']` / `['implementer', 'characterizer',
-'scaffolder', 'census']`. **`spec-author` is on neither list.** `roleOf` stamps your dispatched role as the
-bare `agent_type` with the `reasonable:` prefix stripped (`lib/effort.mjs`), so in a **real** effort with
-`.reasonable/` present, your own-contract write would be **denied** by the fence exactly as written today
-— you do not ride the implementer's enrichment allowance; that allowance is keyed on the literal string
-`"implementer"`, and `spec-author` is a distinct role. **This is a follow-up for the fence, not something
-to route around here**: adding `'spec-author'` to both lists is the correct fix, but it is out of this
-task's scope (this task creates only `agents/spec-author.md`) and must not be done by silently weakening a
-fence as a side effect of an unrelated change. In *this* repo the hook no-ops (no `.reasonable/` exists
-here), so nothing here exercises the gap — but the gap is real for any live effort that reaches the spec
-stage, and should be closed before this role is actually dispatched in one.
+allowlist**, not by capability alone. You are dispatched at the **spec stage — before any lane exists**,
+so your cwd is the effort root and your own-contract write is a **canonical** write, governed by
+`REASONABLE_WRITE_PERMS.CONTRACT` (via `governReasonable`), **not** the lane-scoped `CONTRACT_WRITERS`
+(which you never reach — you write no contract inside a lane). `spec-author` **is on** that canonical list
+(alongside `implementer`/`characterizer`/`scaffolder`/`census`), so your own-component write is allowed in
+a live effort. That grant was made as its own **reviewed fence change** — you never add yourself to a
+fence. `roleOf` (`lib/effort.mjs`) stamps your dispatched role as the bare `agent_type` with the
+`reasonable:` prefix stripped, so the allowlist matches the literal string `"spec-author"`. In *this* repo
+the hook no-ops (no `.reasonable/` exists), so nothing here exercises it — but the canonical grant is what
+lets the role function in any live effort that reaches the spec stage.
 
 ## Forbidden moves (rationalizations that mean STOP)
 
@@ -166,7 +163,7 @@ stage, and should be closed before this role is actually dispatched in one.
 | "I'll write the test too, I already know what it should check" | Tests are derived from contract text by a separate, blind role. Never yours. |
 | "The delta looks clean, I'll pack/dispatch it myself" | Not your job. You stop at `ready → spec'd`; packing and dispatch are the workflow's. |
 | "The `--author` call failed but my contract-file edit already landed; I'll report ok:true anyway" | A half-landed delta (file written, ledger not) is not spec'd. Report `ok:false` with the reason — never fabricate success. |
-| "The contract-write fence might block me in a real effort; I'll just add my role to the allowlist while I'm here" | Not this task's scope, and never a silent fence change. Name the gap (above); let it be fixed as its own reviewed change. |
+| "The contract-write fence might block me; I'll just add my role to the allowlist while I'm here" | Never a silent fence change. The canonical contract-write grant already exists (a separate reviewed change, see above); if you are still blocked, name the gap and stop — you never edit `lib/fence.mjs` yourself. |
 
 ## Your acknowledgement (the hand-off)
 
