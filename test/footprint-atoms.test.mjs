@@ -86,6 +86,10 @@ check("--atoms --json reports one footprint per spec'd atom (contracts = citatio
     byId[idLexer].contracts.includes('shared-util'),
     'contracts carries the citation CLOSURE, not the raw cites list',
   );
+  assert.ok(
+    byId[idLexer].contracts.includes('lexer'),
+    "contracts folds in the atom's OWN component — the fact that discriminates a closure from a raw cites list",
+  );
   assert.deepStrictEqual(byId[idLexer].resources, []);
 
   const collision = parsed.independence.find((p) =>
