@@ -251,6 +251,7 @@ function budgetCeiling(atomId, stage, result) {
 
 async function dispatchAtom(atomId) {
   let worktree = null;
+  let laneRole = null;
   let attempts = 0;
   let lastFailure = null;
 
@@ -267,6 +268,23 @@ async function dispatchAtom(atomId) {
         continue;
       }
       worktree = ack.worktree;
+      laneRole = 'implementer';
+    } else if (laneRole !== 'implementer') {
+      // A retry is re-entering the loop with the lane still narrowed to a later stage's role (the
+      // reprovision-to-blind-test-writer below already ran earlier in this attempt). Reprovision back
+      // to 'implementer' BEFORE redispatching the implementer — otherwise its very first source edit
+      // lands in a lane whose descriptor still reads role:'blind-test-writer', and lib/fence.mjs
+      // denies it unconditionally before locus is even checked.
+      const ack = await guard(() => agent(lanePrompt(args, atomId, 'implementer', worktree), { label: `reprovision:${atomId}` }));
+      const bc = budgetCeiling(atomId, 'lane-provisioner (reprovision to implementer)', ack);
+      if (bc) return bc;
+      if (!ack || !ack.worktree || ack.descriptorWritten !== true) {
+        lastFailure = { stage: 'reprovision-to-implementer', ack };
+        if (attempts >= RETRY_CAP) return atomBlockedHuman(atomId, lastFailure);
+        continue;
+      }
+      worktree = ack.worktree;
+      laneRole = 'implementer';
     }
 
     const impl = await guard(() => agent(implementPrompt(args, atomId, worktree, attempts), { label: `implement:${atomId}` }));
@@ -298,6 +316,7 @@ async function dispatchAtom(atomId) {
       continue;
     }
     worktree = reprov.worktree;
+    laneRole = 'blind-test-writer';
 
     const bt = await guard(() => agent(blindTestPrompt(args, atomId, worktree), { label: `blindtest:${atomId}` }));
     const btBc = budgetCeiling(atomId, 'blind-test-writer', bt);
