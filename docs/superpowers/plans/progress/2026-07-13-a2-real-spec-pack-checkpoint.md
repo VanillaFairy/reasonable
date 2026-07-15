@@ -1,45 +1,59 @@
-# A2 Real Spec + Pack — execution checkpoint
+# A2 Real Spec + Pack — execution checkpoint (COMPLETE)
 
-Branch: `a2-real-spec-pack` (off `master` @ `0091571`, v3.3.0). Execution: subagent-driven-development.
+Branch: `a2-real-spec-pack` (off `master` @ `0091571`, v3.3.0 → **v3.4.0**). Execution:
+subagent-driven-development, 4 waves. **All 9 tasks landed; final adversarial review = SHIP.**
 
-## Status
+## Status — all complete
 
-| Task | State | Commit(s) |
-|---|---|---|
-| T1 lib/spec.mjs (fences + CLI) | ✅ done, reviewed (APPROVE) | `cc6a5b0` |
-| T2 footprint `--atoms` + export atomFootprint | ✅ done, reviewed (APPROVE) + hardened | `1d4efd1`, `febf489` |
-| T5 reconciler `frontier` briefing | ✅ done, reviewed (APPROVE) | `b32b6fa` |
-| T3 spec-author agent | ⏳ Wave 2 | — |
-| T4 footprinter runs spec fences | ⏳ Wave 2 | — |
-| T7 acceptance test | ⏳ Wave 2 | — |
-| T6 workflow Spec+Pack | ⏳ Wave 3 | — |
-| T8 docs (artifacts + roadmap) | ⏳ Wave 3 | — |
-| T9 bump v3.4.0 + finish | ⏳ Wave 4 | — |
+| Task | Commit(s) |
+|---|---|
+| T1 lib/spec.mjs (fences + CLI) | `cc6a5b0` |
+| T2 footprint `--atoms` + export atomFootprint | `1d4efd1`, `febf489` |
+| T5 reconciler `frontier` briefing | `b32b6fa` (+ `2409eb0` framing fix) |
+| T4 footprinter runs spec fences | `c65a618` (+ `2409eb0` wrapper-key pin) |
+| T7 acceptance test | `bc2acd4` |
+| T3 spec-author agent | `b7f01d3` |
+| **fence grant** (supervisor add — spec-author canonical contract-write) | `d9ef706` |
+| T6 workflow Spec+Pack de-schematized | `fc40b0e` |
+| T8 docs (artifacts + roadmap A2 LANDED) | `cfc399d` |
+| T9 version bump v3.4.0 | `d57d55f` |
+| final-review follow-up fixes | `2409eb0` |
 
-Full suite after Wave 1: **87/87 green**.
+Full suite: **88/88 green** throughout. Every task got a two-stage review (code tasks via subagent;
+prose/doc tasks direct). Final whole-branch adversarial review: SHIP.
 
-## Discovered actions / gotchas (for later waves + project KB)
+## Scope extensions beyond the written plan (deliberate, for A2 to actually function)
 
-- **Harness `isolation: worktree` branches from a STALE base** (here `7ebcd6c`, v3.2.2 — pre-A1), NOT
-  the current HEAD/dev branch. A naive `git merge` of such a worktree branch reverts intervening work
-  (A1 files, plugin.json). **Integrate stale worktree commits with `git cherry-pick <sha>`** (applies
-  only the commit's own patch; 3-way merges cleanly onto the dev branch). Verified: T2's `graph.mjs`
-  export auto-merged onto A1's `graph.mjs`. → For the remaining (dependency-bearing) waves, run agents
-  **without worktree isolation** in the integrated checkout (disjoint files per wave; supervisor commits).
-- **Direct-write ledger fixtures in tests:** `lib/ledger.mjs`'s `append()` recomputes `effects` for
-  `atom-verdict` events (via `computeVerdictEffects`) and would discard a hand-supplied `effects`
-  payload. To seed a synthetic verdict/blastRadius, write the raw line:
-  `appendFileSync(join(root,'.reasonable','ledger.jsonl'), JSON.stringify(obj)+'\n')` (see
-  `test/floor-verdict.test.mjs`, `test/fireside-incident.test.mjs`). Used by `liveBlastRadii`'s tests.
+- **Fence grant (`d9ef706`)** — the plan flagged the spec-author's contract-write fence gap as a
+  follow-up; it is load-bearing (the role can't run without it), so it was closed within A2 as the
+  minimal correct grant (`spec-author` → `REASONABLE_WRITE_PERMS.CONTRACT` only; never the lane-scoped
+  `CONTRACT_WRITERS`, since it writes pre-lane). Mirrors A1's genesis-writer grant. + a fence test.
 
-## Forward-notes carried into A3 (from reviews)
+## Gotchas (for future waves / project KB)
 
-- **checkpoint2 lineage-exemption matching (from T1 review).** `checkpoint2`'s `lineageExempt` keys on
-  `atom.lineage.startsWith('R2')`, but `lib/rewrite.mjs` stamps `lineage: 'R2-gate'` on the *retired*
-  atom and the *parent id* on the *remediation* atom. The atom fold (`foldAtomFromEvents`) does not
-  populate `atom.lineage` today, so the exemption is inert in A2. When A3 wires `lineage` into the fold,
-  the matching must be revisited so the remediation atoms (the crater's only exit) actually get the
-  proceed-with-injection exemption.
-- **`frontier` has no lib producer yet (from T5).** The reconciler *documents* returning `frontier`;
-  its runtime computation is the reconciler agent's remit (it already emits `footprints`/`independent()`
-  grouping). If a lib helper is wanted, it's a small follow-up. A2's workflow test stubs the briefing.
+- **Harness `isolation: worktree` branches from a STALE base** (`7ebcd6c`, pre-A1), NOT current HEAD.
+  Integrate such worktree commits with `git cherry-pick <sha>` (3-way merges the commit's own patch
+  cleanly), NOT `git merge` (which reverts intervening work). Dependency-bearing waves ran without
+  isolation in the integrated checkout (disjoint files, supervisor commits).
+- **Direct-write ledger fixtures:** `lib/ledger.mjs` `append()` recomputes `effects` for `atom-verdict`
+  events, discarding a hand-supplied `effects`. Seed synthetic radii with
+  `appendFileSync(join(root,'.reasonable','ledger.jsonl'), JSON.stringify(obj)+'\n')`
+  (see `test/floor-verdict.test.mjs`).
+
+## Follow-ups for A3 (named, not lost)
+
+From the A2/A3 boundary (roadmap + artifacts.md) and the reviews:
+1. **Verdict→state fold** — persist the effects A2 only computes+routes: an R4 split (charter the
+   sub-atoms) and a checkpoint-2 halt (`atom-flag-set: guard-halted`) via `lib/rewrite.mjs` → ledger.
+2. **Blast-radius archival lifecycle** (§7.2) — `liveBlastRadii` reads the full ever-growing set; A3
+   must retire a radius when its remediation amendment batch lands.
+3. **`checkpoint2` lineage-exemption matching** — `lineageExempt` keys on `atom.lineage.startsWith('R2')`,
+   but `lib/rewrite.mjs` stamps `'R2-gate'` on the *retired* atom and the *parent id* on the
+   *remediation* atom (the node the exemption is for). Revisit the match convention when A3 folds
+   `lineage` onto a live atom record. Inert today (no atom carries `lineage`).
+4. **`frontier` mechanical producer** — the reconciler derives the ready SET from `ready()` over its
+   folded graph; a dedicated CLI producer + the calibrated policy ORDERING (§16/A4) are follow-ups.
+5. **Minor** — a `spec-author` `ok:false` is silently excluded from `specdIds` with no `log()` (unlike
+   an R4/checkpoint-2 drop, which logs). Add an observability line.
+6. **Minor** — add a fence test proving `spec-author` is *denied* an in-lane contract write (positively
+   confirms the lane-scoped `CONTRACT_WRITERS` exclusion is load-bearing).
