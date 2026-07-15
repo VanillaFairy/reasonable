@@ -335,6 +335,120 @@ check('integration: real append() code-computes a checkpoint\'s provisional effe
   assert.equal(after.state, 'ready', 'loadAtom (which folds via foldAtomFromEvents) must reflect the verdict\'s provisional state effect once the overlay exists');
 });
 
+// ── gap tests (adversarial audit follow-up): garbage-op safety, band/topology isolation, ──────
+// ── same-event last-write-wins — invariants the spec names but the original suite didn't assert ─
+//
+// A third agent adversarially audited both this suite and the foldAtomFromEvents implementation —
+// reading the real code and hand-tracing adversarial inputs through it — and returned PASS: every
+// case tried is already handled correctly. It also named three invariants the spec states
+// explicitly, that the code already honors, but that nothing above actually asserts. The three
+// checks below close that coverage gap; they are not expected to (and must not) change any
+// existing behavior.
+
+// ── (g) garbage-op safety: spec item 4 — "a garbage op (not exactly 'set'/'clear') must degrade ──
+// to a no-op, never throw, never guess." Three distinct flavors of garbage in one check, each a
+// candidate for a different plausible implementation bug: guessing on an unrecognized op, treating
+// a missing op as an implicit set, or case-folding the comparison.
+
+const garbageOpEvents = [
+  { seq: 1, type: 'atom-chartered', component: 'lexer', premises: [], purpose: 'x', locus: [], order: 0 },
+  { seq: 2, type: 'atom-verdict', atomId: 'a-1', kind: 'checkpoint', effects: [{ nodeId: 'a-1', change: { flag: 'frozen', op: 'toggle' } }] },
+];
+const missingOpEvents = [
+  { seq: 1, type: 'atom-chartered', component: 'lexer', premises: [], purpose: 'x', locus: [], order: 0 },
+  { seq: 2, type: 'atom-verdict', atomId: 'a-1', kind: 'checkpoint', effects: [{ nodeId: 'a-1', change: { flag: 'frozen' } }] },
+];
+const wrongCaseOpEvents = [
+  { seq: 1, type: 'atom-chartered', component: 'lexer', premises: [], purpose: 'x', locus: [], order: 0 },
+  { seq: 2, type: 'atom-verdict', atomId: 'a-1', kind: 'checkpoint', effects: [{ nodeId: 'a-1', change: { flag: 'frozen', op: 'SET' } }] },
+];
+
+check("foldAtomFromEvents: a garbage op ('toggle', absent, or wrong-case 'SET') always degrades to a no-op — .flags stays empty, never throws", () => {
+  assert.doesNotThrow(() => foldAtomFromEvents(garbageOpEvents, 'a-1'));
+  assert.doesNotThrow(() => foldAtomFromEvents(missingOpEvents, 'a-1'));
+  assert.doesNotThrow(() => foldAtomFromEvents(wrongCaseOpEvents, 'a-1'));
+
+  assert.equal(
+    foldAtomFromEvents(garbageOpEvents, 'a-1').flags.size, 0,
+    'op:"toggle" is not "set" or "clear" — an implementation that guesses on an unrecognized op '
+    + '(e.g. treats any non-"clear" op as an implicit set) would wrongly add "frozen" here',
+  );
+  assert.equal(
+    foldAtomFromEvents(missingOpEvents, 'a-1').flags.size, 0,
+    'change.flag with no change.op at all must not default to "set" — an implementation that treats '
+    + '"a flag name is present" as sufficient for a set would wrongly add "frozen" here',
+  );
+  assert.equal(
+    foldAtomFromEvents(wrongCaseOpEvents, 'a-1').flags.size, 0,
+    'op must match "set" EXACTLY (case-sensitive) — an implementation that lowercases/normalizes op '
+    + 'before comparing would wrongly add "frozen" here',
+  );
+});
+
+// ── (h) isolation: two more non-lifecycle effect shapes the spec names but the existing suite ────
+// (section (e) above) never exercised — a band-escalation effect (lib/rewrite.mjs's
+// ceremonyEscalation / lib/ledger.mjs's ratification-reject unwind path) and a topology-proposal
+// effect (lib/rewrite.mjs's ruleIllegible, R8). Neither change shape carries a `state` or `flag`
+// key, so per spec item 3 neither is a lifecycle fact — both must be inert on state/flags. Both
+// target ids ("some-cone-id", "topology") were never chartered as real atoms, same as the existing
+// birth-effect case above — folding them directly must not crash, but materializing them is out of
+// scope.
+
+const bandTopologyEvents = [
+  { seq: 1, type: 'atom-chartered', component: 'lexer', premises: [], purpose: 'x', locus: [], order: 0 },
+  { seq: 2, type: 'atom-transitioned', atomId: 'a-1', from: 'chartered', to: 'ready' },
+  {
+    seq: 3, type: 'atom-verdict', atomId: 'a-1', kind: 'ripple',
+    effects: [
+      { nodeId: 'some-cone-id', change: { band: 'full', from: 'lite', armed: ['deep-audit'] } },
+      { nodeId: 'topology', change: { blocked: true, reason: 'genesis-R8', proposal: {} } },
+    ],
+  },
+];
+
+check("foldAtomFromEvents: a band-escalation effect ({band,from,armed}) and a topology-proposal effect ({blocked,reason,proposal}) neither crash the fold nor touch a real atom's state/flags", () => {
+  assert.doesNotThrow(() => foldAtomFromEvents(bandTopologyEvents, 'a-1'));
+  assert.doesNotThrow(() => foldAtomFromEvents(bandTopologyEvents, 'some-cone-id'));
+  assert.doesNotThrow(() => foldAtomFromEvents(bandTopologyEvents, 'topology'));
+
+  const a1 = foldAtomFromEvents(bandTopologyEvents, 'a-1');
+  assert.equal(
+    a1.state, 'ready',
+    'neither the band-escalation entry (addressed to "some-cone-id") nor the topology-proposal '
+    + 'entry (addressed to "topology") names a-1 — an implementation that reads {band,from,armed} or '
+    + '{blocked,reason,proposal} as a lifecycle fact, or leaks unaddressed entries onto the folded '
+    + 'atom, would corrupt a-1\'s state here',
+  );
+  assert.equal(a1.flags.size, 0, 'same reasoning as above, for flags');
+});
+
+// ── (i) same-event last-write-wins: spec item 5, "later entry wins, plain ledger-order fold" — no ─
+// special conflict-resolution logic. Two entries in ONE event's .effects array both target a-1's
+// state; 'ready' -> 'packed' is not a legal single-step lifecycle transition, but the fold never
+// validates transitions on effect-carried state (it trusts pre-validated effects), so these two
+// DISTINCT values are a safe pair to prove fold ORDER with — a same-value pair would prove nothing.
+
+const sameEventDoubleStateEvents = [
+  { seq: 1, type: 'atom-chartered', component: 'lexer', premises: [], purpose: 'x', locus: [], order: 0 },
+  {
+    seq: 2, type: 'atom-verdict', atomId: 'a-1', kind: 'checkpoint',
+    effects: [
+      { nodeId: 'a-1', change: { state: 'ready' } },
+      { nodeId: 'a-1', change: { state: 'packed' } },
+    ],
+  },
+];
+
+check("foldAtomFromEvents: two same-event effect entries targeting the same atom's state — the LAST entry wins (plain left-to-right fold, not first-write-wins)", () => {
+  const a1 = foldAtomFromEvents(sameEventDoubleStateEvents, 'a-1');
+  assert.equal(
+    a1.state, 'packed',
+    'entries fold in array order within the same event, same as across events — an implementation '
+    + 'that special-cased same-event conflicts (e.g. first-write-wins, or "highest-severity entry '
+    + 'wins") would land on "ready" instead of the actual last entry, "packed"',
+  );
+});
+
 for (const t of tmps) { try { rmSync(t, { recursive: true, force: true }); } catch { /* best effort */ } }
 
 if (process.exitCode) console.error(`\natom-verdict-fold: FAILURES above (${passed} passed).`);
