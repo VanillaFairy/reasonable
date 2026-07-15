@@ -137,7 +137,12 @@ Return the typed `BRIEFING` the `frontier-wave` prologue consumes (it dispatches
   the graph you already fold for this briefing. It is not a guess, and it is not one of the scripts
   whose output you must not eyeball: it is a mechanical predicate over derived state (a dedicated
   `frontier`-producer CLI is a named follow-up — until it lands, you evaluate the documented predicate,
-  you never invent membership). The policy **ordering** (`argmax` over `policy.weights`, ties in charter
+  you never invent membership). `flags`, `ready()`'s second argument, is itself a mechanical
+  derivation: call `lib/frontier.mjs`'s `readyFlagLists(graph.atoms)` on the SAME folded atoms,
+  reading each atom's FOLDED `.flags` Set (never a hand-authored list) — it is the one place that
+  translates the fold's hyphenated literals (`'guard-halted'`, `'dispatch-barred'`) into `ready()`'s
+  camelCase param shape, and its output is passed straight through as `ready(graph,
+  readyFlagLists(graph.atoms))`. The policy **ordering** (`argmax` over `policy.weights`, ties in charter
   order — the ranking `spec(top(argmax_policy(frontier)))` consumes, §6) is **best-effort until the
   ceremony dial is calibrated** (§16/A4): keep it bounded to the ready set (never padded with
   chartered-but-not-yet-ready atoms), report it derived, and do not agonize over the exact rank. An
