@@ -66,6 +66,17 @@ function baseBriefing(over = {}) {
 // A single-atom, cohesive, checkpoint-2-clean footprint — the default so a wave forms even when a
 // test only cares about some other step (gate routing, budget, roles). Tests that need a specific
 // pack shape (multi-atom, R4 drop, checkpoint-2 drop) override 'spec-author'/'footprinter' directly.
+function atomIdFromLabel(label) {
+  const idx = (label || '').indexOf(':');
+  return idx === -1 ? undefined : label.slice(idx + 1);
+}
+
+// A3b-i T3 (test/frontier-wave-dispatch-collect.test.mjs is the locked behavioral contract) replaced
+// the schematic Dispatch/Collect block with the real per-atom pipeline, which dispatches atomId-
+// suffixed labels (`provision:<id>`, `implement:<id>`, …) instead of the old bare `'implementer'` /
+// `'blind-test-writer'` / `'auditor'`. A green default for each new label keeps this file's own
+// pre-A3b-i checks (gate routing / roles / packing, written before the real pipeline existed)
+// exercising a wave that actually completes, without changing any of their assertions' intent.
 function defaultStub(label) {
   if (label === 'spec-author') return { ok: true, atomId: ATOM };
   if (label === 'footprinter') {
@@ -75,6 +86,15 @@ function defaultStub(label) {
       ],
     };
   }
+  if (label.startsWith('provision:') || label.startsWith('reprovision:')) {
+    const id = atomIdFromLabel(label);
+    return { provisioned: true, worktree: `/tmp/lane/${id}`, branch: `lane/${id}`, descriptorWritten: true, depsReady: true, journalRecorded: true };
+  }
+  if (label.startsWith('implement:')) return { kind: 'green', atomId: atomIdFromLabel(label) };
+  if (label.startsWith('blindtest:')) return { done: true };
+  if (label.startsWith('committests:')) return { persisted: true, committed: ['test/x.test.mjs'] };
+  if (label.startsWith('adjudicate:')) return { kind: 'green', atomId: atomIdFromLabel(label) };
+  if (label.startsWith('audit:')) return { kind: 'green', atomId: atomIdFromLabel(label) };
   return {};
 }
 
@@ -116,15 +136,16 @@ for (const runMode of ['gated', 'autonomous']) {
   });
 }
 
-await check('a budget-guard throw returns {kind:"budget-exhausted"}, never halt', async () => {
+await check('a guard-caught per-atom implementer throw becomes an R1 checkpoint, never the wave-level {kind:"budget-exhausted"} (A3b-i T3 — that kind stays reserved for the Spec/Pack guard; see test/frontier-wave-dispatch-collect.test.mjs for the full locked contract)', async () => {
   const agent = async (prompt, opts) => {
     if (opts.label === 'reconcile') return baseBriefing();
-    if (opts.label === 'implementer') throw new Error('budget ceiling');
+    if (opts.label && opts.label.startsWith('implement:')) throw new Error('budget ceiling');
     return defaultStub(opts.label);
   };
   const budget = { spent: () => Infinity, remaining: () => 0, total: 1 };
   const result = await runWith(agent, budget);
-  assert.strictEqual(result.kind, 'budget-exhausted');
+  assert.ok(result && typeof result.kind === 'string', 'GATE_RESULT must be an object with a string kind');
+  assert.notStrictEqual(result.kind, 'budget-exhausted', 'a per-atom guard()-caught throw is routed to a real R1 checkpoint verdict for that atom, not surfaced as the wave-level budget-exhausted kind');
 });
 
 await check('a halting reconcile briefing returns {kind:"halt"} immediately, no wave dispatched', async () => {
@@ -175,7 +196,7 @@ await check('a multi-atom disjoint pack dispatches every packed atom (two-atom w
     return defaultStub(opts.label);
   };
   const result = await runWith(agent);
-  const implementerCalls = labels.filter((l) => l === 'implementer').length;
+  const implementerCalls = labels.filter((l) => l.startsWith('implement:')).length;
   assert.strictEqual(implementerCalls, 2, 'both disjoint-footprint atoms must be packed and dispatched into this wave');
   assert.strictEqual(result.kind, 'heartbeat', 'run still returns a valid 7-variant gate result');
 });
