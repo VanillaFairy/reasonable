@@ -143,7 +143,7 @@ had never had live. `lib/frontier.mjs`'s new `readyFlagLists(atoms)` connects th
 frontier: a flagged atom now actually leaves dispatch eligibility (wired into `agents/reconciler.md`'s
 `frontier` computation). Both adversarially audited, PASS.
 
-**Explicitly deferred to A3b (name these, do not imply they're done):** sub-atom birth materialization
+**Explicitly deferred to A3b, named rather than overlooked:** sub-atom birth materialization
 (an R4 split's `{charter:{...}}` effect becoming a real `atom-chartered` event — the partial-charter +
 placeholder-id shape needs the parent's context to resolve, deliberately not attempted in A3a);
 checkpoint-2-halt *production* (appending the real `guard-halted` verdict from a footprinter's report —
