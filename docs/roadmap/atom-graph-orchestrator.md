@@ -146,13 +146,55 @@ the audit's own charge had named but not actually tested — the overlay set any
 entry without checking it against `FLAG_NAMES`, since fixed (`isValidFlag`, same discipline
 `setFlag`/`clearFlag` already applied on the write side).
 
-**Explicitly deferred to A3b, named rather than overlooked:** sub-atom birth materialization
+**A3b-i — real Dispatch + Collect (LANDED, 2026-07-15):** a real atom now reaches `audited` for the
+first time, driven by a real per-atom pipeline (lane-provisioner → implementer → lane-provisioner
+reprovision → blind-test-writer → lane-committer → adjudicator → auditor), dispatched concurrently
+across a wave via `pipeline()`, with a shared bounded retry (cap 2 attempts, escalating to
+`blocked-human`) and `guard()`-wrapped budget handling turning per-atom throws into R1 checkpoints
+rather than a wave-level `budget-exhausted`. `CORE_ROLES` gained `adjudicator` (closing DESIGN-3.0 §6's
+four-unconditional-stage gap) and `verdict-writer`'s remit generalized to land any single ledger event
+(not just `verifier-verdict`), including the new `atom-transitioned`/`atom-verdict` shapes. Two of the
+failure calculus's nine rows — R1 (checkpoint) and R3 (ripple) — now get real production, folding
+through A3a's already-built overlay; an acceptance test (`test/frontier-wave-lifecycle.test.mjs`)
+proves the composition end to end over a real ledger. Built as an adversarial-TDD triad
+(RED/GREEN/AUDIT); the audit found one real gap — the auditor role had been given an unspecified
+`checkpoint` OUTCOME carve-out it was never granted (no such vocabulary exists in `agents/auditor.md`,
+unlike the adjudicator/implementer, which both document it) — closed via a follow-on RED+GREEN pair (a
+fresh test pinning the correct routing, a fresh fix removing the 3-line carve-out).
+
+**Explicitly deferred beyond A3b-i, named rather than overlooked:** sub-atom birth materialization
 (an R4 split's `{charter:{...}}` effect becoming a real `atom-chartered` event — the partial-charter +
 placeholder-id shape needs the parent's context to resolve, deliberately not attempted in A3a);
 checkpoint-2-halt *production* (appending the real `guard-halted` verdict from a footprinter's report —
 A3a only made the flag-application side real, not the append side); blast-radius archival lifecycle
-(needs births + a folded `lineage` field, per `lib/spec.mjs`'s existing forward-note); and Dispatch +
-Merge de-schematization (still schematic — literal prompt strings and a `log()` line).
+(needs births + a folded `lineage` field, per `lib/spec.mjs`'s existing forward-note); and, now that
+Dispatch is real as of A3b-i, only **Merge** de-schematization remains (still schematic — a `log()`
+line — A3b-ii's job). A3b-i's own scope-out and its audit surfaced several more gaps, named rather than
+overlooked:
+
+- **R2** (dead-end, infeasible+skeptic-confirmed) — needs a `premise{component,clause,layer}` shape
+  neither `implementer.md`'s `infeasible` nor `skeptic.md`'s `CONFIRMED` documents emitting verbatim.
+- **R5** (unknown-blocking, spike-needed) — needs a `dependents` computation (which atoms leave the
+  frontier) no agent supplies.
+- **R4-via-audit-refutation / R7** (parity-breach) — `agents/auditor.md` has zero `kind`-tagged OUTCOME
+  vocabulary today; both need that gap closed first (flag this as the single biggest remaining gap for
+  a future plan).
+- **`jurisdiction`'s downstream fate** as an R-code (currently a bounded in-workflow retry, not
+  promoted to a verdict).
+- **Multi-atom `blocked-human` aggregation** surfaces only the FIRST blocked atom's failure detail when
+  ≥2 atoms in one wave hit the retry cap simultaneously — a real (if narrow) information-loss gap the
+  audit found; not fixed in A3b-i since the spec explicitly left the `blockedHuman` detail's field
+  layout open, but worth a future decision.
+- **Collect-phase `verdict-writer` dispatches never check their own return value** (all ~4-7 per wave:
+  the `spec'd→packed` batch transition plus the three post-green lifecycle events) — a `persisted:false`
+  ack or a `guard()`-caught throw during any of these is silently ignored today. Confirmed by the audit
+  to be a PRE-EXISTING, systemic gap (not newly introduced by A3b-i), but worth closing in a future
+  hardening pass given the tension with Law 1 (parity) and `agents/journal-writer.md`'s own "a failure
+  ack is a HALT upstream, never a swallow" principle for its sibling role.
+- **Guard()-throw test coverage** exists only for `provision`/`implement` of the seven pipeline stages,
+  not `reprovision`/`blindtest`/`committests`/`adjudicate`/`audit` — lower priority, since all seven
+  stages share the same `budgetCeiling()` helper (reducing per-site divergence risk), but a gap worth
+  closing with a light coverage pass.
 
 ### A4 — Ceremony dial live *(§5.4/§9 — the buildable half of the ceremony gap)*
 
