@@ -1049,18 +1049,25 @@ Two shapes only:
 - **Edge effect** — `{from, to, edge, op}`: `from`/`to` are non-empty node-id strings; `edge` ∈
   `needs | excludes | serves | informs` (DESIGN-3.0 §2.2's vocabulary); `op` ∈ `add | remove`.
 
-**Scope note:** this validates *shape* only. The graph engine (reasonable 3.0 Part 4,
-`lib/graph.mjs`) now folds atoms and **derives** the containment tree and dependency edges from the
-ledger and live contracts — but it does not read or interpret this `effects` field itself: nothing
-in the codebase has ever written a real `effects` array (no event type populates one), so there is
-still nothing for the graph engine to fold from it. Its edges are 100% derived, every time —
-deliberately, since a recorded `effects` override would need precedence rules against derivation
-this design hasn't worked out yet (there is deliberately no effects-array overlay layer). Computing
-these effect sets is now the rewrite engine's job (Part 5,
-`lib/rewrite.mjs`, below) — a pure function from a verdict to a two-phase effect set. But nothing
-yet *appends* a verdict carrying them, and nothing *folds* them with precedence: that is the
-frontier loop's job (Part 7). So today an `effects` array is still never present on a real event,
-and the graph engine's edges stay 100% derived.
+**Scope note:** this validates *shape* only. **Landed, roadmap A2:** `lib/ledger.mjs`'s `append()`
+now code-computes and **stamps** a real `effects` array onto `atom-verdict` and `ratification`
+events (see "Family 3 — domain events" above — `pendingPermanent`, `ratifiesSeqs`/`rejectsSeqs` —
+not restated here). **Landed, roadmap A3a:** `lib/atom.mjs`'s `foldAtomFromEvents` now **applies**
+those stamped `{nodeId, change:{state}}` / `{nodeId, change:{flag,op}}` entries onto real atom
+`state`/`flags` as the as-lived overlay DESIGN-3.0 §2.4/§7.2/§8 mandate — addressed by each entry's
+own `nodeId`, generic across event type, so a computed verdict effect now moves real atom state.
+What stays true, narrowed: the graph engine (reasonable 3.0 Part 4, `lib/graph.mjs`), which folds
+atoms and **derives** the containment tree and dependency edges from the ledger and live contracts,
+still does not read or interpret this `effects` field for its own edges. "No effects-array overlay
+layer" now scopes specifically to **dependency edges in the current graph**
+(`needsEdges`/`excludesEdges`/`servesEdges`/`informsEdges`) — those stay 100% **derived**, every
+time, never read off a recorded `{from,to,edge,op}` effect entry. That precedence question (a
+recorded edge effect vs. fresh derivation) remains genuinely unresolved and is **not** what A3a
+touched — its overlay is atom node state/flags only, never graph edges. Computing effect sets
+remains the rewrite engine's job (Part 5, `lib/rewrite.mjs`, below) — a pure function from a verdict
+to a two-phase effect set; *producing* real verdicts from real Dispatch/Collect (rather than the
+still-schematic prompts they run today) stays deferred, future work tracked in
+`docs/roadmap/atom-graph-orchestrator.md`.
 
 ### Atom lifecycle events — charter, delta, transitions, flags (3.0, Part 3)
 
@@ -1106,10 +1113,15 @@ name, or an illegal transition never reaches the ledger at all). `lib/atom.mjs`'
 `foldAtoms` (and, since Part 4, `foldAtomFromEvents`/`foldAtomsFromEvents`, their pre-filtered-event
 siblings) fold these events into a read-only, in-memory atom record — nothing is written back to
 disk beyond the ledger line itself. Which verdict (R1–R9) *applies* to a failed attempt is audited
-model judgment, and *applying* an effect set is the frontier loop's job (Part 7); *computing* the
-effect set for a given verdict is now the rewrite engine's job (Part 5, `lib/rewrite.mjs`). This
-part's atoms fold into the dependency graph (Part 4) and are transitioned by those computed effects
-once Part 7 applies them.
+model judgment; *computing* the effect set for a given verdict is the rewrite engine's job (Part 5,
+`lib/rewrite.mjs`). **Landed, roadmap A3a:** *applying* that effect set is no longer future work —
+`foldAtomFromEvents` reads the recorded `effects[].change.{state,flag,op}` shape directly (already
+documented above, marked `*` on `ledger.jsonl`; no new grammar, only a new consumer of the existing
+one) and transitions this part's atoms accordingly, live. What remains open: *producing* the verdicts
+themselves — real Dispatch/Collect appending real `atom-verdict` events from real audit outcomes,
+rather than today's still-schematic prompts — and *birth materialization* — an R4 split's sub-atom
+`{charter:…}` effect becoming a real `atom-chartered` event. Both are roadmap A3b
+(`docs/roadmap/atom-graph-orchestrator.md`), not built here.
 
 ### The graph engine — containment, dependency edges, lifting, the two projections (3.0, Part 4)
 

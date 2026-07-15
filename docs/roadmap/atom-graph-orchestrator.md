@@ -135,6 +135,22 @@ seven-variant `GATE_RESULT` computed from real state. **This is the moment the k
 atom graph becomes the live dispatcher. *Highest-risk phase: the verdict→state fold has never run
 against a live effort.*
 
+**A3a — verdict→state fold, state half (LANDED, 2026-07-15):** the effects-overlay fold in
+`lib/atom.mjs`'s `foldAtomFromEvents` now applies a computed `atom-verdict`/`ratification` effect's
+`{state}`/`{flag,op}` entries to real atom state (addressed by `nodeId`, two-phase: provisional
+immediately, permanent only via a later ratification's own effects) — the driver the 10-state machine
+had never had live. `lib/frontier.mjs`'s new `readyFlagLists(atoms)` connects that folded state to the
+frontier: a flagged atom now actually leaves dispatch eligibility (wired into `agents/reconciler.md`'s
+`frontier` computation). Both adversarially audited, PASS.
+
+**Explicitly deferred to A3b (name these, do not imply they're done):** sub-atom birth materialization
+(an R4 split's `{charter:{...}}` effect becoming a real `atom-chartered` event — the partial-charter +
+placeholder-id shape needs the parent's context to resolve, deliberately not attempted in A3a);
+checkpoint-2-halt *production* (appending the real `guard-halted` verdict from a footprinter's report —
+A3a only made the flag-application side real, not the append side); blast-radius archival lifecycle
+(needs births + a folded `lineage` field, per `lib/spec.mjs`'s existing forward-note); and Dispatch +
+Merge de-schematization (still schematic — literal prompt strings and a `log()` line).
+
 ### A4 — Ceremony dial live *(§5.4/§9 — the buildable half of the ceremony gap)*
 
 Route `classify()`'s band through `requiredRoles` (role-minimal provisioning) and `gateDue`'s
@@ -156,7 +172,9 @@ in code; §16 pins them to real ledger data, i.e. dogfooding reasonable on live 
 - **Risk concentrates in A3** (the verdict→state fold) and **the A1 migration** (route.json →
   goals.json touches the entire entry flow). A2 turned out mostly mechanical once A1 landed, as
   predicted — its only real judgment call was fencing the spec-author's contract write onto the
-  canonical (no-lane) allowlist rather than the lane-scoped one.
+  canonical (no-lane) allowlist rather than the lane-scoped one; **the fold's state half, A3a, also
+  landed clean — zero defects on adversarial audit** — so A3's remaining risk concentrates in
+  Dispatch/Merge de-schematization and birth materialization (A3b), not the fold mechanism itself.
 - **Two things this plan cannot finalize in code:** A4's calibration (dogfooding, above) and
   brownfield genesis (A1 note) — both deliberately left open, not overlooked.
 - **What sits behind this file:** gap **B**'s buildable half is A4; **B**'s calibration is the
