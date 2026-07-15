@@ -105,7 +105,7 @@ function pack(footprints) {
 // requiredRoles — Mirrors lib/frontier.mjs requiredRoles EXACTLY (interfaces.md §1.4): the same four
 // conditions, reimplemented inline (this file cannot import lib/ceremony.mjs's degeneration predicates).
 // -----------------------------------------------------------------------------
-const CORE_ROLES = ['auditor', 'blind-test-writer', 'implementer'];
+const CORE_ROLES = ['adjudicator', 'auditor', 'blind-test-writer', 'implementer'];
 function requiredRoles(wave, context) {
   const ctx = context || {};
   const roles = new Set(CORE_ROLES);

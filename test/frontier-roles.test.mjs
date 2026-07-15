@@ -15,9 +15,17 @@ const wave = { atomIds: ['a-1'] };
 
 // ── the always-present core ───────────────────────────────────────────────────
 
-check('a single-atom greenfield wave with no amendments/brownfield/multi-cone needs only the core three roles', () => {
+check("requiredRoles: CORE_ROLES includes 'adjudicator' unconditionally (DESIGN-3.0 §6's four dispatch stages)", () => {
+  const roles = requiredRoles({ atomIds: ['a-1'] }, {});
+  assert.ok(roles.includes('adjudicator'), 'adjudicator is one of the four unconditional dispatch stages (blind-test, implement, adjudication, audit) — it must always be in the floor set');
+  assert.ok(roles.includes('implementer'));
+  assert.ok(roles.includes('blind-test-writer'));
+  assert.ok(roles.includes('auditor'));
+});
+
+check('a single-atom greenfield wave with no amendments/brownfield/multi-cone needs only the core four roles', () => {
   const roles = requiredRoles(wave, {});
-  assert.deepStrictEqual(roles, ['auditor', 'blind-test-writer', 'implementer']);
+  assert.deepStrictEqual(roles, ['adjudicator', 'auditor', 'blind-test-writer', 'implementer']);
 });
 
 // ── brownfield (census/characterizer) — BOTH halves of the AND matter ────────
@@ -25,30 +33,30 @@ check('a single-atom greenfield wave with no amendments/brownfield/multi-cone ne
 check('brownfield=true with a NON-EMPTY brownfieldInput adds census + characterizer', () => {
   const roles = requiredRoles(wave, { brownfield: true, brownfieldInput: ['legacy/foo.js'] });
   assert.deepStrictEqual(roles, [
-    'auditor', 'blind-test-writer', 'census', 'characterizer', 'implementer',
+    'adjudicator', 'auditor', 'blind-test-writer', 'census', 'characterizer', 'implementer',
   ]);
 });
 
 check('brownfield=true with an EMPTY brownfieldInput does NOT add census/characterizer (proven no-op)', () => {
   const roles = requiredRoles(wave, { brownfield: true, brownfieldInput: [] });
-  assert.deepStrictEqual(roles, ['auditor', 'blind-test-writer', 'implementer']);
+  assert.deepStrictEqual(roles, ['adjudicator', 'auditor', 'blind-test-writer', 'implementer']);
 });
 
 check('brownfield=false with a non-empty brownfieldInput does NOT add census/characterizer', () => {
   const roles = requiredRoles(wave, { brownfield: false, brownfieldInput: ['legacy/foo.js'] });
-  assert.deepStrictEqual(roles, ['auditor', 'blind-test-writer', 'implementer']);
+  assert.deepStrictEqual(roles, ['adjudicator', 'auditor', 'blind-test-writer', 'implementer']);
 });
 
 // ── topologist re-chartering ──────────────────────────────────────────────────
 
 check('a non-empty amendmentBatch adds topologist (rechartingDegenerates materializes)', () => {
   const roles = requiredRoles(wave, { amendmentBatch: [{ component: 'lexer', clause: 'lexer#c1' }] });
-  assert.deepStrictEqual(roles, ['auditor', 'blind-test-writer', 'implementer', 'topologist']);
+  assert.deepStrictEqual(roles, ['adjudicator', 'auditor', 'blind-test-writer', 'implementer', 'topologist']);
 });
 
 check('an empty amendmentBatch does NOT add topologist', () => {
   const roles = requiredRoles(wave, { amendmentBatch: [] });
-  assert.deepStrictEqual(roles, ['auditor', 'blind-test-writer', 'implementer']);
+  assert.deepStrictEqual(roles, ['adjudicator', 'auditor', 'blind-test-writer', 'implementer']);
 });
 
 check('an absent amendmentBatch does NOT add topologist', () => {
@@ -60,24 +68,24 @@ check('an absent amendmentBatch does NOT add topologist', () => {
 
 check('landedConeCount >= 2 adds retro-synthesizer (retroClassificationDegenerates materializes)', () => {
   const roles = requiredRoles(wave, { landedConeCount: 2 });
-  assert.deepStrictEqual(roles, ['auditor', 'blind-test-writer', 'implementer', 'retro-synthesizer']);
+  assert.deepStrictEqual(roles, ['adjudicator', 'auditor', 'blind-test-writer', 'implementer', 'retro-synthesizer']);
 });
 
 check('landedConeCount 0 or 1 does NOT add retro-synthesizer', () => {
-  assert.deepStrictEqual(requiredRoles(wave, { landedConeCount: 0 }), ['auditor', 'blind-test-writer', 'implementer']);
-  assert.deepStrictEqual(requiredRoles(wave, { landedConeCount: 1 }), ['auditor', 'blind-test-writer', 'implementer']);
+  assert.deepStrictEqual(requiredRoles(wave, { landedConeCount: 0 }), ['adjudicator', 'auditor', 'blind-test-writer', 'implementer']);
+  assert.deepStrictEqual(requiredRoles(wave, { landedConeCount: 1 }), ['adjudicator', 'auditor', 'blind-test-writer', 'implementer']);
 });
 
 // ── determinism + sortedness (assert against a LITERAL sorted array, never re-sort the output) ──
 
 check('the returned array is always sorted, asserted against a literal', () => {
   const roles = requiredRoles(wave, { brownfield: true, brownfieldInput: ['x'] });
-  assert.deepStrictEqual(roles, ['auditor', 'blind-test-writer', 'census', 'characterizer', 'implementer']);
+  assert.deepStrictEqual(roles, ['adjudicator', 'auditor', 'blind-test-writer', 'census', 'characterizer', 'implementer']);
 });
 
 // ── the maximal case: all four conditions true at once ────────────────────────
 
-check('every conditional role fires together yields all seven roles, sorted', () => {
+check('every conditional role fires together yields all eight roles, sorted', () => {
   const roles = requiredRoles(wave, {
     brownfield: true,
     brownfieldInput: ['legacy/foo.js'],
@@ -85,7 +93,7 @@ check('every conditional role fires together yields all seven roles, sorted', ()
     landedConeCount: 3,
   });
   assert.deepStrictEqual(roles, [
-    'auditor', 'blind-test-writer', 'census', 'characterizer', 'implementer',
+    'adjudicator', 'auditor', 'blind-test-writer', 'census', 'characterizer', 'implementer',
     'retro-synthesizer', 'topologist',
   ]);
 });
