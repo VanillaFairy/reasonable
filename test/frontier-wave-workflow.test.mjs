@@ -59,8 +59,23 @@ function baseBriefing(over = {}) {
     halt: false, effortRoot: '/tmp/effort', currentVerticalSlice: null, runMode: 'autonomous',
     brownfield: false, effortBranch: 'effort/x', baseBranch: 'master',
     band: 'lite', mergedSinceGate: 0, eventsSinceGate: 0, inboxLoad: 0, inboxTripwire: 5,
-    amendmentBatch: [], landedConeCount: 0, ...over,
+    amendmentBatch: [], landedConeCount: 0, frontier: [ATOM], ...over,
   };
+}
+
+// A single-atom, cohesive, checkpoint-2-clean footprint — the default so a wave forms even when a
+// test only cares about some other step (gate routing, budget, roles). Tests that need a specific
+// pack shape (multi-atom, R4 drop, checkpoint-2 drop) override 'spec-author'/'footprinter' directly.
+function defaultStub(label) {
+  if (label === 'spec-author') return { ok: true, atomId: ATOM };
+  if (label === 'footprinter') {
+    return {
+      footprints: [
+        { id: ATOM, locus: [], contracts: [], resources: [], cohesion: { kind: 'ok' }, checkpoint2: { kind: 'ok' } },
+      ],
+    };
+  }
+  return {};
 }
 
 // ── the 7-variant GATE_RESULT union ───────────────────────────────────────────
@@ -73,7 +88,7 @@ await check('a heartbeat-floor wave returns {kind:"heartbeat"} — not the retir
     if (opts.label === 'implementer') return { done: true };
     if (opts.label === 'blind-test-writer') return { done: true };
     if (opts.label === 'auditor') return { kind: 'green', atomId: ATOM };
-    return {};
+    return defaultStub(opts.label);
   };
   const result = await runWith(agent);
   assert.strictEqual(result.kind, 'heartbeat');
@@ -84,7 +99,7 @@ await check('a goal-completing merge returns {kind:"goal-green"}', async () => {
   const agent = async (prompt, opts) => {
     if (opts.label === 'reconcile') return baseBriefing({ goalGreen: { goalId: 'g-1' } });
     if (opts.label === 'auditor') return { kind: 'green', atomId: ATOM };
-    return {};
+    return defaultStub(opts.label);
   };
   const result = await runWith(agent);
   assert.strictEqual(result.kind, 'goal-green');
@@ -94,7 +109,7 @@ for (const runMode of ['gated', 'autonomous']) {
   await check(`an intent-fork verdict returns {kind:"blocked-human"} in ${runMode} mode (always human, both modes)`, async () => {
     const agent = async (prompt, opts) => {
       if (opts.label === 'reconcile') return baseBriefing({ runMode, blockedHuman: { class: 'intent-fork', ref: 'i#1' } });
-      return {};
+      return defaultStub(opts.label);
     };
     const result = await runWith(agent);
     assert.strictEqual(result.kind, 'blocked-human');
@@ -105,7 +120,7 @@ await check('a budget-guard throw returns {kind:"budget-exhausted"}, never halt'
   const agent = async (prompt, opts) => {
     if (opts.label === 'reconcile') return baseBriefing();
     if (opts.label === 'implementer') throw new Error('budget ceiling');
-    return {};
+    return defaultStub(opts.label);
   };
   const budget = { spent: () => Infinity, remaining: () => 0, total: 1 };
   const result = await runWith(agent, budget);
@@ -117,7 +132,7 @@ await check('a halting reconcile briefing returns {kind:"halt"} immediately, no 
   const agent = async (prompt, opts) => {
     labels.push(opts.label || '');
     if (opts.label === 'reconcile') return baseBriefing({ halt: true, haltReason: 'ambiguous config' });
-    return {};
+    return defaultStub(opts.label);
   };
   const result = await runWith(agent);
   assert.strictEqual(result.kind, 'halt');
@@ -132,12 +147,77 @@ await check('a single-atom greenfield wave never dispatches census/characterizer
     labels.push(opts.label || '');
     if (opts.label === 'reconcile') return baseBriefing({ mergedSinceGate: 5 });
     if (opts.label === 'auditor') return { kind: 'green', atomId: ATOM };
-    return {};
+    return defaultStub(opts.label);
   };
   await runWith(agent);
   for (const forbidden of ['census', 'characterizer', 'topologist', 'retro-synthesizer']) {
     assert.ok(!labels.includes(forbidden), `${forbidden} must not be dispatched for a single-atom greenfield wave`);
   }
+});
+
+// ── Spec/Pack: real spec-author + footprinter fences (A2 de-schematization) ──
+
+await check('a multi-atom disjoint pack dispatches every packed atom (two-atom wave)', async () => {
+  const labels = [];
+  const agent = async (prompt, opts) => {
+    labels.push(opts.label || '');
+    if (opts.label === 'reconcile') return baseBriefing({ frontier: ['a-1', 'a-2'], mergedSinceGate: 5 });
+    if (opts.label === 'spec-author') return { ok: true, atomId: opts.atomId };
+    if (opts.label === 'footprinter') {
+      return {
+        footprints: [
+          { id: 'a-1', locus: ['locus/a-1'], contracts: [], resources: [], cohesion: { kind: 'ok' }, checkpoint2: { kind: 'ok' } },
+          { id: 'a-2', locus: ['locus/a-2'], contracts: [], resources: [], cohesion: { kind: 'ok' }, checkpoint2: { kind: 'ok' } },
+        ],
+      };
+    }
+    if (opts.label === 'auditor') return { kind: 'green', atomId: opts.atomId };
+    return defaultStub(opts.label);
+  };
+  const result = await runWith(agent);
+  const implementerCalls = labels.filter((l) => l === 'implementer').length;
+  assert.strictEqual(implementerCalls, 2, 'both disjoint-footprint atoms must be packed and dispatched into this wave');
+  assert.strictEqual(result.kind, 'heartbeat', 'run still returns a valid 7-variant gate result');
+});
+
+await check('an oversized-cohesion atom is held out of the wave (R4 drop), run still gates', async () => {
+  const labels = [];
+  const agent = async (prompt, opts) => {
+    labels.push(opts.label || '');
+    if (opts.label === 'reconcile') return baseBriefing({ mergedSinceGate: 5 });
+    if (opts.label === 'spec-author') return { ok: true, atomId: opts.atomId };
+    if (opts.label === 'footprinter') {
+      return {
+        footprints: [
+          { id: ATOM, locus: [], contracts: [], resources: [], cohesion: { kind: 'oversized' }, checkpoint2: { kind: 'ok' } },
+        ],
+      };
+    }
+    return defaultStub(opts.label);
+  };
+  const result = await runWith(agent);
+  assert.ok(!labels.includes('implementer'), 'an oversized (R4) atom must not be dispatched into the wave');
+  assert.strictEqual(result.kind, 'heartbeat', 'run still returns a valid 7-variant gate result on an empty wave');
+});
+
+await check('a guard-halted checkpoint-2 atom is held out of the wave, run still gates', async () => {
+  const labels = [];
+  const agent = async (prompt, opts) => {
+    labels.push(opts.label || '');
+    if (opts.label === 'reconcile') return baseBriefing({ mergedSinceGate: 5 });
+    if (opts.label === 'spec-author') return { ok: true, atomId: opts.atomId };
+    if (opts.label === 'footprinter') {
+      return {
+        footprints: [
+          { id: ATOM, locus: [], contracts: [], resources: [], cohesion: { kind: 'ok' }, checkpoint2: { kind: 'guard-halted' } },
+        ],
+      };
+    }
+    return defaultStub(opts.label);
+  };
+  const result = await runWith(agent);
+  assert.ok(!labels.includes('implementer'), 'a checkpoint-2 guard-halted atom must not be dispatched into the wave');
+  assert.strictEqual(result.kind, 'heartbeat', 'run still returns a valid 7-variant gate result on an empty wave');
 });
 
 // ── purity (redundant, local check alongside test/workflow-load.test.mjs) ────

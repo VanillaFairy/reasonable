@@ -50,6 +50,7 @@ const BRIEFING = {
     blockedHuman: { type: ['object', 'null'] },
     amendmentBatch: { type: 'array', items: { type: 'object', additionalProperties: true } },
     landedConeCount: { type: ['integer', 'null'] },
+    frontier: { type: 'array', items: { type: 'string' } },
   },
 };
 
@@ -136,6 +137,20 @@ function reconcilePrompt(a) {
     'Return the BRIEFING, including band/cadence counters, inbox load, and any blocked-human/goal-green signal.',
   ].join('\n');
 }
+function specAuthorPrompt(a, atomId) {
+  return [
+    `Author the real spec-time delta for atom ${atomId} (§4.1: from the canonical contract state,`,
+    'the goal scenario, and everything landed). Write your own component contract + the machine delta;',
+    `persist via lib/spec.mjs --author. Effort root: ${a && a.effortRoot}. Return { ok, atomId }.`,
+  ].join('\n');
+}
+function footprintPrompt(a, ids) {
+  return [
+    'Run the spec-time decidable fences over the PERSISTED deltas and return them verbatim:',
+    'lib/footprint.mjs --atoms (actual footprints) and lib/spec.mjs --guard (cohesion + checkpoint-2).',
+    `Effort root: ${a && a.effortRoot}. Atom ids: ${(ids || []).join(', ')}.`,
+  ].join('\n');
+}
 
 // -----------------------------------------------------------------------------
 // The run body. phase()/log() calls mark stage boundaries, mirroring the shipped runner's convention
@@ -150,13 +165,36 @@ if (!briefing || briefing.halt) {
 }
 
 phase('Spec');
-// Schematic in this scope — a real spec/checkpoint-2 pass is a later hardening pass, not tested here:
-// the frontier's top atom is treated as already spec'd for packing.
-const specdAtoms = [{ id: 'a-1', locus: [], contracts: [], resources: [] }];
+// §6: spec first. Author each ready frontier atom's real delta (ready -> spec'd). Serial safety via
+// parallel-then-collect; the spec-author is fenced (own contract + machine delta only).
+const frontier = briefing.frontier || [];
+const specd = (await parallel(frontier.map((atomId) => () =>
+  guard(() => agent(specAuthorPrompt(args, atomId), { label: 'spec-author', atomId }))
+)));
+for (const s of specd) {
+  if (s && s.__budgetExhausted) return { kind: 'budget-exhausted', detail: { stage: 'spec-author', message: s.message } };
+}
+const specdIds = specd.filter((s) => s && s.ok).map((s) => s.atomId);
+
+// The spec-time decidable fences (§4.3 cohesion + §7.2 checkpoint-2) + actual footprints, computed by
+// the footprinter over the PERSISTED deltas (independent of the author's self-report).
+const fenced = specdIds.length
+  ? await guard(() => agent(footprintPrompt(args, specdIds), { label: 'footprinter', atomIds: specdIds }))
+  : { footprints: [] };
+if (fenced && fenced.__budgetExhausted) return { kind: 'budget-exhausted', detail: { stage: 'footprinter', message: fenced.message } };
 
 phase('Pack');
-const { wave: waveIds } = pack(specdAtoms);
-log(`packed ${waveIds.length} atom(s) into this wave.`);
+// Route the fence verdicts: an oversized atom (R4 — the split is A3) or a guard-halted atom
+// (checkpoint-2 hit) is held OUT of this wave. A2 drops it; A3's verdict->state fold persists the
+// split/halt effect. At greenfield genesis no atom is dropped (cohesive deltas, no live radii).
+const perAtom = (fenced && fenced.footprints) || [];
+const packable = perAtom.filter((f) =>
+  !(f.cohesion && f.cohesion.kind === 'oversized') &&
+  !(f.checkpoint2 && f.checkpoint2.kind === 'guard-halted'));
+const heldOut = perAtom.length - packable.length;
+if (heldOut > 0) log(`${heldOut} atom(s) held out of the wave by a spec-time fence (R4/checkpoint-2).`);
+const { wave: waveIds } = pack(packable);
+log(`packed ${waveIds.length} atom(s) into this wave on actual footprints.`);
 
 phase('Dispatch');
 
