@@ -24,3 +24,33 @@ merging — a misrouted commit is otherwise silent.
 
 (Discovered during: A3a plan execution, `reasonable` plugin, 2026-07-15 — recurring across most
 dispatched tasks in that run.)
+
+## `git worktree remove` can transiently fail with "Permission denied" right after a subagent exits
+
+Immediately after a dispatched subagent's process ends, `git worktree remove .worktrees/<task>` (even
+with `--force`) can fail with `error: failed to delete '...': Permission denied` — a leftover file
+handle in the worktree directory hasn't released yet on Windows.
+
+**Workaround:** retry after a short pause (`sleep 1` then re-run `git worktree remove --force
+<path>`). By the retry, git has usually already deregistered the worktree from `git worktree list`
+even though the physical directory deletion failed — so the retry command reports "not a working
+tree" (harmless; it's already gone) and only an **empty** leftover directory remains, safe to remove
+with a plain `rmdir`. Always `ls` the directory first to confirm it's empty (not orphaned work)
+before removing.
+
+(Discovered during: A3b-i plan execution, `reasonable` plugin, 2026-07-15.)
+
+## Every `git commit`/`git merge` in this repo prints `ERROR: Failed to parse repository information`
+
+This stderr line appears on essentially every `git commit`, `git merge`, and similar write operation
+in this repo's local environment, immediately before the operation's own normal output (e.g. "Merge
+made by the 'ort' strategy."). The operation still succeeds (exit 0, working tree clean, commit/merge
+lands correctly) — this is local tooling/hook chatter unrelated to the actual git action, not a sign
+of failure. Multiple independent agents hit this across many separate commits in the same session and
+each independently confirmed it's cosmetic noise (via `git log`/`git show --stat` after the fact).
+
+**Don't** treat this line as a failure signal or spend time investigating it per-commit — just check
+the actual exit status / resulting repo state, as you would anyway.
+
+(Discovered during: A3b-i plan execution, `reasonable` plugin, 2026-07-15 — recurring across nearly
+every git write operation in the session.)
