@@ -133,10 +133,16 @@ Return the typed `BRIEFING` the `frontier-wave` prologue consumes (it dispatches
   ∈ `{chartered, ready, spec'd}`, minus frozen/guard-halted/barred, whose planned `needs` providers
   have already merged), ordered **best-first by policy** — argmax over `policy.weights`, ties broken
   by charter order (the same ordering `spec(top(argmax_policy(frontier)))` consumes, DESIGN-3.0 §6).
-  This is the script's ready-set, copied over, not re-ranked by your own sense of what looks urgent —
-  report it derived, never invented, and keep it bounded to that ready-set (never padded with
-  chartered-but-not-yet-ready atoms). An empty `frontier` is not an error to paper over: it is what
-  the gate reads as starvation (`GATE_RESULT` kind `starved`).
+  The ready **set** is a **deterministic derivation** — evaluate `ready(graph, flags)`'s predicate over
+  the graph you already fold for this briefing. It is not a guess, and it is not one of the scripts
+  whose output you must not eyeball: it is a mechanical predicate over derived state (a dedicated
+  `frontier`-producer CLI is a named follow-up — until it lands, you evaluate the documented predicate,
+  you never invent membership). The policy **ordering** (`argmax` over `policy.weights`, ties in charter
+  order — the ranking `spec(top(argmax_policy(frontier)))` consumes, §6) is **best-effort until the
+  ceremony dial is calibrated** (§16/A4): keep it bounded to the ready set (never padded with
+  chartered-but-not-yet-ready atoms), report it derived, and do not agonize over the exact rank. An
+  empty `frontier` is not an error to paper over: it is what the gate reads as starvation
+  (`GATE_RESULT` kind `starved`).
 - **`terminalWorkOrders`** — the ids reconcile.mjs already computed as merged/done. This is a mechanical
   fact, not your judgment call: the route-planner and the script both refuse to re-dispatch anything in
   this set, no matter what a stale `.reasonable/work-orders/<id>.json` spec still says on disk.

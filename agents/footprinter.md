@@ -54,9 +54,11 @@ decidable fence — run the script(s), return the JSON, judge nothing.
    the same persisted deltas and prints `{ atoms: [{ atomId, cohesion, checkpoint2 }] }` (the script
    also emits a `closure` field on each entry — an internal citation closure the fold reuses, not part
    of the record you return).
-3. Merge the two outputs by matching `id` to `atomId`, and return, per atom, the merged verbatim
-   record:
-   `{ id, locus, contracts, resources, cohesion, checkpoint2 }`
+3. Merge the two outputs by matching `id` to `atomId`, and return the array of merged per-atom
+   records **wrapped under a top-level `footprints` key** — the exact shape `frontier-wave`'s Pack
+   step reads as `fenced.footprints` (same wrapper as the work-order FOOTPRINT_REPORT above, so the
+   two calling shapes stay uniform):
+   `{ footprints: [ { id, locus, contracts, resources, cohesion, checkpoint2 }, … ] }`
    Copy each field through exactly as the two scripts printed it — do not recompute, summarize, or
    soften a `cohesion.kind: "oversized"` or a `checkpoint2.kind: "guard-halted"` verdict. You are
    reading the persisted delta so the atom's author cannot self-clear its own fence; the workflow, not
