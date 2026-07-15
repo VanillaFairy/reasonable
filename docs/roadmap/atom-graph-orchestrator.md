@@ -141,7 +141,10 @@ against a live effort.*
 immediately, permanent only via a later ratification's own effects) — the driver the 10-state machine
 had never had live. `lib/frontier.mjs`'s new `readyFlagLists(atoms)` connects that folded state to the
 frontier: a flagged atom now actually leaves dispatch eligibility (wired into `agents/reconciler.md`'s
-`frontier` computation). Both adversarially audited, PASS.
+`frontier` computation). Both adversarially audited, PASS; a later final review caught one more gap
+the audit's own charge had named but not actually tested — the overlay set any string in a flag
+entry without checking it against `FLAG_NAMES`, since fixed (`isValidFlag`, same discipline
+`setFlag`/`clearFlag` already applied on the write side).
 
 **Explicitly deferred to A3b, named rather than overlooked:** sub-atom birth materialization
 (an R4 split's `{charter:{...}}` effect becoming a real `atom-chartered` event — the partial-charter +
