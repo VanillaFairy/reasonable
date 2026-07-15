@@ -19,8 +19,8 @@ export const meta = {
     { title: 'Reconcile', detail: 'Unconditional, total, halting recovery prologue over the goals/cones projection (§12) — halt on any AMBIGUOUS configuration.' },
     { title: 'Spec', detail: 'Deltas authored or re-spec\'d for the frontier\'s top atoms; R4 + checkpoint-2 run here (§6).' },
     { title: 'Pack', detail: 'The maximal wave of spec\'d atoms pairwise disjoint by ACTUAL footprint.' },
-    { title: 'Dispatch', detail: 'Per atom, role-minimally: implementer + blind-test-writer (+ enrichment); census/characterizer/topologist/retro-synthesizer only on non-empty input (§6 draft-five).' },
-    { title: 'Collect', detail: 'Audited verdicts collected per atom; each appended as an atom-verdict event (the APPEND computes effects, never this workflow).' },
+    { title: 'Dispatch', detail: 'Per atom, concurrently: lane-provision -> implement -> reprovision -> blind-test -> commit-tests -> adjudicate (bounded retry) -> audit; census/characterizer/topologist/retro-synthesizer only on non-empty input (§6 draft-five).' },
+    { title: 'Collect', detail: 'Each atom\'s terminal outcome translated via verdict-writer into real ledger events — a full green pass\'s lifecycle progression, or a checkpoint/ripple atom-verdict (R1/R3) — never a bespoke effect set computed here.' },
     { title: 'Merge', detail: 'One --no-ff merge per audited atom, topological by actual needs edges.' },
     { title: 'Gate', detail: 'Compute the total gateDue(state, policy) and return the typed 7-variant GATE_RESULT.' },
   ],
@@ -151,6 +151,203 @@ function footprintPrompt(a, ids) {
     `Effort root: ${a && a.effortRoot}. Atom ids: ${(ids || []).join(', ')}.`,
   ].join('\n');
 }
+// lanePrompt covers BOTH lane-provisioner modes (agents/lane-provisioner.md): no worktreeHint ->
+// fresh provision (worktree/deps/descriptor/journal-confirm, role e.g. 'implementer'); a worktreeHint
+// given -> the SAME lane's role-transition re-provision (role e.g. 'blind-test-writer'), overwriting
+// only the descriptor's narrowing, per that agent's "Re-provisioning for a role transition" section.
+function lanePrompt(a, atomId, role, worktreeHint) {
+  return [
+    worktreeHint
+      ? `Re-provision atom ${atomId}'s EXISTING lane for a role transition to ${role} (same worktree, descriptor role/testEditsAllowed/locus rewritten in place).`
+      : `Provision a fresh lane for atom ${atomId} (role: ${role}), cut from the effort branch.`,
+    `Effort root: ${a && a.effortRoot}. Effort branch: ${a && a.effortBranch}.`,
+    worktreeHint ? `Existing worktree: ${worktreeHint}.` : 'Create the worktree nested under the effort root (.worktrees/<atomId>).',
+    'Follow agents/lane-provisioner.md\'s exact ordered steps and idempotency rules.',
+    'Return { provisioned, worktree, branch, descriptorWritten, depsReady, journalRecorded }.',
+  ].join('\n');
+}
+function implementPrompt(a, atomId, worktree, redoAttempt) {
+  return [
+    `Implement atom ${atomId} to GREEN within its declared locus, inside the provisioned lane worktree.`,
+    `Lane worktree: ${worktree}. Effort root: ${a && a.effortRoot}.`,
+    redoAttempt > 1
+      ? `Redo attempt ${redoAttempt} — an earlier pass in this atom's chain did not reach a clean audit.`
+      : 'First pass.',
+    'Emit the OUTCOME tagged union (agents/implementer.md) naming exactly one terminal kind.',
+  ].join('\n');
+}
+function blindTestPrompt(a, atomId, worktree) {
+  return [
+    `Translate atom ${atomId}'s contract delta into test changes, blind to the implementation.`,
+    `Lane worktree: ${worktree}. Effort root: ${a && a.effortRoot}.`,
+    'You have no Bash — stage the test files; the lane-committer lands them durably.',
+  ].join('\n');
+}
+function commitTestsMessage(atomId) {
+  return `test(${atomId}): land the blind-test-writer's staged tests\n\nWork-Order: ${atomId}`;
+}
+function commitTestsPrompt(a, atomId, worktree, message) {
+  return [
+    `Land the blind-test-writer's staged work product for atom ${atomId} on the lane branch in one trailered commit.`,
+    `Lane worktree: ${worktree}.`,
+    `Commit message (pass verbatim, already carries the Work-Order trailer): ${message}`,
+    'Return { persisted, committed } on success, or persisted:false + a one-line reason on a durability gap.',
+  ].join('\n');
+}
+function adjudicatePrompt(a, atomId, worktree) {
+  return [
+    `Run atom ${atomId}'s lane suite and judge each red against the contract text as sole arbiter.`,
+    `Lane worktree: ${worktree}. Effort root: ${a && a.effortRoot}.`,
+    'Return an OUTCOME-shaped verdict: { kind, atomId, ... }.',
+  ].join('\n');
+}
+function auditPrompt(a, atomId, worktree) {
+  return [
+    `Verify atom ${atomId}'s GREEN claim with escalating mechanical teeth (discriminator, bidirectional`,
+    'mapping, mutation sampling, proportionality).',
+    `Lane worktree: ${worktree}. Effort root: ${a && a.effortRoot}.`,
+    'Return an OUTCOME-shaped verdict: { kind, atomId, ... }.',
+  ].join('\n');
+}
+function verdictWriterPrompt(a, event) {
+  return [
+    'Append exactly ONE ledger event through the controller CLI — the event this dispatch hands you,',
+    'verbatim (never add seq/ts, never originate a SHA).',
+    `Effort root: ${a && a.effortRoot}.`,
+    `Event JSON: ${JSON.stringify(event)}`,
+    'Return { persisted } on a durable append, or persisted:false + why on failure.',
+  ].join('\n');
+}
+
+// -----------------------------------------------------------------------------
+// dispatchAtom — the real per-atom Dispatch pipeline (DESIGN-3.0 §6's four unconditional stages plus
+// lane lifecycle): provision -> implement -> reprovision (unconditional on green) -> blind-test ->
+// commit-tests (unconditional) -> adjudicate -> audit. guard() wraps every agent() call, so a
+// budget-ceiling throw at ANY stage becomes an immediate R1 checkpoint result, never a retry and never
+// the wave-level budget-exhausted kind. Every other non-green outcome (implementer's own scope-
+// expansion/jurisdiction/spike-needed/infeasible/characterization-needed/intent-fork/other, a hard-
+// stopped provision/reprovision, a persisted:false commit ack, or a non-green/non-checkpoint
+// adjudicator/auditor kind) shares ONE bounded-retry counter capped at 2 attempts total, always
+// re-dispatching from a fresh implementer pass — the already-provisioned lane is reused (only an
+// initial-provision failure re-attempts provision itself, since no lane exists yet to reuse). At the
+// cap, the atom escalates to blocked-human. Returns a terminal per-atom result; Collect (the run body
+// below) translates it into the real ledger events.
+// -----------------------------------------------------------------------------
+const RETRY_CAP = 2;
+
+function atomBlockedHuman(atomId, detail) {
+  return { atomId, kind: 'blocked-human', detail: { class: 'atom-dispatch-exhausted', atomId, detail } };
+}
+
+// budgetCeiling — the one shape every guard()-wrapped stage's budget check reduces to: a truthy
+// __budgetExhausted result becomes this atom's terminal R1 checkpoint (never a retry, never the
+// wave-level budget-exhausted kind); a falsy result means the caller keeps going. Called identically
+// at all seven dispatch stages below — the ONLY thing that varies per site is the stage name.
+function budgetCeiling(atomId, stage, result) {
+  return (result && result.__budgetExhausted)
+    ? { atomId, kind: 'checkpoint', evidence: `budget ceiling during ${stage}: ${result.message}` }
+    : null;
+}
+
+async function dispatchAtom(atomId) {
+  let worktree = null;
+  let attempts = 0;
+  let lastFailure = null;
+
+  while (attempts < RETRY_CAP) {
+    attempts += 1;
+
+    if (!worktree) {
+      const ack = await guard(() => agent(lanePrompt(args, atomId, 'implementer'), { label: `provision:${atomId}` }));
+      const bc = budgetCeiling(atomId, 'lane-provisioner (provision)', ack);
+      if (bc) return bc;
+      if (!ack || !ack.worktree || ack.descriptorWritten !== true) {
+        lastFailure = { stage: 'provision', ack };
+        if (attempts >= RETRY_CAP) return atomBlockedHuman(atomId, lastFailure);
+        continue;
+      }
+      worktree = ack.worktree;
+    }
+
+    const impl = await guard(() => agent(implementPrompt(args, atomId, worktree, attempts), { label: `implement:${atomId}` }));
+    const implBc = budgetCeiling(atomId, 'implementer', impl);
+    if (implBc) return implBc;
+    if (!impl || impl.kind !== 'green') {
+      if (impl && impl.kind === 'ripple') {
+        const manifest = Array.isArray(impl.manifest)
+          ? impl.manifest.map((m) => ({ component: m.contract, clause: m.clause, type: m.type }))
+          : [];
+        return { atomId, kind: 'ripple', manifest };
+      }
+      if (impl && impl.kind === 'checkpoint') {
+        return { atomId, kind: 'checkpoint', evidence: impl.evidence || 'implementer checkpoint' };
+      }
+      // scope-expansion / jurisdiction / spike-needed / infeasible / characterization-needed /
+      // intent-fork / other / missing — the implementer's own non-green failure, same shared cap.
+      lastFailure = { stage: 'implementer', outcome: impl };
+      if (attempts >= RETRY_CAP) return atomBlockedHuman(atomId, lastFailure);
+      continue;
+    }
+
+    const reprov = await guard(() => agent(lanePrompt(args, atomId, 'blind-test-writer', worktree), { label: `reprovision:${atomId}` }));
+    const reprovBc = budgetCeiling(atomId, 'lane-provisioner (reprovision)', reprov);
+    if (reprovBc) return reprovBc;
+    if (!reprov || !reprov.worktree || reprov.descriptorWritten !== true) {
+      lastFailure = { stage: 'reprovision', ack: reprov };
+      if (attempts >= RETRY_CAP) return atomBlockedHuman(atomId, lastFailure);
+      continue;
+    }
+    worktree = reprov.worktree;
+
+    const bt = await guard(() => agent(blindTestPrompt(args, atomId, worktree), { label: `blindtest:${atomId}` }));
+    const btBc = budgetCeiling(atomId, 'blind-test-writer', bt);
+    if (btBc) return btBc;
+
+    const commitAck = await guard(() => agent(
+      commitTestsPrompt(args, atomId, worktree, commitTestsMessage(atomId)),
+      { label: `committests:${atomId}` },
+    ));
+    const commitBc = budgetCeiling(atomId, 'lane-committer', commitAck);
+    if (commitBc) return commitBc;
+    if (!commitAck || commitAck.persisted !== true) {
+      lastFailure = { stage: 'lane-committer', ack: commitAck };
+      if (attempts >= RETRY_CAP) return atomBlockedHuman(atomId, lastFailure);
+      continue;
+    }
+
+    const adj = await guard(() => agent(adjudicatePrompt(args, atomId, worktree), { label: `adjudicate:${atomId}` }));
+    const adjBc = budgetCeiling(atomId, 'adjudicator', adj);
+    if (adjBc) return adjBc;
+    if (!adj || adj.kind !== 'green') {
+      if (adj && adj.kind === 'checkpoint') {
+        return { atomId, kind: 'checkpoint', evidence: adj.evidence || 'adjudicator checkpoint' };
+      }
+      lastFailure = { stage: 'adjudicator', outcome: adj };
+      if (attempts >= RETRY_CAP) return atomBlockedHuman(atomId, lastFailure);
+      continue;
+    }
+
+    const audit = await guard(() => agent(auditPrompt(args, atomId, worktree), { label: `audit:${atomId}` }));
+    const auditBc = budgetCeiling(atomId, 'auditor', audit);
+    if (auditBc) return auditBc;
+    if (!audit || audit.kind !== 'green') {
+      if (audit && audit.kind === 'checkpoint') {
+        return { atomId, kind: 'checkpoint', evidence: audit.evidence || 'auditor checkpoint' };
+      }
+      lastFailure = { stage: 'auditor', outcome: audit };
+      if (attempts >= RETRY_CAP) return atomBlockedHuman(atomId, lastFailure);
+      continue;
+    }
+
+    return { atomId, kind: 'green' };
+  }
+
+  // Defensive fallback, not dead code to delete: every failure branch above already returns once
+  // attempts >= RETRY_CAP, so the while condition going false without an explicit return never
+  // actually happens today. It stays as a safety net against a future stage forgetting its own cap
+  // check (silently falling out of the loop with attempts exhausted and no verdict).
+  return atomBlockedHuman(atomId, lastFailure);
+}
 
 // -----------------------------------------------------------------------------
 // The run body. phase()/log() calls mark stage boundaries, mirroring the shipped runner's convention
@@ -196,11 +393,26 @@ if (heldOut > 0) log(`${heldOut} atom(s) held out of the wave by a spec-time fen
 const { wave: waveIds } = pack(packable);
 log(`packed ${waveIds.length} atom(s) into this wave on actual footprints.`);
 
+// The spec'd -> packed batch transition: real, once per atom in this wave, BEFORE any per-atom
+// pipeline starts (a courtesy WAVE-level progression, not part of any atom's own bounded retry —
+// a budget throw here is non-fatal to the wave, it simply leaves this transition unlanded for that
+// atom rather than aborting the whole run).
+for (const atomId of waveIds) {
+  await guard(() => agent(
+    verdictWriterPrompt(args, { type: 'atom-transitioned', atomId, from: "spec'd", to: 'packed' }),
+    { label: 'verdict-writer' },
+  ));
+}
+
 phase('Dispatch');
 
-// Dispatch — role-minimal. ANY guard()-caught throw at ANY dispatch step is the budget ceiling
-// (R1 territory) — the run returns budget-exhausted IMMEDIATELY, first-class, never a silent
-// swallow and never masquerading as a correctness failure.
+// Dispatch — role-minimal. A guard()-caught throw from a wave-level role (census/characterizer/
+// topologist/retro-synthesizer) is the budget ceiling (R1 territory) at WAVE scope — the run returns
+// budget-exhausted IMMEDIATELY. Below that, the real per-atom pipeline (provision -> implement ->
+// reprovision -> blind-test -> commit-tests -> adjudicate -> audit) runs concurrently across
+// waveIds via pipeline() (no barrier — matches pack()'s footprint-disjoint guarantee). A
+// guard()-caught throw INSIDE an atom's own chain becomes that atom's R1 checkpoint result, never
+// this wave-level budget-exhausted kind (see dispatchAtom above).
 const roles = requiredRoles({ atomIds: waveIds }, briefing);
 const dispatched = [];
 for (const role of ['census', 'characterizer', 'topologist', 'retro-synthesizer']) {
@@ -210,38 +422,58 @@ for (const role of ['census', 'characterizer', 'topologist', 'retro-synthesizer'
     if (r && r.__budgetExhausted) return { kind: 'budget-exhausted', detail: { role, message: r.message } };
   }
 }
-for (const atomId of waveIds) {
-  const impl = await guard(() => agent(`Implement ${atomId}.`, { label: 'implementer' }));
-  if (impl && impl.__budgetExhausted) return { kind: 'budget-exhausted', detail: { atomId, stage: 'implementer', message: impl.message } };
-  const bt = await guard(() => agent(`Blind-test ${atomId}.`, { label: 'blind-test-writer' }));
-  if (bt && bt.__budgetExhausted) return { kind: 'budget-exhausted', detail: { atomId, stage: 'blind-test-writer', message: bt.message } };
-}
+const atomResults = await pipeline(waveIds, (atomId) => dispatchAtom(atomId));
 
 phase('Collect');
-const verdicts = [];
-for (const atomId of waveIds) {
-  const v = await guard(() => agent(`Audit ${atomId}.`, { label: 'auditor' }));
-  if (v && v.__budgetExhausted) {
-    return { kind: 'budget-exhausted', detail: { atomId, stage: 'auditor', message: v.message } };
+// Translate each atom's terminal result into real ledger effects via verdict-writer: a full-green
+// pass lands the three real lifecycle events it earned (packed->tests-red, tests-red->green,
+// green->audited); a checkpoint/ripple lands the matching R1/R3 atom-verdict (lib/rewrite.mjs's
+// ruleCheckpoint/ruleRipple); a blocked-human result writes no ledger event and instead feeds the
+// Gate's blockedHuman signal below.
+const auditedAtoms = [];
+const blockedAtoms = [];
+for (const r of atomResults) {
+  if (!r) continue;
+  if (r.kind === 'green') {
+    auditedAtoms.push(r.atomId);
+    await guard(() => agent(
+      verdictWriterPrompt(args, { type: 'atom-transitioned', atomId: r.atomId, from: 'packed', to: 'tests-red' }),
+      { label: 'verdict-writer' },
+    ));
+    await guard(() => agent(
+      verdictWriterPrompt(args, { type: 'atom-transitioned', atomId: r.atomId, from: 'tests-red', to: 'green' }),
+      { label: 'verdict-writer' },
+    ));
+    await guard(() => agent(
+      verdictWriterPrompt(args, { type: 'atom-transitioned', atomId: r.atomId, from: 'green', to: 'audited' }),
+      { label: 'verdict-writer' },
+    ));
+  } else if (r.kind === 'checkpoint') {
+    await guard(() => agent(
+      verdictWriterPrompt(args, { type: 'atom-verdict', atomId: r.atomId, kind: 'checkpoint', evidence: r.evidence }),
+      { label: 'verdict-writer' },
+    ));
+  } else if (r.kind === 'ripple') {
+    await guard(() => agent(
+      verdictWriterPrompt(args, { type: 'atom-verdict', atomId: r.atomId, kind: 'ripple', manifest: r.manifest }),
+      { label: 'verdict-writer' },
+    ));
+  } else if (r.kind === 'blocked-human') {
+    blockedAtoms.push(r);
   }
-  verdicts.push(v);
-}
-// The COLLECT step appends each verdict as an atom-verdict event — the ledger controller
-// (lib/ledger.mjs's append(), §2.4) computes the effect set; this workflow only produces and
-// hands off the audited payload, never an effect set (the pivotal call).
-for (const v of verdicts) {
-  await agent(`Append the atom-verdict for ${v && v.atomId}.`, { label: 'ledger-append', payload: v });
 }
 
 phase('Merge');
 // Schematic in this scope — the real --no-ff topological merge is a later hardening pass, not tested
 // here.
-log(`${verdicts.length} audited atom(s) ready to merge (topological by actual needs edges).`);
+log(`${auditedAtoms.length} audited atom(s) ready to merge (topological by actual needs edges).`);
 
 phase('Gate');
 const gateState = {
   controlState: 'ok',
-  blockedHuman: briefing.blockedHuman || null,
+  blockedHuman: briefing.blockedHuman || (blockedAtoms.length
+    ? { class: 'atom-dispatch-exhausted', atomId: blockedAtoms[0].atomId, atoms: blockedAtoms.map((b) => b.atomId), detail: blockedAtoms[0].detail }
+    : null),
   goalGreen: briefing.goalGreen || null,
   frontierSize: waveIds.length,
   quorum: 1,
