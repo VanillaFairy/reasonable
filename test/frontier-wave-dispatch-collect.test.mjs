@@ -399,5 +399,56 @@ await check('when every atom in the wave hits budget exhaustion, Gate still comp
   assert.notStrictEqual(result.kind, 'budget-exhausted');
 });
 
+// ── 9. GAP 1 (A3b-i audit follow-up): the auditor has no licensed `checkpoint` OUTCOME —────────
+//    a self-reported checkpoint from the auditor is "anything else" per the spec's two-arm auditor
+//    treatment (green | anything else), NOT a third checkpoint arm like the adjudicator's three-arm
+//    treatment (green | checkpoint | anything else). agents/auditor.md documents zero checkpoint/
+//    OUTCOME vocabulary — the auditor's only legitimate route to an R1 checkpoint is the
+//    guard()-caught budget-throw path (already covered by the two budget-throw checks above), never a
+//    self-reported `kind:'checkpoint'` return value.
+
+await check('an auditor SELF-REPORTED checkpoint OUTCOME (a normal return value, not a thrown budget exception) is "anything else" for this role — it consumes the shared retry counter and re-dispatches implement:<atomId>, rather than short-circuiting into an immediate checkpoint GATE_RESULT the way implement/adjudicate legitimately do', async () => {
+  const labels = [];
+  const agent = async (prompt, opts) => {
+    const label = opts.label || '';
+    labels.push(label);
+    if (label === 'reconcile') return baseBriefing({ mergedSinceGate: 5 });
+    if (label.startsWith('audit:')) return { kind: 'checkpoint', atomId: ATOM };
+    return defaultStub(label);
+  };
+  const result = await runWith(agent);
+  assertValidGate(result);
+  assert.strictEqual(result.kind, 'blocked-human', 'the auditor keeps self-reporting checkpoint on both attempts, so the shared 2-attempt cap is exhausted and the atom escalates to blocked-human — mirroring the existing "BOTH attempts" adjudicator-failure test');
+  assert.strictEqual(labels.filter((l) => l === `implement:${ATOM}`).length, 2, 'a self-reported auditor checkpoint must consume the shared retry counter — implement is re-dispatched exactly once (2 total dispatches), proving it went through the retry bucket rather than the R1 checkpoint short-circuit');
+  assert.ok(JSON.stringify(result).includes(ATOM), 'the blocked-human GATE_RESULT should surface which atom is stuck, in whatever detail shape the implementer chooses');
+});
+
+// ── 10. GAP 2 (A3b-i audit follow-up, coverage-only): Collect's manifest contract->component rename ─
+//    The existing ripple test (#2 above) supplies `manifest: {}` (an empty object), so the
+//    Array.isArray(...) ? manifest.map(...) : [] branch never actually exercises the per-entry
+//    contract->component rename on real content. This closes that gap with a REAL non-empty array
+//    manifest, using the raw `contract` field name exactly as agents/implementer.md's ripple OUTCOME
+//    and docs/artifacts.md's ripple-manifest table document it — the rename to `component` (the field
+//    lib/rewrite.mjs's ruleRipple actually reads) is the engine's job, not the implementer's.
+
+await check('a REAL non-empty ripple manifest has its contract field renamed to component by the time the atom-verdict ripple event reaches verdict-writer', async () => {
+  const verdictWriterPrompts = [];
+  const agent = async (prompt, opts) => {
+    const label = opts.label || '';
+    if (label === 'verdict-writer') verdictWriterPrompts.push(prompt);
+    if (label === 'reconcile') return baseBriefing({ mergedSinceGate: 5 });
+    if (label.startsWith('implement:')) {
+      return { kind: 'ripple', atomId: ATOM, manifest: [{ contract: 'lexer', clause: 'lexer#c1', type: 'enrich' }] };
+    }
+    return defaultStub(label);
+  };
+  const result = await runWith(agent);
+  assertValidGate(result);
+  const ripplePrompt = verdictWriterPrompts.find((p) => p.includes('"kind":"ripple"'));
+  assert.ok(ripplePrompt, 'a verdict-writer dispatch carrying the atom-verdict ripple event must have been made');
+  assert.ok(ripplePrompt.includes('"component":"lexer"'), 'Collect must rename manifest[].contract to manifest[].component before handing the event JSON to verdict-writer (lib/rewrite.mjs\'s ruleRipple reads .component, not .contract)');
+  assert.ok(!ripplePrompt.includes('"contract":"lexer"'), 'the raw un-renamed contract field must not leak into the verdict-writer prompt');
+});
+
 if (process.exitCode) console.error(`\nfrontier-wave-dispatch-collect: FAILURES above (${passed} passed).`);
 else console.log(`\nfrontier-wave-dispatch-collect: all ${passed} checks passed. ✓`);
