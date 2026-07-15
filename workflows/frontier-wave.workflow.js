@@ -331,9 +331,6 @@ async function dispatchAtom(atomId) {
     const auditBc = budgetCeiling(atomId, 'auditor', audit);
     if (auditBc) return auditBc;
     if (!audit || audit.kind !== 'green') {
-      if (audit && audit.kind === 'checkpoint') {
-        return { atomId, kind: 'checkpoint', evidence: audit.evidence || 'auditor checkpoint' };
-      }
       lastFailure = { stage: 'auditor', outcome: audit };
       if (attempts >= RETRY_CAP) return atomBlockedHuman(atomId, lastFailure);
       continue;
