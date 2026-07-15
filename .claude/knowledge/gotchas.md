@@ -52,5 +52,15 @@ each independently confirmed it's cosmetic noise (via `git log`/`git show --stat
 **Don't** treat this line as a failure signal or spend time investigating it per-commit — just check
 the actual exit status / resulting repo state, as you would anyway.
 
+**Update:** traced further at end-of-session. `.git/hooks/` has no active (non-`.sample`) hooks, so
+this isn't a git hook — some other local tool (outside git itself) is watching the repo. Its effect is
+more than cosmetic: `git reflog` showed a `fast-import` entry immediately after at least one merge
+commit, silently re-writing that commit with a **new SHA and a different author identity** (content
+and message byte-identical, hash different) before HEAD settled. Confirmed harmless for content (diff
+and full test suite matched before/after), but **do not capture a commit SHA from a `git merge`/`git
+commit` command's own stdout and assume it's final** — re-read the SHA with `git log -1`/`git
+rev-parse HEAD` *after* the operation, especially before recording a SHA anywhere that matters (a
+separation-gate check, a ledger event, a report to the user).
+
 (Discovered during: A3b-i plan execution, `reasonable` plugin, 2026-07-15 — recurring across nearly
 every git write operation in the session.)
